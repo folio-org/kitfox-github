@@ -12,6 +12,9 @@ inputs:
     description: 'Team name to check membership for'
     required: true
     default: 'kitfox'
+  token:
+    description: 'GitHub token with organization read permissions'
+    required: true
 
 outputs:
   authorized:
@@ -24,14 +27,18 @@ runs:
     - name: Check team membership
       id: check-membership
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
       run: |
         set -euo pipefail
-        echo "🔍 Checking if user '${{ inputs.username }}' is member of '${{ inputs.team }}' team in ${{ inputs.organization }}..."
+        echo "::group::Validate team membership"
+        echo "Checking if user '${{ inputs.username }}' is member of '${{ inputs.team }}' team in ${{ inputs.organization }}..."
         
         if gh api "orgs/${{ inputs.organization }}/teams/${{ inputs.team }}/memberships/${{ inputs.username }}" --jq '.state' 2>/dev/null | grep -q "active"; then
-          echo "✅ User '${{ inputs.username }}' is authorized - '${{ inputs.team }}' team member"
+          echo "::notice title=Authorization successful::User '${{ inputs.username }}' is authorized - '${{ inputs.team }}' team member"
           echo "authorized=true" >> "$GITHUB_OUTPUT"
         else
-          echo "❌ User '${{ inputs.username }}' is not authorized - '${{ inputs.team }}' team membership required"
+          echo "::error title=Authorization failed::User '${{ inputs.username }}' is not authorized - '${{ inputs.team }}' team membership required"
           echo "authorized=false" >> "$GITHUB_OUTPUT"
         fi
+        echo "::endgroup::"
