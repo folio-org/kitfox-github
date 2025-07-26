@@ -1,0 +1,37 @@
+name: 'Validate Team Membership'
+description: 'Validates if a user is a member of a specific GitHub team for FOLIO workflows'
+inputs:
+  username:
+    description: 'GitHub username to check'
+    required: true
+  organization:
+    description: 'GitHub organization name'
+    required: true
+    default: 'folio-org'
+  team:
+    description: 'Team name to check membership for'
+    required: true
+    default: 'kitfox'
+
+outputs:
+  authorized:
+    description: 'Whether the user is authorized (true/false)'
+    value: ${{ steps.check-membership.outputs.authorized }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check team membership
+      id: check-membership
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "🔍 Checking if user '${{ inputs.username }}' is member of '${{ inputs.team }}' team in ${{ inputs.organization }}..."
+        
+        if gh api "orgs/${{ inputs.organization }}/teams/${{ inputs.team }}/memberships/${{ inputs.username }}" --jq '.state' 2>/dev/null | grep -q "active"; then
+          echo "✅ User '${{ inputs.username }}' is authorized - '${{ inputs.team }}' team member"
+          echo "authorized=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "❌ User '${{ inputs.username }}' is not authorized - '${{ inputs.team }}' team membership required"
+          echo "authorized=false" >> "$GITHUB_OUTPUT"
+        fi
