@@ -1,5 +1,5 @@
-name: 'Validate Team Membership'
-description: 'Validates if a user is a member of a specific GitHub team for FOLIO workflows'
+name: Validate Team Membership
+description: 'Validates if a user is a member of a specific GitHub team'
 inputs:
   username:
     description: 'GitHub username to check'
@@ -13,7 +13,7 @@ inputs:
     required: true
     default: 'kitfox'
   token:
-    description: 'GitHub token with organization read permissions'
+    description: 'GitHub token'
     required: true
 
 outputs:
