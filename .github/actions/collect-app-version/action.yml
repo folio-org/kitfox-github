@@ -1,0 +1,78 @@
+name: Collect Application Version
+description: 'Collect application version and break it down into parts'
+inputs:
+  app_name:
+    description: 'Application repository name'
+    required: true
+  branch:
+    description: 'Branch name'
+    required: true
+  token:
+    description: 'GitHub token with organization read permissions'
+    required: false
+
+outputs:
+  version:
+    description: 'Application version'
+    value: ${{ steps.collect-version.outputs.version }}
+  major:
+    description: 'Major version'
+    value: ${{ steps.collect-version.outputs.major }}
+  minor:
+    description: 'Minor version'
+    value: ${{ steps.collect-version.outputs.minor }}
+  patch:
+    description: 'Patch version'
+    value: ${{ steps.collect-version.outputs.patch }}
+  is_snapshot:
+    description: 'Is snapshot version'
+    value: ${{ steps.collect-version.outputs.is_snapshot }}
+  build_number:
+    description: 'Build number'
+    value: ${{ steps.collect-version.outputs.build_number }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout branch
+      uses: actions/checkout@v4
+      with:
+        token: ${{ inputs.token }} || ${{ secrets.GITHUB_TOKEN }}
+        repository: ${{ inputs.app_name }}          
+        ref: ${{ inputs.branch }}
+        fetch-depth: 0
+
+    - name: Collect Application Version
+      id: collect-version
+      run: |
+        set -eo pipefail
+
+        test -f pom.xml || echo "::error::pom.xml not found in repository"; exit 1
+
+        current_version=$(mvn -q \
+                    -Dexec.executable=echo \
+                    -Dexec.args='${project.version}' \
+                    --non-recursive exec:exec \
+                    -f pom.xml \
+                    || echo unknown)
+
+        echo "::notice::Current version from previous release branch: $current_version"
+
+        if [[ ! $current_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-SNAPSHOT(\.[0-9]+)?)?$ ]]; then
+          echo "::error::Unable to parse version from pom.xml: $current_version"
+          exit 1
+        fi
+
+        IFS='.- ' read -r major minor patch snapshot build <<<"${current_version//-SNAPSHOT/- SNAPSHOT}"
+          
+        echo "::notice::Major version: $major"
+        echo "::notice::Minor version: $minor"
+        echo "::notice::Patch version: $patch"
+        echo "::notice::Snapshot version: $snapshot"
+        echo "::notice::Build number: $build"
+
+        echo "major=$major" >> "$GITHUB_OUTPUT"
+        echo "minor=$minor" >> "$GITHUB_OUTPUT"
+        echo "patch=$patch" >> "$GITHUB_OUTPUT"
+        echo "snapshot=$snapshot" >> "$GITHUB_OUTPUT"
+        echo "build=$build" >> "$GITHUB_OUTPUT"
