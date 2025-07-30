@@ -1,0 +1,117 @@
+name: Orchestrate External Workflow
+description: 'Trigger, track, and wait for completion of workflows in external repositories'
+
+inputs:
+  repository:
+    description: 'Target repository (org/repo-name)'
+    required: true
+  workflow_file:
+    description: 'Workflow filename (.yml)'
+    required: true
+  workflow_branch:
+    description: 'Branch to trigger workflow on'
+    required: true
+  workflow_parameters:
+    description: 'YAML string of key-value pairs for workflow inputs'
+    required: false
+    default: ''
+  timeout_minutes:
+    description: 'Minutes to wait for workflow completion (default: GitHub Actions default 360 minutes)'
+    required: false
+
+outputs:
+  dispatch_id:
+    description: 'Generated UUID for tracking the workflow'
+    value: ${{ steps.trigger.outputs.dispatch_id }}
+  run_id:
+    description: 'GitHub run ID of the triggered workflow'
+    value: ${{ steps.get-run-id.outputs.run_id }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Trigger External Workflow
+      id: trigger
+      shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        WORKFLOW_FILE: ${{ inputs.workflow_file }}
+        WORKFLOW_BRANCH: ${{ inputs.workflow_branch }}
+        WORKFLOW_PARAMS: ${{ inputs.workflow_parameters }}
+      run: |
+        set -eo pipefail
+
+        dispatch_id=$(uuidgen);
+        echo "Generated dispatch ID: $dispatch_id"
+
+        # Convert YAML parameters to gh workflow run flags
+        workflow_flags=""
+        if [[ -n "$WORKFLOW_PARAMS" ]]; then
+          workflow_flags=$(echo "$WORKFLOW_PARAMS" | yq -r '
+            to_entries | 
+            map("-f " + .key + "=" + (.value | tostring)) | 
+            join(" ")
+          ')
+        fi
+
+        workflow_flags="$workflow_flags -f dispatch_id=$DISPATCH_ID"
+        
+        gh workflow run "$WORKFLOW_FILE" \
+          --repo "$REPOSITORY" \
+          --ref "$WORKFLOW_BRANCH" \
+          $workflow_flags
+        
+        echo "::notice title=Workflow triggered::Triggered workflow for $REPOSITORY with dispatch_id: $dispatch_id"
+        echo "dispatch_id=$dispatch_id" >> "$GITHUB_OUTPUT"
+
+    - name: Obtain Workflow Run ID
+      id: get-run-id
+      shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        WORKFLOW_FILE: ${{ inputs.workflow_file }}
+        WORKFLOW_BRANCH: ${{ inputs.workflow_branch }}
+        DISPATCH_ID: ${{ steps.trigger.outputs.dispatch_id }}
+      run: |
+        set -eo pipefail
+        
+        echo "Waiting for workflow run to appear..."
+        for i in {1..60}; do # 5 min max
+          run_id=$(gh run list \
+                    --workflow "$WORKFLOW_FILE" \
+                    --repo "$REPOSITORY" \
+                    --branch "$WORKFLOW_BRANCH" \
+                    --json databaseId \
+                    --jq '.[].databaseId' |
+                    --jq "map(select(.displayTitle|contains(\"$DISPATCH_ID\")))[0].databaseId")
+        
+          [ -n "$run_id" ] && break
+          echo "Waiting for workflow with dispatch_id to appear (attempt $i/60)..."
+          sleep 5
+        done
+        
+        if [ -z "$run_id" ]; then
+          echo "::error title=Workflow not found::Could not find workflow run with dispatch_id $DISPATCH_ID after 5 minutes."
+          exit 1
+        fi
+        
+        echo "Found workflow run: $run_id"
+        echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+    - name: Watch Workflow Completion
+      id: watch
+      shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        RUN_ID: ${{ steps.get-run-id.outputs.run_id }}
+        TIMEOUT_ARGS: ${{ inputs.timeout_minutes && 'timeout ' + inputs.timeout_minutes + 'm' || '' }}
+      run: |
+        set -eo pipefail
+
+        if $TIMEOUT_ARGS gh run watch "$RUN_ID" --repo "folio-org/$REPOSITORY" --exit-status; then
+          echo "::notice title=Workflow completed::$REPOSITORY workflow completed successfully"
+        else
+          exit_code=$?; \
+          echo "::error title=Workflow $([[ $exit_code == 124 ]] && echo timeout || echo failed)::Workflow failed"
+          exit 1
+        fi 
