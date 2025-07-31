@@ -207,9 +207,12 @@ jobs:
           mvn versions:set \
               -DnewVersion="$APP_VERSION" \
               -DgenerateBackupPoms=false
+          
+          echo "::group::Successfully updated pom.xml file version to $APP_VERSION"
+          cat pom.xml
+          echo "::endgroup::"
 
-          test -f application-descriptor.json || \
-            echo "::error::Missing file. application-descriptor.json not found" && exit 1
+          test -f application-descriptor.json || { echo "::error::Missing file. application-descriptor.json not found"; exit 1; }
 
           echo "::group::Updating application-descriptor.json version to $APP_VERSION and placeholder all module versions to <CHANGE_ME>"
           cat application-descriptor.json
