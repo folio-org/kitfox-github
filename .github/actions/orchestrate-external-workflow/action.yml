@@ -104,7 +104,7 @@ runs:
       env:
         REPOSITORY: ${{ inputs.repository }}
         RUN_ID: ${{ steps.get-run-id.outputs.run_id }}
-        TIMEOUT_ARGS: ${{ inputs.timeout_minutes && 'timeout ' + inputs.timeout_minutes + 'm' || '' }}
+        TIMEOUT_ARGS: ${{ inputs.timeout_minutes != '' && format('timeout {0}m', inputs.timeout_minutes) || '' }}
       run: |
         set -eo pipefail
 
