@@ -269,16 +269,16 @@ jobs:
           echo "::notice::Successfully committed changes #$commit_sha"
           echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Push Changes
-        if: inputs.dry_run != true
-        env:
-          BRANCH_NAME: ${{ inputs.new_release_branch }}
-        run: |
-          set -eo pipefail
-
-          echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
-          git push -u origin "$BRANCH_NAME"
-          echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
+#      - name: Push Changes
+#        if: inputs.dry_run != true
+#        env:
+#          BRANCH_NAME: ${{ inputs.new_release_branch }}
+#        run: |
+#          set -eo pipefail
+#
+#          echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
+#          git push -u origin "$BRANCH_NAME"
+#          echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
 
       - name: Workflow Summary
         run: |
