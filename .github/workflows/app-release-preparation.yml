@@ -139,9 +139,11 @@ jobs:
         id: determine-new-version
         env:
           HAS_PREV_BRANCH:   ${{ steps.verify-branches.outputs.has_previous_branch }}
+          PREV_VERSION:      ${{ steps.collect-previous-version.outputs.version }}
           PREV_MAJOR:        ${{ steps.collect-previous-version.outputs.major }}
           PREV_MINOR:        ${{ steps.collect-previous-version.outputs.minor }}
           PREV_PATCH:        ${{ steps.collect-previous-version.outputs.patch }}
+          DEFAULT_VERSION:   ${{ steps.collect-default-branch-version.outputs.version }}
           DEFAULT_MAJOR:     ${{ steps.collect-default-branch-version.outputs.major }}
           DEFAULT_MINOR:     ${{ steps.collect-default-branch-version.outputs.minor }}
           DEFAULT_PATCH:     ${{ steps.collect-default-branch-version.outputs.patch }}
@@ -152,16 +154,22 @@ jobs:
             new_major=$(( PREV_MAJOR + 1 ))
             new_minor=0
             new_patch=0
+          
+            echo "::notice::Previous release has been taken $PREV_VERSION. Incrementing major version from $PREV_MAJOR to $new_major"
 
           else
             if (( PREV_MAJOR > DEFAULT_MAJOR )); then
               new_major=$PREV_MAJOR
-              new_minor=$PREV_MINOR
+              new_minor= (( PREV_MINOR + 1 ))
               new_patch=$PREV_PATCH
+          
+              echo "::notice::Snapshot version has been taken $PREV_VERSION and minor/patch versions have been risen from $PREV_MINOR to $new_minor"
             else
               new_major=$(( DEFAULT_MAJOR + 1 ))
               new_minor=0
               new_patch=0
+          
+              echo "::notice::Default branch version has been taken $DEFAULT_VERSION and bumped up from $DEFAULT_MAJOR to $new_major"
             fi
           fi
 
