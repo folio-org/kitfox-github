@@ -120,7 +120,7 @@ jobs:
 
       - name: Collect Previous Version
         id: collect-previous-version
-        uses: ./.github/actions/collect-app-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@RANCHER-2320
         with:
           app_name: ${{ inputs.app_name }}
           branch: ${{ steps.verify-branches.outputs.source_branch }}
@@ -128,7 +128,7 @@ jobs:
 
       - name: Collect Default Branch Version
         id: collect-default-branch-version
-        uses: ./.github/actions/collect-app-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@RANCHER-2320
         if: steps.verify-branches.outputs.has_previous_branch == 'false'
         with:
           app_name: ${{ inputs.app_name }}
