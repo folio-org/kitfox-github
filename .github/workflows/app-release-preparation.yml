@@ -180,7 +180,6 @@ jobs:
 
       - name: Create Release Branch
         id: create-branch
-        if: inputs.dry_run != true
         env:
           SOURCE_BRANCH: ${{ steps.verify-branches.outputs.source_branch }}
           TARGET_BRANCH: ${{ inputs.new_release_branch }}
@@ -196,7 +195,6 @@ jobs:
 
       - name: Update Application Files
         id: update-files
-        if: inputs.dry_run != true
         env:
           APP_VERSION: ${{ steps.determine-new-version.outputs.new_version }}
         run: |          
