@@ -64,7 +64,7 @@ jobs:
           echo "${{ toJSON(github.event.inputs) }}"
           echo ""
 
-          if [ "${{ inputs.dry_run }}" = "false" ]; then
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
             echo "::notice::This was a dry run - no actual changes were made"
             echo "::notice::Set dry_run=false to apply changes"
           fi
@@ -293,7 +293,7 @@ jobs:
           echo "Commit: ${{ steps.commit-changes.outputs.commit_sha }}"
           echo ""
           
-          if [ "${{ inputs.dry_run }}" = "false" ]; then
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
             echo "::notice::This was a dry run - no actual changes were made"
             echo "::notice::Set dry_run=false to apply changes"
           fi 
