@@ -60,7 +60,7 @@ jobs:
         run: |
           set -eo pipefail
 
-          echo "::notice title=Input parameters::Input parameters"
+          echo "::notice::Input parameters"
           echo ""
           echo "${{ toJSON(github.event.inputs) }}"
           echo ""
@@ -83,7 +83,7 @@ jobs:
           set -eo pipefail
           
           if git ls-remote --exit-code --heads origin "$NEW_BRANCH" >/dev/null 2>&1; then
-            echo "::error title=Branch exists::New release branch '$NEW_BRANCH' already exists"
+            echo "::error::New release branch '$NEW_BRANCH' already exists"
             exit 1
           fi
 
@@ -99,7 +99,7 @@ jobs:
             echo "source_branch='snapshot'" >> "$GITHUB_OUTPUT"
             echo "has_previous_branch=false" >> "$GITHUB_OUTPUT"            
           else
-            echo "::error title=Missing branch::Neither previous release branch $PREV_BRANCH nor snapshot branch exists"
+            echo "::error::Missing branch. Neither previous release branch $PREV_BRANCH nor snapshot branch exists"
             exit 1
           fi
 
@@ -110,12 +110,12 @@ jobs:
             echo "::notice::Main branch exists"
             echo "default_branch=main" >> "$GITHUB_OUTPUT"
           else
-            echo "::error title=Missing branch::Neither master nor main branches exist"
+            echo "::error::Missing branch. Neither master nor main branches exist"
             exit 1
           fi
 
           if ! git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
-            echo "::error title=Missing branch::snapshot branch does not exist"
+            echo "::error::Missing branch. The snapshot branch does not exist"
             exit 1
           fi
 
@@ -202,7 +202,7 @@ jobs:
               -DgenerateBackupPoms=false
 
           test -f application-descriptor.json || \
-            echo "::error title=Missing file::application-descriptor.json not found" && exit 1
+            echo "::error::Missing file. application-descriptor.json not found" && exit 1
 
           echo "::group::Updating application-descriptor.json version to $APP_VERSION and placeholder all module versions to <CHANGE_ME>"
           cat application-descriptor.json
@@ -244,7 +244,7 @@ jobs:
           git add pom.xml application-descriptor.json 2>/dev/null || true
 
           if git diff --cached --quiet; then
-            echo "::error title=No changes to commit::"
+            echo "::error::No changes to commit"
             exit 1
           fi
 

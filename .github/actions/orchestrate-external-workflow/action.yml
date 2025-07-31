@@ -61,7 +61,7 @@ runs:
           --ref "$WORKFLOW_BRANCH" \
           $workflow_flags
         
-        echo "::notice title=Workflow triggered::Triggered workflow for $REPOSITORY with dispatch_id: $dispatch_id"
+        echo "::notice::Triggered workflow for $REPOSITORY with dispatch_id: $dispatch_id"
         echo "dispatch_id=$dispatch_id" >> "$GITHUB_OUTPUT"
 
     - name: Obtain Workflow Run ID
@@ -91,7 +91,7 @@ runs:
         done
         
         if [ -z "$run_id" ]; then
-          echo "::error title=Workflow not found::Could not find workflow run with dispatch_id $DISPATCH_ID after 5 minutes."
+          echo "::error::Could not find workflow run with dispatch_id $DISPATCH_ID after 5 minutes."
           exit 1
         fi
         
@@ -109,9 +109,9 @@ runs:
         set -eo pipefail
 
         if $TIMEOUT_ARGS gh run watch "$RUN_ID" --repo "folio-org/$REPOSITORY" --exit-status; then
-          echo "::notice title=Workflow completed::$REPOSITORY workflow completed successfully"
+          echo "::notice::$REPOSITORY workflow completed successfully"
         else
           exit_code=$?; \
-          echo "::error title=Workflow $([[ $exit_code == 124 ]] && echo timeout || echo failed)::Workflow failed"
+          echo "::error::Workflow $([[ $exit_code == 124 ]] && echo timeout || echo failed)"
           exit 1
         fi 

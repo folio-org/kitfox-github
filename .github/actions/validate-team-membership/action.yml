@@ -35,10 +35,10 @@ runs:
         echo "Checking if user '${{ inputs.username }}' is member of '${{ inputs.team }}' team in ${{ inputs.organization }}..."
         
         if gh api "orgs/${{ inputs.organization }}/teams/${{ inputs.team }}/memberships/${{ inputs.username }}" --jq '.state' 2>/dev/null | grep -q "active"; then
-          echo "::notice title=Authorization successful::User '${{ inputs.username }}' is authorized - '${{ inputs.team }}' team member"
+          echo "::notice::Authorization successful. User '${{ inputs.username }}' is authorized - '${{ inputs.team }}' team member"
           echo "authorized=true" >> "$GITHUB_OUTPUT"
         else
-          echo "::error title=Authorization failed::User '${{ inputs.username }}' is not authorized - '${{ inputs.team }}' team membership required"
+          echo "::error::Authorization failed. User '${{ inputs.username }}' is not authorized - '${{ inputs.team }}' team membership required"
           echo "authorized=false" >> "$GITHUB_OUTPUT"
         fi
         echo "::endgroup::"
