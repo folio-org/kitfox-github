@@ -1,5 +1,4 @@
 name: Application Release Branch Preparation (reusable)
-description: 'Reusable workflow for preparing FOLIO application releases'
 
 on:
   workflow_call:
