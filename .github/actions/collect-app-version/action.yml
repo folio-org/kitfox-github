@@ -37,13 +37,14 @@ runs:
     - name: Checkout branch
       uses: actions/checkout@v4
       with:
-        token: ${{ inputs.token }} || ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ inputs.token || github.token }}
         repository: ${{ inputs.app_name }}          
         ref: ${{ inputs.branch }}
         fetch-depth: 0
 
     - name: Collect Application Version
       id: collect-version
+      shell: bash
       run: |
         set -eo pipefail
 
@@ -71,8 +72,9 @@ runs:
         echo "::notice::Snapshot version: $snapshot"
         echo "::notice::Build number: $build"
 
+        echo "version=$current_version" >> "$GITHUB_OUTPUT"
         echo "major=$major" >> "$GITHUB_OUTPUT"
         echo "minor=$minor" >> "$GITHUB_OUTPUT"
         echo "patch=$patch" >> "$GITHUB_OUTPUT"
-        echo "snapshot=$snapshot" >> "$GITHUB_OUTPUT"
-        echo "build=$build" >> "$GITHUB_OUTPUT"
+        echo "is_snapshot=$([ "$snapshot" = "SNAPSHOT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+        echo "build_number=$build" >> "$GITHUB_OUTPUT"

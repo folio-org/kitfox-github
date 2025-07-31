@@ -87,7 +87,7 @@ jobs:
           fi
 
           if git ls-remote --exit-code --heads origin "$PREV_BRANCH" >/dev/null 2>&1; then
-            echo "::notice::Using previous release branch: $source_branch"
+            echo "::notice::Using previous release branch: $PREV_BRANCH"
             echo "source_branch=$PREV_BRANCH" >> "$GITHUB_OUTPUT"
             echo "has_previous_branch=true" >> "$GITHUB_OUTPUT"
 
@@ -252,14 +252,14 @@ jobs:
 
           Previous release: ${{ inputs.previous_release_branch }}
           Source branch: ${{ steps.verify-branches.outputs.source_branch }}
-          Previous version: ${{ steps.collect-previous-version.outputs.app_version }}
+          Previous version: ${{ steps.collect-previous-version.outputs.version }}
           New version: ${{ steps.determine-new-version.outputs.new_version }}
           EOF
             
           commit_sha=$(git rev-parse HEAD)
         
           echo "::notice::Successfully committed changes #$commit_sha"
-          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTUT"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
 
       - name: Push Changes
         if: inputs.dry_run != true
