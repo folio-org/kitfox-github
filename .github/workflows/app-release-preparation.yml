@@ -200,11 +200,11 @@ jobs:
         run: |          
           set -eo pipefail
 
-          echo "::notice::Updating pom.xml file version to $APP_VERSION"
-
+          echo "::group::Updating pom.xml file version to $APP_VERSION"
           mvn versions:set \
               -DnewVersion="$APP_VERSION" \
               -DgenerateBackupPoms=false
+          echo "::endgroup::"
           
           echo "::group::Successfully updated pom.xml file version to $APP_VERSION"
           cat pom.xml
