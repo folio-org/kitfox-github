@@ -160,7 +160,7 @@ jobs:
           else
             if (( PREV_MAJOR > DEFAULT_MAJOR )); then
               new_major=$PREV_MAJOR
-              new_minor= (( PREV_MINOR + 1 ))
+              new_minor=$(( PREV_MINOR + 1 ))
               new_patch=$PREV_PATCH
           
               echo "::notice::Snapshot version has been taken $PREV_VERSION and minor/patch versions have been risen from $PREV_MINOR to $new_minor"
