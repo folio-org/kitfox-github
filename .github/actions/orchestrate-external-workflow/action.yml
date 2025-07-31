@@ -54,7 +54,7 @@ runs:
           ')
         fi
 
-        workflow_flags="$workflow_flags -f dispatch_id=$DISPATCH_ID"
+        workflow_flags="$workflow_flags -f dispatch_id=$dispatch_id"
         
         gh workflow run "$WORKFLOW_FILE" \
           --repo "$REPOSITORY" \
@@ -81,8 +81,7 @@ runs:
                     --workflow "$WORKFLOW_FILE" \
                     --repo "$REPOSITORY" \
                     --branch "$WORKFLOW_BRANCH" \
-                    --json databaseId \
-                    --jq '.[].databaseId' |
+                    --json databaseId,displayTitle \
                     --jq "map(select(.displayTitle|contains(\"$DISPATCH_ID\")))[0].databaseId")
         
           [ -n "$run_id" ] && break
@@ -108,7 +107,7 @@ runs:
       run: |
         set -eo pipefail
 
-        if $TIMEOUT_ARGS gh run watch "$RUN_ID" --repo "folio-org/$REPOSITORY" --exit-status; then
+        if $TIMEOUT_ARGS gh run watch "$RUN_ID" --repo "$REPOSITORY" --exit-status; then
           echo "::notice::$REPOSITORY workflow completed successfully"
         else
           exit_code=$?; \
