@@ -92,10 +92,10 @@ jobs:
             echo "has_previous_branch=true" >> "$GITHUB_OUTPUT"
 
           elif [[ "${{ inputs.use_snapshot_fallback }}" == "true" ]] \
-              && git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
+              && git ls-remote --exit-code --heads origin "RANCHER-2320" >/dev/null 2>&1; then
 
             echo "::warning::Previous release branch not found, using snapshot branch as fallback"
-            echo "source_branch=snapshot" >> "$GITHUB_OUTPUT"
+            echo "source_branch=RANCHER-2320" >> "$GITHUB_OUTPUT"
             echo "has_previous_branch=false" >> "$GITHUB_OUTPUT"            
           else
             echo "::error::Missing branch. Neither previous release branch $PREV_BRANCH nor snapshot branch exists"
