@@ -37,6 +37,12 @@ on:
       app_version:
         description: 'Determined application version'
         value: ${{ jobs.prepare-release.outputs.app_version }}
+      source_branch:
+        description: 'Source branch'
+        value: ${{ jobs.prepare-release.outputs.source_branch }}
+      commit_sha:
+        description: 'Commit SHA'
+        value: ${{ jobs.prepare-release.outputs.commit_sha }}
 
 permissions:
   contents: write
@@ -48,18 +54,14 @@ jobs:
 
     outputs:
       app_version: ${{ steps.determine-new-version.outputs.new_version }}
+      source_branch: ${{ steps.verify-branches.outputs.source_branch }}
+      commit_sha: ${{ steps.commit-changes.outputs.commit_sha }}
 
     env:
       PREV_BRANCH: ${{ inputs.previous_release_branch }}
       NEW_BRANCH: ${{ inputs.new_release_branch }}
 
     steps:
-      - name: Some echo test
-        run: |
-          set -eo pipefail
-
-          echo "::notice::GitGub actor: ${{ github.actor }}"
-          echo "::notice::GitGub triggering actor: ${{ github.triggering_actor }}"
       - name: Input parameters
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
         run: |
@@ -335,7 +337,7 @@ jobs:
       #               value: "${{ steps.determine-new-version.outputs.new_version }}"
       #               short: true
       #             - title: "Previous Release"
-      #               value: "${{ inputs.previous_release_branch }}"
+      #               value: "${{ steps.verify-branches.outputs.source_branch }}
       #               short: true
       #             - title: "New Release"
       #               value: "${{ inputs.new_release_branch }}"
