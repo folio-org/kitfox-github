@@ -54,6 +54,12 @@ jobs:
       NEW_BRANCH: ${{ inputs.new_release_branch }}
 
     steps:
+      - name: Some echo test
+        run: |
+          set -eo pipefail
+
+          echo "::notice::GitGub actor: ${{ github.actor }}"
+          echo "::notice::GitGub triggering actor: ${{ github.triggering_actor }}"
       - name: Input parameters
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
         run: |
