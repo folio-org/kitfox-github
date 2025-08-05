@@ -103,7 +103,7 @@ jobs:
               && git ls-remote --exit-code --heads origin "RANCHER-2320" >/dev/null 2>&1; then
 
             echo "::warning::Previous release branch not found, using snapshot branch as fallback"
-            echo "source_branch=RANCHER-2320" >> "$GITHUB_OUTPUT"
+            echo "source_branch=RANCHER-2320" >> "$GITHUB_OUTPUT" #TODO: Change to snapshot branch before merging PR
             echo "has_previous_branch=false" >> "$GITHUB_OUTPUT"            
           else
             echo "::error::Missing branch. Neither previous release branch $PREV_BRANCH nor snapshot branch exists"
@@ -306,83 +306,3 @@ jobs:
             echo "::notice::This was a dry run - no actual changes were made"
             echo "::notice::Set dry_run=false to apply changes"
           fi
-
-      # - name: Join Slack Channel
-      #   if: always() && inputs.dry_run == false
-      #   uses: slackapi/slack-github-action@v2.1.1
-      #   with:
-      #     method: conversations.join
-      #     token: ${{ secrets.SLACK_BOT_TOKEN }}
-      #     payload: |
-      #       channel: "#folio-rancher-debug-notifications"
-
-      # - name: Send Global Slack Notification
-      #   if: always() && inputs.dry_run == false
-      #   uses: slackapi/slack-github-action@v2.1.1
-      #   with:
-      #     method: chat.postMessage
-      #     token: ${{ secrets.SLACK_BOT_TOKEN }}
-      #     payload: |
-      #       channel: "#folio-rancher-debug-notifications"
-      #       text: "${{ job.status == 'success' && '✅' || '❌' }} ${{ inputs.app_name }} Release Preparation ${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
-      #       attachments:
-      #         - color: "${{ job.status == 'success' && 'good' || 'danger' }}"
-      #           title: "${{ job.status == 'success' && '✅' || '❌' }} ${{ inputs.app_name }} Release Preparation ${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
-      #           text: "${{ job.status == 'success' && 'Application release branch preparation completed successfully!' || 'Application release branch preparation failed!' }}"
-      #           fields:
-      #             - title: "Application"
-      #               value: "${{ inputs.app_name }}"
-      #               short: true
-      #             - title: "New Version"
-      #               value: "${{ steps.determine-new-version.outputs.new_version }}"
-      #               short: true
-      #             - title: "Previous Release"
-      #               value: "${{ steps.verify-branches.outputs.source_branch }}
-      #               short: true
-      #             - title: "New Release"
-      #               value: "${{ inputs.new_release_branch }}"
-      #               short: true
-      #             - title: "Commit"
-      #               value: "${{ steps.commit-changes.outputs.commit_sha }}"
-      #               short: false
-      #           footer: "FOLIO Kitfox Team CI/CD"
-
-      # - name: Join App Team Slack Channel
-      #   if: always() && inputs.dry_run == false
-      #   uses: slackapi/slack-github-action@v2.1.1
-      #   with:
-      #     method: conversations.join
-      #     token: ${{ secrets.SLACK_BOT_TOKEN }}
-      #     payload: |
-      #       channel: "#folio-releases"
-
-      # - name: Send App Team Slack Notification
-      #   if: always() && inputs.dry_run == false
-      #   uses: slackapi/slack-github-action@v2.1.1
-      #   with:
-      #     method: chat.postMessage
-      #     token: ${{ secrets.SLACK_BOT_TOKEN }}
-      #     payload: |
-      #       channel: "#folio-releases"
-      #       text: "${{ job.status == 'success' && '✅' || '❌' }} ${{ inputs.app_name }} Release Preparation ${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
-      #       attachments:
-      #         - color: "${{ job.status == 'success' && 'good' || 'danger' }}"
-      #           title: "${{ job.status == 'success' && '✅' || '❌' }} ${{ inputs.app_name }} Release Preparation ${{ job.status == 'success' && 'SUCCESS' || 'FAILED' }}"
-      #           text: "${{ job.status == 'success' && 'Your application release branch preparation completed successfully!' || 'Your application release branch preparation failed!' }}"
-      #           fields:
-      #             - title: "Application"
-      #               value: "${{ inputs.app_name }}"
-      #               short: true
-      #             - title: "New Version"
-      #               value: "${{ steps.determine-new-version.outputs.new_version }}"
-      #               short: true
-      #             - title: "Previous Release"
-      #               value: "${{ inputs.previous_release_branch }}"
-      #               short: true
-      #             - title: "New Release"
-      #               value: "${{ inputs.new_release_branch }}"
-      #               short: true
-      #             - title: "Commit"
-      #               value: "${{ steps.commit-changes.outputs.commit_sha }}"
-      #               short: false
-      #           footer: "FOLIO Application Team CI/CD" 
