@@ -99,7 +99,7 @@ jobs:
               - color: "danger"
                 fields:
                   - title: "New Release"
-                    value: "${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.new_release_branch }}|${{ inputs.new_release_branch }}>"
+                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.new_release_branch }}|${{ inputs.new_release_branch }}>"
                     short: true
                   - title: "Source Branch"
                     value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.source_branch }}|${{ inputs.source_branch }}>"
