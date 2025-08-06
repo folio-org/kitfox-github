@@ -47,13 +47,23 @@ This repository provides the core infrastructure for FOLIO's distributed release
 #### `app-release-preparation.yml`
 - **Purpose**: Complete application release preparation workflow
 - **Features**:
-  - ✅ Team authorization validation (using `validate-team-membership` action)
   - ✅ Application version determination based on FOLIO release patterns
   - ✅ Release branch creation and management
   - ✅ File updates (pom.xml, *.template.json) with version changes
   - ✅ Automated commit and push operations
   - ✅ Dry-run support for testing
-- **Usage**: Called by individual application repositories via umbrella workflows
+  - ✅ Result artifact generation for orchestrator consumption
+- **Usage**: Called by individual application repositories for release preparation
+
+#### `app-release-preparation-notification.yml`
+- **Purpose**: Centralized Slack notification service for application release workflows
+- **Features**:
+  - ✅ SUCCESS and FAILURE notification support
+  - ✅ Rich Slack message formatting with workflow details
+  - ✅ Clickable links to repositories, branches, and commits
+  - ✅ Workflow run tracking with GitHub URLs
+  - ✅ Conditional execution based on workflow result
+- **Usage**: Called by application repositories to send standardized Slack notifications
 
 ## Architecture
 
@@ -70,7 +80,8 @@ The FOLIO ecosystem uses a **distributed orchestration pattern** with the `orche
 │   ├── Release Planning & Validation                         │
 │   ├── Application Matrix Orchestration                      │
 │   │   └── orchestrate-external-workflow ────────────────┐   │
-│   └── Result Collection & Summary                       │   │
+│   ├── Result Collection & Aggregation                   │   │
+│   └── Platform-Level Slack Notifications                │   │
 └─────────────────────────────────────────────────────────│───┘
                                                           │
             UUID Dispatch Tracking + YAML Parameters      │
@@ -85,6 +96,10 @@ The FOLIO ecosystem uses a **distributed orchestration pattern** with the `orche
 │ release-     │    │ release-     │    │ release-     │
 │ preparation  │    │ preparation  │    │ preparation  │
 │ (shared)     │    │ (shared)     │    │ (shared)     │
+│      ▼       │    │      ▼       │    │      ▼       │
+│ 📢 slack-    │    │ 📢 slack-    │    │ 📢 slack-    │
+│ notification │    │ notification │    │ notification │
+│ (shared)     │    │ (shared)     │    │ (shared)     │
 └──────────────┘    └──────────────┘    └──────────────┘
        ▲                     ▲                   ▲
        │ uses: kitfox-github/.github/workflows/  │
@@ -98,6 +113,8 @@ The FOLIO ecosystem uses a **distributed orchestration pattern** with the `orche
 - **📊 Semantic Coordination**: YAML parameters provide clean, readable configuration
 - **🛡️ Security Boundaries**: Team authorization enforced at orchestration level
 - **🔄 Parallel Processing**: Matrix strategy enables concurrent application updates
+- **📢 Dual Notifications**: Both platform-level and individual app notifications via reusable workflows
+- **📈 Result Aggregation**: Centralized collection of distributed execution results
 
 ## Usage Patterns
 
@@ -165,13 +182,37 @@ Collecting and managing application versions:
     echo "Next version: ${next_major}.0.0"
 ```
 
+### 📢 **Reusable Slack Notification Pattern**
+
+Centralized notification service for consistent Slack messaging:
+
+```yaml
+# Application workflows using reusable Slack notifications
+slack_notification:
+  name: Slack Notification
+  needs: prepare-app-release
+  if: always() && inputs.dry_run == false && vars.SLACK_NOTIF_CHANNEL != ''
+  uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+  with:
+    app_name: ${{ github.repository }}
+    new_release_branch: ${{ inputs.new_release_branch }}
+    source_branch: ${{ needs.prepare-app-release.outputs.source_branch }}
+    app_version: ${{ needs.prepare-app-release.outputs.app_version }}
+    commit_sha: ${{ needs.prepare-app-release.outputs.commit_sha }}
+    workflow_result: ${{ needs.prepare-app-release.result }}
+    workflow_run_id: ${{ github.run_id }}
+    workflow_run_number: ${{ github.run_number }}
+    slack_notif_channel: ${{ vars.SLACK_NOTIF_CHANNEL }}
+  secrets: inherit
+```
+
 ### 🏭 **Application Repository Integration**
 
 Minimal wrapper workflows in application repositories:
 
 ```yaml
-# app-*/.github/workflows/release-preparation.yml
-name: Release Preparation
+# app-*/.github/workflows/app-release-preparation.yml
+name: Application Release Branch Preparation
 on:
   workflow_dispatch:
     inputs:
@@ -181,13 +222,31 @@ on:
       dry_run: { type: boolean, default: false }
 
 jobs:
-  prepare-release:
+  prepare-app-release:
+    name: Prepare Application Release
     uses: folio-org/kitfox-github/.github/workflows/app-release-preparation.yml@main
     with:
       dispatch_id: ${{ inputs.dispatch_id }}
       previous_release_branch: ${{ inputs.previous_release_branch }}
       new_release_branch: ${{ inputs.new_release_branch }}
       dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  slack_notification:
+    name: Slack Notification
+    needs: prepare-app-release
+    if: always() && inputs.dry_run == false && vars.SLACK_NOTIF_CHANNEL != ''
+    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+    with:
+      app_name: ${{ github.repository }}
+      new_release_branch: ${{ inputs.new_release_branch }}
+      source_branch: ${{ needs.prepare-app-release.outputs.source_branch }}
+      app_version: ${{ needs.prepare-app-release.outputs.app_version }}
+      commit_sha: ${{ needs.prepare-app-release.outputs.commit_sha }}
+      workflow_result: ${{ needs.prepare-app-release.result }}
+      workflow_run_id: ${{ github.run_id }}
+      workflow_run_number: ${{ github.run_number }}
+      slack_notif_channel: ${{ vars.SLACK_NOTIF_CHANNEL }}
     secrets: inherit
 ```
 
@@ -240,12 +299,14 @@ Critical FOLIO infrastructure operations require **team-based authorization**:
 
 ### Release Workflow Integration (RANCHER-2320)
 
-This infrastructure supports FOLIO's **distributed release preparation workflow**:
+This infrastructure supports FOLIO's **distributed release preparation workflow** with comprehensive Slack notifications:
 
 1. **Platform Orchestration**: `platform-lsp` coordinates release across all applications
 2. **Application Processing**: Each `app-*` repository processes its own release preparation
-3. **Version Management**: Semantic version handling with SNAPSHOT support
-4. **Team Coordination**: Kitfox team controls release timing and approval
+3. **Dual Notifications**: Both platform-level aggregation and individual app notifications
+4. **Version Management**: Semantic version handling with SNAPSHOT support
+5. **Team Coordination**: Kitfox team controls release timing and approval
+6. **Result Aggregation**: Centralized collection and reporting of distributed execution results
 
 ### Eureka CI Ecosystem (RANCHER-2317)
 
@@ -293,8 +354,9 @@ New actions are created based on **evidence of reuse**, not theoretical needs:
 |----------------------|----------------------|------------|
 | Module Version Management | RANCHER-2321/2322 implementation | 🔄 Pending |
 | Registry Operations | mgr-applications deployment | 🔄 Pending |
-| Slack Notifications | Team notification patterns | 📋 Under Review |
+| ~~Slack Notifications~~ | ~~Team notification patterns~~ | ✅ **Implemented** |
 | Environment Deployment | Multi-env deployment patterns | 📋 Under Review |
+| Application Version Collection | Cross-repo version management needs | ✅ **Implemented** |
 
 ### Evolution Principles
 
@@ -321,9 +383,11 @@ New actions are created based on **evidence of reuse**, not theoretical needs:
 ### Key Metrics
 
 - **Code Reduction**: 136 lines → 26 lines in platform orchestrator (80% reduction)
-- **Action Reuse**: 3 universal actions serve 30+ application repositories
+- **Action Reuse**: 3 universal actions + 2 reusable workflows serve 31+ repositories
+- **Notification Standardization**: 31 application repositories use centralized Slack notifications
 - **Security Coverage**: 100% of critical operations require team authorization
 - **Maintenance**: Single point of change for workflow improvements
+- **Dual Notification System**: Platform-level + individual app notifications via reusable workflows
 
 ### FOLIO Ecosystem Impact
 
