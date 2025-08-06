@@ -297,7 +297,7 @@ Critical FOLIO infrastructure operations require **team-based authorization**:
 
 ## 🎯 FOLIO Integration Context
 
-### Release Workflow Integration (RANCHER-2320)
+### Release Workflow Integration
 
 This infrastructure supports FOLIO's **distributed release preparation workflow** with comprehensive Slack notifications:
 
@@ -308,14 +308,14 @@ This infrastructure supports FOLIO's **distributed release preparation workflow*
 5. **Team Coordination**: Kitfox team controls release timing and approval
 6. **Result Aggregation**: Centralized collection and reporting of distributed execution results
 
-### Eureka CI Ecosystem (RANCHER-2317)
+### Eureka CI Ecosystem
 
 Part of the broader FOLIO Eureka CI implementation:
 
-- **🔄 Snapshot CI**: Automated module version updates (RANCHER-2321/2322)
-- **📦 Release CI**: Version management and release preparation (RANCHER-2323/2324)
-- **🗂️ Application Registry**: mgr-applications in FAR mode (RANCHER-2451)
-- **🚀 Artifact Packaging**: Release tar.gz generation (RANCHER-2319)
+- **🔄 Snapshot CI**: Automated module version updates
+- **📦 Release CI**: Version management and release preparation
+- **🗂️ Application Registry**: mgr-applications in FAR mode
+- **🚀 Artifact Packaging**: Release tar.gz generation
 
 ## 📋 Development Guidelines
 
