@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SLACK_BOT_TOKEN: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
-      SLACK_NOTIF_CHANNEL: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }} # TODO: change to inputs.slack_notif_channel before merging
+      SLACK_NOTIF_CHANNEL: ${{ inputs.slack_notif_channel }}
     steps:
       - name: Send SUCCESS Slack Notification
         if: inputs.workflow_result == 'success'
