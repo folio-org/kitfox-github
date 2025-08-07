@@ -1,0 +1,107 @@
+name: Application Release Preparation Slack Notification
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application repository name'
+        required: true
+        type: string
+      new_release_branch:
+        description: 'New release branch name'
+        required: true
+        type: string
+      source_branch:
+        description: 'Source branch used for release'
+        required: true
+        type: string
+      app_version:
+        description: 'Application version'
+        required: true
+        type: string
+      commit_sha:
+        description: 'Commit SHA of the release'
+        required: true
+        type: string
+      workflow_result:
+        description: 'Result of the main workflow (success/failure)'
+        required: true
+        type: string
+      workflow_run_id:
+        description: 'GitHub run ID for linking'
+        required: true
+        type: string
+      workflow_run_number:
+        description: 'GitHub run number for display'
+        required: true
+        type: string
+      slack_notif_channel:
+        description: 'Slack notification channel'
+        required: true
+        type: string
+
+jobs:
+  send-notification:
+    name: Send Slack Notification
+    runs-on: ubuntu-latest
+    env:
+      SLACK_BOT_TOKEN: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+      SLACK_NOTIF_CHANNEL: ${{ inputs.slack_notif_channel }}
+    steps:
+      - name: Send SUCCESS Slack Notification
+        if: inputs.workflow_result == 'success'
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ env.SLACK_BOT_TOKEN }}
+          errors: true
+          payload: |
+            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            text: "Application Release Preparation SUCCESS"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ inputs.app_name }} Application Release Preparation SUCCESS <${{ github.server_url }}/${{ inputs.app_name }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+            attachments:
+              - color: "good"
+                fields:
+                  - title: "New Release"
+                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.new_release_branch }}|${{ inputs.new_release_branch }}>"
+                    short: true
+                  - title: "Source Branch"
+                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.source_branch }}|${{ inputs.source_branch }}>"
+                    short: true                    
+                  - title: "New Version"
+                    value: "${{ inputs.app_version }}"
+                    short: true                   
+                  - title: "Commit"
+                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
+                    short: true
+                footer: "Eureka CI/CD"
+
+      - name: Send FAILED Slack Notification
+        if: inputs.workflow_result == 'failure'
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ env.SLACK_BOT_TOKEN }}
+          errors: true
+          payload: |
+            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            text: "Application Release Preparation FAILED"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ inputs.app_name }} Application Release Preparation FAILED <${{ github.server_url }}/${{ inputs.app_name }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+            attachments:
+              - color: "danger"
+                fields:
+                  - title: "New Release"
+                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.new_release_branch }}|${{ inputs.new_release_branch }}>"
+                    short: true
+                  - title: "Source Branch"
+                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.source_branch }}|${{ inputs.source_branch }}>"
+                    short: true                    
+                footer: "Eureka CI/CD"

@@ -1,0 +1,44 @@
+name: Validate Team Membership
+description: 'Validates if a user is a member of a specific GitHub team'
+inputs:
+  username:
+    description: 'GitHub username to check'
+    required: true
+  organization:
+    description: 'GitHub organization name'
+    required: true
+    default: 'folio-org'
+  team:
+    description: 'Team name to check membership for'
+    required: true
+    default: 'kitfox'
+  token:
+    description: 'GitHub token'
+    required: true
+
+outputs:
+  authorized:
+    description: 'Whether the user is authorized (true/false)'
+    value: ${{ steps.check-membership.outputs.authorized }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check team membership
+      id: check-membership
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        echo "::group::Validate team membership"
+        echo "Checking if user '${{ inputs.username }}' is member of '${{ inputs.team }}' team in ${{ inputs.organization }}..."
+        
+        if gh api "orgs/${{ inputs.organization }}/teams/${{ inputs.team }}/memberships/${{ inputs.username }}" --jq '.state' 2>/dev/null | grep -q "active"; then
+          echo "::notice::Authorization successful. User '${{ inputs.username }}' is authorized - '${{ inputs.team }}' team member"
+          echo "authorized=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::error::Authorization failed. User '${{ inputs.username }}' is not authorized - '${{ inputs.team }}' team membership required"
+          echo "authorized=false" >> "$GITHUB_OUTPUT"
+        fi
+        echo "::endgroup::"

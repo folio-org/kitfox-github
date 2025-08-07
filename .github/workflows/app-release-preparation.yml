@@ -1,0 +1,308 @@
+name: Application Release Branch Preparation (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      previous_release_branch:
+        description: 'Previous release branch (e.g., R1-2024)'
+        required: true
+        type: string
+      new_release_branch:
+        description: 'New release branch (e.g., R2-2024)'
+        required: true
+        type: string
+      use_snapshot_fallback:
+        description: 'Use snapshot branch as fallback if previous release branch not found'
+        required: false
+        type: boolean
+        default: false
+      use_snapshot_version:
+        description: 'Use snapshot version as a base version'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Perform dry run without making changes'
+        required: false
+        type: boolean
+        default: false        
+    outputs:
+      app_name:
+        description: 'Application name (passed through from input)'
+        value: ${{ inputs.app_name }}
+      app_version:
+        description: 'Determined application version'
+        value: ${{ jobs.prepare-release.outputs.app_version }}
+      source_branch:
+        description: 'Source branch'
+        value: ${{ jobs.prepare-release.outputs.source_branch }}
+      commit_sha:
+        description: 'Commit SHA'
+        value: ${{ jobs.prepare-release.outputs.commit_sha }}
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    name: Prepare Application for Release
+    runs-on: ubuntu-latest
+
+    outputs:
+      app_version: ${{ steps.determine-new-version.outputs.new_version }}
+      source_branch: ${{ steps.verify-branches.outputs.source_branch }}
+      commit_sha: ${{ steps.commit-changes.outputs.commit_sha }}
+
+    env:
+      PREV_BRANCH: ${{ inputs.previous_release_branch }}
+      NEW_BRANCH: ${{ inputs.new_release_branch }}
+
+    steps:
+      - name: Input parameters
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Input parameters"
+          echo ""
+          echo "${{ toJSON(github.event.inputs) }}"
+          echo ""
+
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::notice::This was a dry run - no actual changes were made"
+            echo "::notice::Set dry_run=false to apply changes"
+          fi
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ inputs.app_name }}
+          fetch-depth: 0
+
+      - name: Verify Branches
+        id: verify-branches
+        run: |
+          set -eo pipefail
+          
+          if git ls-remote --exit-code --heads origin "$NEW_BRANCH" >/dev/null 2>&1; then
+            echo "::error::New release branch '$NEW_BRANCH' already exists"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --heads origin "$PREV_BRANCH" >/dev/null 2>&1; then
+            echo "::notice::Using previous release branch: $PREV_BRANCH"
+            echo "source_branch=$PREV_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "has_previous_branch=true" >> "$GITHUB_OUTPUT"
+
+          elif [[ "${{ inputs.use_snapshot_fallback }}" == "true" ]] \
+              && git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
+
+            echo "::warning::Previous release branch not found, using snapshot branch as fallback"
+            echo "source_branch=snapshot" >> "$GITHUB_OUTPUT"
+            echo "has_previous_branch=false" >> "$GITHUB_OUTPUT"            
+          else
+            echo "::error::Missing branch. Neither previous release branch $PREV_BRANCH nor snapshot branch exists"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --heads origin "master" >/dev/null 2>&1; then
+            echo "::notice::Master branch exists"
+            echo "default_branch=master" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads origin "main" >/dev/null 2>&1; then
+            echo "::notice::Main branch exists"
+            echo "default_branch=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Missing branch. Neither master nor main branches exist"
+            exit 1
+          fi
+
+          if ! git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
+            echo "::error::Missing branch. The snapshot branch does not exist"
+            exit 1
+          fi
+
+      - name: Collect Previous Version
+        id: collect-previous-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
+        with:
+          app_name: ${{ inputs.app_name }}
+          branch: ${{ steps.verify-branches.outputs.source_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect Default Branch Version
+        id: collect-default-branch-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
+        if: steps.verify-branches.outputs.has_previous_branch == 'false'
+        with:
+          app_name: ${{ inputs.app_name }}
+          branch: ${{ steps.verify-branches.outputs.default_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine New Version
+        id: determine-new-version
+        env:
+          HAS_PREV_BRANCH:   ${{ steps.verify-branches.outputs.has_previous_branch }}
+          PREV_VERSION:      ${{ steps.collect-previous-version.outputs.version }}
+          PREV_MAJOR:        ${{ steps.collect-previous-version.outputs.major }}
+          PREV_MINOR:        ${{ steps.collect-previous-version.outputs.minor }}
+          PREV_PATCH:        ${{ steps.collect-previous-version.outputs.patch }}
+          DEFAULT_VERSION:   ${{ steps.collect-default-branch-version.outputs.version }}
+          DEFAULT_MAJOR:     ${{ steps.collect-default-branch-version.outputs.major }}
+          DEFAULT_MINOR:     ${{ steps.collect-default-branch-version.outputs.minor }}
+          DEFAULT_PATCH:     ${{ steps.collect-default-branch-version.outputs.patch }}
+        run: |
+          set -eo pipefail
+
+          if [[ "$HAS_PREV_BRANCH" == 'true' ]]; then
+            new_major=$(( PREV_MAJOR + 1 ))
+            new_minor=0
+            new_patch=0
+          
+            echo "::notice::Previous release has been taken $PREV_VERSION. Incrementing major version from $PREV_MAJOR to $new_major"
+
+          else
+            if (( PREV_MAJOR > DEFAULT_MAJOR )); then
+              new_major=$PREV_MAJOR
+              new_minor=$(( PREV_MINOR + 1 ))
+              new_patch=$PREV_PATCH
+          
+              echo "::notice::Snapshot version has been taken $PREV_VERSION and minor/patch versions have been risen from $PREV_MINOR to $new_minor"
+            else
+              new_major=$(( DEFAULT_MAJOR + 1 ))
+              new_minor=0
+              new_patch=0
+          
+              echo "::notice::Default branch version has been taken $DEFAULT_VERSION and bumped up from $DEFAULT_MAJOR to $new_major"
+            fi
+          fi
+
+          new_version="${new_major}.${new_minor}.${new_patch}"
+
+          echo "::notice::New determined version: $new_version"
+          echo "new_version=$new_version"       >>"$GITHUB_OUTPUT"
+
+      - name: Create Release Branch
+        id: create-branch
+        env:
+          SOURCE_BRANCH: ${{ steps.verify-branches.outputs.source_branch }}
+          TARGET_BRANCH: ${{ inputs.new_release_branch }}
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Creating release branch '$TARGET_BRANCH' from '$SOURCE_BRANCH'"
+
+          git checkout "origin/$SOURCE_BRANCH"
+          git checkout -b "$TARGET_BRANCH"
+          
+          echo "::notice::Successfully created branch '$TARGET_BRANCH'"
+
+      - name: Update Application Files
+        id: update-files
+        env:
+          APP_VERSION: ${{ steps.determine-new-version.outputs.new_version }}
+        run: |          
+          set -eo pipefail
+
+          echo "::group::Updating pom.xml file version to $APP_VERSION"
+          mvn versions:set \
+              -DnewVersion="$APP_VERSION" \
+              -DgenerateBackupPoms=false
+          echo "::endgroup::"
+          
+          echo "::group::Successfully updated pom.xml file version to $APP_VERSION"
+          cat pom.xml
+          echo "::endgroup::"
+
+          test -f application-descriptor.json || { echo "::error::Missing file. application-descriptor.json not found"; exit 1; }
+
+          echo "::group::Updating application-descriptor.json version to $APP_VERSION and placeholder all module versions to <CHANGE_ME>"
+          cat application-descriptor.json
+          echo "::endgroup::"
+
+          tmp="$(mktemp)"
+
+          jq --arg newVer "$APP_VERSION" '
+            .version = $newVer                      #bump top-level version
+            | .modules     
+            |= map(.version = "<CHANGE_ME>")        #placeholder all module versions
+            | .uiModules    
+            |= map(.version = "<CHANGE_ME>")        #placeholder all uiModule versions
+          ' application-descriptor.json > "$tmp" \
+          && mv "$tmp" application-descriptor.json
+
+          echo "::group::Updated application-descriptor.json"
+          cat application-descriptor.json
+          echo "::endgroup::"
+
+      - name: Configure Git
+        run: |
+          set -eo pipefail
+          
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "::notice::Git configured for automated commits"           
+
+      - name: Commit Changes
+        id: commit-changes
+        if: inputs.dry_run == false
+        run: |
+          set -eo pipefail
+
+          echo "::group::Stage changes for commit"
+          git status
+          echo "::endgroup::"
+          
+          git add pom.xml application-descriptor.json 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "::error::No changes to commit"
+            exit 1
+          fi
+
+          git commit -F - <<EOF
+          Prepare ${{ inputs.app_name }} for release. Initial commit.
+
+          Previous release: ${{ inputs.previous_release_branch }}
+          Source branch: ${{ steps.verify-branches.outputs.source_branch }}
+          Previous version: ${{ steps.collect-previous-version.outputs.version }}
+          New version: ${{ steps.determine-new-version.outputs.new_version }}
+          EOF
+            
+          commit_sha=$(git rev-parse HEAD)
+        
+          echo "::notice::Successfully committed changes #$commit_sha"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Push Changes
+        if: inputs.dry_run == false
+        env:
+          BRANCH_NAME: ${{ inputs.new_release_branch }}
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
+          git push -u origin "$BRANCH_NAME"
+          echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
+
+      - name: Workflow Summary
+        run: |
+          set -eo pipefail
+
+          echo "::notice::${{ inputs.app_name }} Release Preparation Summary"
+          echo ""
+          echo "Previous Release: ${{ inputs.previous_release_branch }}"
+          echo "New Release: ${{ inputs.new_release_branch }}"
+          echo "Source Branch: ${{ steps.verify-branches.outputs.source_branch }}"
+          echo "New Version: ${{ steps.determine-new-version.outputs.new_version }}"
+          echo "Commit: ${{ steps.commit-changes.outputs.commit_sha }}"
+          echo ""
+          
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::notice::This was a dry run - no actual changes were made"
+            echo "::notice::Set dry_run=false to apply changes"
+          fi
