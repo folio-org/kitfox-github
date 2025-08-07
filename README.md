@@ -1,400 +1,607 @@
 # kitfox-github
 
-**FOLIO Infrastructure Actions & Workflows** - Shared GitHub Actions and workflow templates for the FOLIO distributed CI/CD ecosystem.
+**Shared Infrastructure for FOLIO Distributed CI/CD** - Reusable GitHub Actions and workflow templates that enable coordinated operations across the FOLIO ecosystem.
 
-## Overview
+## 🎯 Repository Purpose
 
-This repository provides the core infrastructure for FOLIO's distributed release management and CI/CD workflows. It contains reusable GitHub Actions and workflow templates that enable coordinated operations across all FOLIO application repositories while maintaining clear separation of concerns and team-based authorization.
+This repository serves as the **central infrastructure hub** for FOLIO's distributed CI/CD ecosystem, providing:
 
-## 🎯 Key Features
+- **🔧 Universal Actions**: Reusable composite actions for cross-repository operations
+- **📋 Workflow Templates**: Standardized reusable workflows for common FOLIO processes
+- **🛡️ Security Infrastructure**: Team-based authorization patterns for critical operations
+- **⚡ Distributed Coordination**: Tools for orchestrating operations across multiple repositories
 
-- **🚀 Universal workflow orchestration** across multiple repositories
-- **🔒 Team-based authorization** for critical operations
-- **📊 Maven version management** with semantic version parsing
-- **⚡ Distributed execution** with centralized coordination
-- **🛡️ Security-first design** with fail-closed authorization
+## 🏗️ Repository Structure
 
-## Components
+### `.github/actions/` - Universal Composite Actions
 
-### 🔧 **Core Infrastructure Actions** (`.github/actions/`)
+Composite actions that solve common cross-repository challenges:
 
-#### `orchestrate-external-workflow`
-- **Purpose**: Universal workflow triggering, tracking, and completion monitoring
-- **Features**: UUID dispatch tracking, YAML parameter format, timeout handling
-- **Usage**: Coordinate complex operations across multiple repositories
-- **Inputs**: `repository`, `workflow_file`, `workflow_branch`, `workflow_parameters` (YAML), `timeout_minutes`
-- **Outputs**: `dispatch_id`, `run_id`
-- **📖 [Full Documentation](/.github/actions/orchestrate-external-workflow/README.md)**
+#### Action Design Principles
+- **🎯 Single Responsibility**: Each action solves one specific problem well
+- **🔄 Cross-Repository Reuse**: Built for use across multiple FOLIO repositories
+- **🛡️ Security-First**: Fail-closed design with clear authorization boundaries
+- **📖 Self-Documenting**: Each action includes comprehensive README.md
 
-#### `collect-app-version`
-- **Purpose**: Extract and parse Maven application versions from FOLIO repositories
-- **Features**: Semantic version breakdown, SNAPSHOT support, cross-repo collection
-- **Usage**: Version management for release preparation and compatibility checking
-- **Inputs**: `app_name`, `branch`, `token`
-- **Outputs**: `version`, `major`, `minor`, `patch`, `is_snapshot`, `build_number`
-- **📖 [Full Documentation](/.github/actions/collect-app-version/README.md)**
+### `.github/workflows/` - Reusable Workflow Templates
 
-#### `validate-team-membership`
-- **Purpose**: Team-based authorization for sensitive workflows
-- **Features**: GitHub team membership validation, secure fail-closed design
-- **Usage**: Ensure only authorized team members can execute critical operations
-- **Inputs**: `username`, `organization` (default: folio-org), `team` (default: kitfox), `token`
-- **Outputs**: `authorized` (true/false)
-- **📖 [Full Documentation](/.github/actions/validate-team-membership/README.md)**
+Standardized workflow templates for common FOLIO operations:
 
-### 📋 **Reusable Workflows** (`.github/workflows/`)
+#### Template Design Principles
+- **📋 Workflow Call Interface**: Clean `workflow_call` definitions with typed inputs
+- **🔄 Universal Applicability**: Work across all application repositories
+- **📢 Consistent Experience**: Standardized patterns and notification formats
+- **🧪 Testing Support**: Built-in dry-run capabilities for safe validation
 
-#### `app-release-preparation.yml`
-- **Purpose**: Complete application release preparation workflow
-- **Features**:
-  - ✅ Application version determination based on FOLIO release patterns
-  - ✅ Release branch creation and management
-  - ✅ File updates (pom.xml, *.template.json) with version changes
-  - ✅ Automated commit and push operations
-  - ✅ Dry-run support for testing
-  - ✅ Result artifact generation for orchestrator consumption
-- **Usage**: Called by individual application repositories for release preparation
+### `.github/` - Infrastructure Documentation
 
-#### `app-release-preparation-notification.yml`
-- **Purpose**: Centralized Slack notification service for application release workflows
-- **Features**:
-  - ✅ SUCCESS and FAILURE notification support
-  - ✅ Rich Slack message formatting with workflow details
-  - ✅ Clickable links to repositories, branches, and commits
-  - ✅ Workflow run tracking with GitHub URLs
-  - ✅ Conditional execution based on workflow result
-- **Usage**: Called by application repositories to send standardized Slack notifications
+- **`README.md`** - Workflow-specific implementation details and usage guides
+- **`docs/`** - Detailed technical documentation for each component
 
-## Architecture
+## 🎯 Architectural Patterns
 
-### FOLIO Distributed CI/CD Architecture
+### Distributed Orchestration Pattern
 
-The FOLIO ecosystem uses a **distributed orchestration pattern** with the `orchestrate-external-workflow` action providing universal workflow coordination:
+The repository implements a **distributed orchestration architecture** where:
+
+**Central Orchestrator** (platform-lsp):
+- Provides team authorization and access control
+- Coordinates operations across multiple repositories  
+- Aggregates results and provides comprehensive reporting
+- Manages platform-level state and notifications
+
+**Distributed Workers** (app-* repositories):
+- Execute application-specific processing using shared templates
+- Report results back to orchestrator via artifacts
+- Send individual notifications using shared notification services
+- Maintain clean separation between authorization and functionality
+
+**Shared Infrastructure** (kitfox-github):
+- Provides universal actions for common operations
+- Offers reusable workflow templates for standard processes
+- Maintains security and authorization components
+- Enables consistent patterns across the entire ecosystem
+
+### Key Architectural Benefits
+
+- **⚡ Parallel Processing**: Operations execute concurrently across multiple repositories
+- **🛡️ Fault Isolation**: Individual repository failures don't block entire operations
+- **🔒 Centralized Security**: Authorization enforced at orchestration level
+- **📊 Result Aggregation**: Comprehensive reporting from distributed execution
+- **🔄 Code Reuse**: Universal actions eliminate duplication across repositories
+- **📢 Consistent Experience**: Standardized notifications and status reporting
+
+## 🛡️ Security Architecture
+
+### Team-Based Authorization
+
+All critical FOLIO operations require explicit team membership validation:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ platform-lsp (Central Orchestrator)                         │
-├─────────────────────────────────────────────────────────────┤
-│ 🎯 release-preparation.yml                                  │
-│   ├── Team Authorization (validate-team-membership)         │
-│   ├── Release Planning & Validation                         │
-│   ├── Application Matrix Orchestration                      │
-│   │   └── orchestrate-external-workflow ────────────────┐   │
-│   ├── Result Collection & Aggregation                   │   │
-│   └── Platform-Level Slack Notifications                │   │
-└─────────────────────────────────────────────────────────│───┘
-                                                          │
-            UUID Dispatch Tracking + YAML Parameters      │
-                                                          ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│ app-minimal  │    │ app-complete │    │ app-*        │
-├──────────────┤    ├──────────────┤    ├──────────────┤
-│ 📋 Wrapper   │    │ 📋 Wrapper   │... │ 📋 Wrapper   │
-│ Workflow     │    │ Workflow     │    │ Workflow     │
-│      ▼       │    │      ▼       │    │      ▼       │
-│ 🏭 app-      │    │ 🏭 app-     │     │ 🏭 app-      │
-│ release-     │    │ release-     │    │ release-     │
-│ preparation  │    │ preparation  │    │ preparation  │
-│ (shared)     │    │ (shared)     │    │ (shared)     │
-│      ▼       │    │      ▼       │    │      ▼       │
-│ 📢 slack-    │    │ 📢 slack-    │    │ 📢 slack-    │
-│ notification │    │ notification │    │ notification │
-│ (shared)     │    │ (shared)     │    │ (shared)     │
-└──────────────┘    └──────────────┘    └──────────────┘
-       ▲                     ▲                   ▲
-       │ uses: kitfox-github/.github/workflows/  │
-       └─────────────────────────────────────────┘
+Authorization Flow:
+1. User initiates operation
+2. Orchestrator validates team membership
+3. Authorization result controls workflow execution
+4. Protected operations only run for authorized users
 ```
 
-**Architecture Benefits**:
-- **🎯 Centralized Orchestration**: Platform-lsp coordinates all operations with single entry point
-- **⚡ Distributed Execution**: Applications process independently with fault isolation
-- **🔍 Universal Tracking**: UUID dispatch IDs enable reliable workflow monitoring
-- **📊 Semantic Coordination**: YAML parameters provide clean, readable configuration
-- **🛡️ Security Boundaries**: Team authorization enforced at orchestration level
-- **🔄 Parallel Processing**: Matrix strategy enables concurrent application updates
-- **📢 Dual Notifications**: Both platform-level and individual app notifications via reusable workflows
-- **📈 Result Aggregation**: Centralized collection of distributed execution results
-
-## Usage Patterns
-
-### 🎯 **Universal Workflow Orchestration**
-
-Using the `orchestrate-external-workflow` action for distributed operations:
-
-```yaml
-# Platform orchestrator example
-- name: Trigger Application Release Preparation
-  uses: folio-org/kitfox-github/.github/actions/orchestrate-external-workflow@main
-  with:
-    repository: folio-org/${{ matrix.application }}
-    workflow_file: app-release-preparation.yml
-    workflow_branch: ${{ env.DOWNSTREAM_WF_BRANCH }}
-    workflow_parameters: |
-      previous_release_branch: ${{ inputs.previous_release_branch }}
-      new_release_branch: ${{ inputs.new_release_branch }}
-      use_snapshot_fallback: ${{ inputs.use_snapshot_fallback }}
-      dry_run: ${{ inputs.dry_run }}
-```
-
-### 🔒 **Team Authorization Pattern**
-
-Implementing security-first workflow design:
-
-```yaml
-jobs:
-  authorize:
-    runs-on: ubuntu-latest
-    outputs:
-      authorized: ${{ steps.team-check.outputs.authorized }}
-    steps:
-      - name: Validate Kitfox Team Membership
-        id: team-check
-        uses: folio-org/kitfox-github/.github/actions/validate-team-membership@main
-        with:
-          username: ${{ github.actor }}
-          team: kitfox
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  release-preparation:
-    needs: authorize
-    if: needs.authorize.outputs.authorized == 'true'
-    runs-on: ubuntu-latest
-    # ... protected operations
-```
-
-### 📊 **Version Management Pattern**
-
-Collecting and managing application versions:
-
-```yaml
-- name: Collect Application Version
-  id: app-version
-  uses: folio-org/kitfox-github/.github/actions/collect-app-version@main
-  with:
-    app_name: ${{ matrix.application }}
-    branch: ${{ inputs.previous_release_branch }}
-
-- name: Calculate Next Version
-  run: |
-    current_major=${{ steps.app-version.outputs.major }}
-    next_major=$((current_major + 1))
-    echo "Next version: ${next_major}.0.0"
-```
-
-### 📢 **Reusable Slack Notification Pattern**
-
-Centralized notification service for consistent Slack messaging:
-
-```yaml
-# Application workflows using reusable Slack notifications
-slack_notification:
-  name: Slack Notification
-  needs: prepare-app-release
-  if: always() && inputs.dry_run == false && vars.SLACK_NOTIF_CHANNEL != ''
-  uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
-  with:
-    app_name: ${{ github.repository }}
-    new_release_branch: ${{ inputs.new_release_branch }}
-    source_branch: ${{ needs.prepare-app-release.outputs.source_branch }}
-    app_version: ${{ needs.prepare-app-release.outputs.app_version }}
-    commit_sha: ${{ needs.prepare-app-release.outputs.commit_sha }}
-    workflow_result: ${{ needs.prepare-app-release.result }}
-    workflow_run_id: ${{ github.run_id }}
-    workflow_run_number: ${{ github.run_number }}
-    slack_notif_channel: ${{ vars.SLACK_NOTIF_CHANNEL }}
-  secrets: inherit
-```
-
-### 🏭 **Application Repository Integration**
-
-Minimal wrapper workflows in application repositories:
-
-```yaml
-# app-*/.github/workflows/app-release-preparation.yml
-name: Application Release Branch Preparation
-on:
-  workflow_dispatch:
-    inputs:
-      dispatch_id: { required: true, type: string }
-      previous_release_branch: { required: true, type: string }
-      new_release_branch: { required: true, type: string }
-      dry_run: { type: boolean, default: false }
-
-jobs:
-  prepare-app-release:
-    name: Prepare Application Release
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation.yml@main
-    with:
-      dispatch_id: ${{ inputs.dispatch_id }}
-      previous_release_branch: ${{ inputs.previous_release_branch }}
-      new_release_branch: ${{ inputs.new_release_branch }}
-      dry_run: ${{ inputs.dry_run }}
-    secrets: inherit
-
-  slack_notification:
-    name: Slack Notification
-    needs: prepare-app-release
-    if: always() && inputs.dry_run == false && vars.SLACK_NOTIF_CHANNEL != ''
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
-    with:
-      app_name: ${{ github.repository }}
-      new_release_branch: ${{ inputs.new_release_branch }}
-      source_branch: ${{ needs.prepare-app-release.outputs.source_branch }}
-      app_version: ${{ needs.prepare-app-release.outputs.app_version }}
-      commit_sha: ${{ needs.prepare-app-release.outputs.commit_sha }}
-      workflow_result: ${{ needs.prepare-app-release.result }}
-      workflow_run_id: ${{ github.run_id }}
-      workflow_run_number: ${{ github.run_number }}
-      slack_notif_channel: ${{ vars.SLACK_NOTIF_CHANNEL }}
-    secrets: inherit
-```
-
-## 🛡️ Security & Authorization
-
-### Team-Based Access Control
-
-Critical FOLIO infrastructure operations require **team-based authorization**:
-
-| Operation | Required Team | Validation Action |
-|-----------|---------------|-------------------|
-| **Release Preparation** | `folio-org/kitfox` | `validate-team-membership` |
-| **Infrastructure Changes** | `folio-org/kitfox` | `validate-team-membership` |
-| **Platform Deployment** | `folio-org/kitfox` | `validate-team-membership` |
+**Supported Teams**:
+- `folio-org/kitfox` - DevOps and infrastructure operations
+- Extensible for other team-based authorization needs
 
 ### Security Principles
 
-- **🔒 Fail-Closed Design**: Unauthorized access attempts are denied by default
-- **🎯 Principle of Least Privilege**: Teams only have access to operations they need
-- **📋 Audit Trail**: All authorization attempts are logged in workflow runs
-- **🔍 Real-Time Validation**: Team membership checked at execution time
-- **⚡ Fast Authorization**: GitHub API-based checks with minimal latency
+- **🔒 Fail-Closed Design**: Unauthorized access denied by default
+- **🎯 Least Privilege**: Teams only access operations they need
+- **📋 Audit Trail**: All authorization attempts logged
+- **⚡ Real-Time Validation**: Team membership checked at execution time
 
-## Architecture Principles
+## 🔧 Development Guidelines
 
-### Distributed Execution Over Monolithic Processing
-- **Parallel Processing**: Applications processed concurrently using matrix strategy
-- **Fault Isolation**: Individual application failures don't stop entire release
-- **Scalability**: Workflow load distributed across application repositories
-- **Independent Capability**: Applications can be triggered independently or orchestrated
+### When to Create Universal Actions
 
-### Workflow Monitoring and Coordination
-- **Dispatch Tracking**: Unique IDs for tracking distributed workflow executions
-- **Run Monitoring**: Real-time watching of triggered workflows for completion status
-- **Result Collection**: Artifacts gathered from each application for centralized reporting
-- **Verification**: Post-execution validation of branch creation and version updates
+**✅ Create actions for**:
+- Operations needed by 3+ different workflows
+- Complex cross-repository coordination logic
+- Security-sensitive operations requiring authorization
+- External API integrations with authentication requirements
 
-### When to Create Custom Actions
-✅ **DO create actions for**:
-- Cross-workflow functionality (team validation)
-- Complex, reusable business logic that appears in 3+ workflows
-- External API integrations requiring authentication
+**❌ Avoid creating actions for**:
+- Simple, single-repository operations
+- Context-specific business logic
+- Basic command sequences that don't need reuse
 
-❌ **DON'T create actions for**:
-- Simple, context-specific logic (version determination)
-- Basic command operations (git commands)  
-- One-off workflow requirements
+## 🔧 Technical Standards
 
-## 🎯 FOLIO Integration Context
+### Programming Language Requirements
 
-### Release Workflow Integration
+**Shell Scripting (Primary)**:
+- **Version**: Bash 4.0+ compatible
+- **Settings**: `set -euo pipefail` mandatory in all scripts
+- **IFS**: Set to `IFS=$'\n\t'` for safety
+- **Tools**: Prefer `jq`, `yq`, `gh` over custom implementations
 
-This infrastructure supports FOLIO's **distributed release preparation workflow** with comprehensive Slack notifications:
+**YAML Configuration**:
+- **Indentation**: 2 spaces, no tabs
+- **Line Length**: 120 characters maximum
+- **Quoting**: Use single quotes for strings unless interpolation needed
+- **Comments**: Document complex logic and security requirements
 
-1. **Platform Orchestration**: `platform-lsp` coordinates release across all applications
-2. **Application Processing**: Each `app-*` repository processes its own release preparation
-3. **Dual Notifications**: Both platform-level aggregation and individual app notifications
-4. **Version Management**: Semantic version handling with SNAPSHOT support
-5. **Team Coordination**: Kitfox team controls release timing and approval
-6. **Result Aggregation**: Centralized collection and reporting of distributed execution results
+**JSON Processing**:
+- **Primary Tool**: `jq` for all JSON operations
+- **Error Handling**: Use `jq -e` for existence checks
+- **Output**: `jq -c` for compact output in variables, pretty print for logging
 
-### Eureka CI Ecosystem
+### Code Style Requirements
 
-Part of the broader FOLIO Eureka CI implementation:
+#### Shell Script Standards
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
 
-- **🔄 Snapshot CI**: Automated module version updates
-- **📦 Release CI**: Version management and release preparation
-- **🗂️ Application Registry**: mgr-applications in FAR mode
-- **🚀 Artifact Packaging**: Release tar.gz generation
+# Function naming: snake_case
+function validate_input() {
+    local input_value="$1"
+    
+    # Variable naming: snake_case with descriptive names
+    local validation_result
+    validation_result=$(echo "$input_value" | jq -r '.field // "default"')
+    
+    # Error handling: specific error messages
+    if [[ -z "$validation_result" ]]; then
+        echo "::error title=Invalid Input::Field 'field' is required"
+        return 1
+    fi
+    
+    echo "$validation_result"
+}
+```
 
-## 📋 Development Guidelines
+#### GitHub Actions Annotation Standards
+```bash
+# Required annotation patterns:
+echo "::group::Descriptive Operation Name"
+echo "::notice title=Success::Operation completed successfully"
+echo "::warning title=Fallback Used::Using alternative approach"
+echo "::error title=Validation Failed::Specific error description"
+echo "::endgroup::"
+```
 
-### Action Design Principles
+#### YAML Workflow Structure
+```yaml
+name: 'Descriptive Action Name'
+description: 'Single sentence describing the action purpose'
 
-Following [pragmatic GitHub Actions patterns](https://github.com/folio-org/kitfox-github/docs/coding-style.md):
+inputs:
+  required_param:
+    description: 'Clear description of parameter purpose and format'
+    required: true
+    type: string
+  optional_param:
+    description: 'Optional parameter with default behavior'
+    required: false
+    type: boolean
+    default: false
 
-- **🎯 Single Responsibility**: Each action does one thing well
-- **📊 YAML Parameters**: Clean, readable parameter format over JSON
-- **🛡️ Security First**: Fail-closed design with clear authorization
-- **⚡ Platform Tools**: Use `gh`, `jq`, `yq` over custom implementations
-- **🔍 Universal Design**: Build for reuse across multiple workflows
+outputs:
+  result:
+    description: 'Clear description of output value and format'
+    value: ${{ steps.step-id.outputs.result }}
 
-### Workflow Development Standards
+runs:
+  using: 'composite'
+  steps:
+    - name: 'Descriptive Step Name'
+      id: step-id
+      shell: bash
+      env:
+        PARAM_VALUE: ${{ inputs.required_param }}
+      run: |
+        # Implementation here
+```
 
-- **✅ Dry Run Support**: Always include `dry_run` parameter for testing
-- **📝 Clear Outputs**: Provide meaningful status and result outputs
-- **🚫 Error Handling**: Graceful failure with actionable error messages
-- **📋 Dispatch Tracking**: Use UUID tracking for distributed coordination
-- **🎨 Consistent Logging**: Use `::group::`, `::notice::`, `::error::` annotations
+### Job Composition Standards
 
-### FOLIO Branching Strategy
+#### Single Responsibility Jobs
+```yaml
+# ✅ GOOD: Focused job
+job-name:
+  name: 'Specific Operation Name'
+  runs-on: ubuntu-latest
+  outputs:
+    result: ${{ steps.operation.outputs.result }}
+  steps:
+    - name: 'Single Focused Operation'
+      id: operation
+      run: |
+        # Implementation
 
-- **🎫 Feature Branches**: Use Jira ticket names (`RANCHER-2320`, `FOLIO-1234`)
-- **🧪 Testing**: Validate changes in feature branches before merging
-- **📌 Branch References**: Update action references when merging to main
-- **👥 Team Reviews**: Always include Kitfox team members in action reviews
+# ❌ BAD: Multiple responsibilities
+job-name:
+  steps:
+    - name: 'Validate and Process and Notify'  # Too many things
+```
 
-## 🔮 Future Evolution
+#### Step Granularity Requirements
 
-### Proven Reuse Pattern Approach
+**Optimal Step Size**:
+- **Single Logical Operation**: Each step performs one conceptual task
+- **5-15 Lines**: Shell scripts should be 5-15 lines per step
+- **Clear Dependencies**: Steps should have obvious input/output relationships
+- **Minimal Context**: Each step should be understandable in isolation
 
-New actions are created based on **evidence of reuse**, not theoretical needs:
+**Step Examples**:
+```yaml
+# ✅ GOOD: Appropriate granularity
+- name: 'Extract Version from POM'
+  id: extract-version
+  run: |
+    version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+    echo "version=$version" >> "$GITHUB_OUTPUT"
 
-| **Potential Action** | **Evidence Required** | **Status** |
-|----------------------|----------------------|------------|
-| Module Version Management | RANCHER-2321/2322 implementation | 🔄 Pending |
-| Registry Operations | mgr-applications deployment | 🔄 Pending |
-| ~~Slack Notifications~~ | ~~Team notification patterns~~ | ✅ **Implemented** |
-| Environment Deployment | Multi-env deployment patterns | 📋 Under Review |
-| Application Version Collection | Cross-repo version management needs | ✅ **Implemented** |
+- name: 'Parse Semantic Version'
+  id: parse-version
+  env:
+    VERSION: ${{ steps.extract-version.outputs.version }}
+  run: |
+    if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+      echo "major=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+      echo "minor=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+      echo "patch=${BASH_REMATCH[3]}" >> "$GITHUB_OUTPUT"
+    fi
 
-### Evolution Principles
+# ❌ BAD: Too granular
+- name: 'Set Version Variable'
+  run: echo "VERSION=1.0.0" >> "$GITHUB_ENV"
 
-- **📈 Evidence-Based**: Actions created when 3+ workflows need the same functionality
-- **🎯 Focused Scope**: Prefer small, composable actions over monolithic solutions
-- **📚 Documentation First**: Every action includes comprehensive README
-- **🔒 Security Review**: All actions undergo Kitfox team security review
+- name: 'Echo Version'
+  run: echo "$VERSION"
+```
+
+### Security Implementation Requirements
+
+#### Team Authorization Pattern
+```yaml
+# Mandatory pattern for protected operations
+validate-authorization:
+  runs-on: ubuntu-latest
+  outputs:
+    authorized: ${{ steps.check.outputs.authorized }}
+  steps:
+    - name: 'Generate App Token'
+      id: app-token
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ vars.EUREKA_CI_APP_ID }}
+        private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+    
+    - name: 'Validate Team Membership'
+      id: check
+      uses: folio-org/kitfox-github/.github/actions/validate-team-membership@master
+      with:
+        username: ${{ github.actor }}
+        organization: 'folio-org'
+        team: 'kitfox'
+        token: ${{ steps.app-token.outputs.token }}
+
+protected-operation:
+  needs: validate-authorization
+  if: needs.validate-authorization.outputs.authorized == 'true'
+  runs-on: ubuntu-latest
+  steps:
+    - name: 'Protected Operation'
+      run: echo "Only authorized users can execute this"
+```
+
+#### Environment-Based Fallback
+```yaml
+# Required fallback for non-team members
+approve-run:
+  needs: validate-authorization
+  if: needs.validate-authorization.outputs.authorized == 'false'
+  runs-on: ubuntu-latest
+  environment: 'Eureka CI'  # Manual approval required
+  steps:
+    - name: 'Manual Approval'
+      run: echo "Manual approval granted"
+```
+
+### Distributed Orchestration Requirements
+
+#### UUID Dispatch Tracking
+```bash
+# Mandatory pattern for workflow orchestration
+dispatch_id=$(uuidgen)
+echo "dispatch_id=$dispatch_id" >> "$GITHUB_OUTPUT"
+
+# Trigger with tracking ID
+gh workflow run "$WORKFLOW_FILE" \
+  --repo "$REPOSITORY" \
+  --ref "$BRANCH" \
+  -f dispatch_id="$dispatch_id"
+
+# Poll for run ID using dispatch ID
+for i in {1..60}; do
+  run_id=$(gh run list \
+    --workflow "$WORKFLOW_FILE" \
+    --repo "$REPOSITORY" \
+    --json databaseId,displayTitle \
+    --jq "map(select(.displayTitle | contains(\"$dispatch_id\")))[0].databaseId")
+  
+  [[ -n "$run_id" ]] && break
+  sleep 5
+done
+
+# Monitor completion
+gh run watch "$run_id" --repo "$REPOSITORY" --exit-status
+```
+
+#### YAML Parameter Format
+```yaml
+# Required parameter format for orchestration
+workflow_parameters: |
+  previous_release_branch: ${{ inputs.previous_release_branch }}
+  new_release_branch: ${{ inputs.new_release_branch }}
+  dry_run: ${{ inputs.dry_run }}
+  # Clean YAML format - no JSON strings
+```
+
+#### Matrix Configuration Standards
+```yaml
+# Required matrix configuration
+strategy:
+  matrix:
+    application: ${{ fromJson(needs.setup.outputs.applications) }}
+  fail-fast: false    # Never use fail-fast: true for distributed operations
+  max-parallel: 5     # Standard concurrency limit
+```
+
+### Error Handling Requirements
+
+#### Failure Isolation
+```bash
+# Required pattern for non-critical failures
+operation_result="success"
+
+if ! critical_operation; then
+    echo "::error title=Operation Failed::Critical operation failed"
+    operation_result="failure"
+fi
+
+# Continue with cleanup regardless of failure
+cleanup_operation || echo "::warning::Cleanup failed but continuing"
+
+echo "result=$operation_result" >> "$GITHUB_OUTPUT"
+```
+
+#### Result Aggregation Pattern
+```yaml
+# Required for collecting distributed results
+- name: 'Upload Result Artifact'
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: 'result-${{ matrix.item }}'
+    path: 'result.json'
+
+# Aggregation job
+collect-results:
+  needs: [distributed-job]
+  if: always()
+  steps:
+    - name: 'Download All Results'
+      uses: actions/download-artifact@v4
+      with:
+        pattern: 'result-*'
+        merge-multiple: true
+    
+    - name: 'Aggregate with jq'
+      run: |
+        success_count=$(jq -s 'map(select(.success)) | length' result-*.json)
+        failed_items=$(jq -s 'map(select(.success | not) | .item) | join(" ")' result-*.json)
+        echo "success_count=$success_count" >> "$GITHUB_OUTPUT"
+        echo "failed_items=$failed_items" >> "$GITHUB_OUTPUT"
+```
+
+## 📋 Component Requirements
+
+### Composite Action Structure
+```
+action-name/
+├── action.yml           # Action definition with strict input/output typing
+├── README.md           # Comprehensive usage documentation
+└── scripts/            # Optional: Complex shell scripts (if needed)
+    └── operation.sh
+```
+
+### Reusable Workflow Structure
+```yaml
+name: 'Workflow Template Name'
+
+on:
+  workflow_call:
+    inputs:
+      required_input:
+        description: 'Input description'
+        required: true
+        type: string
+      optional_input:
+        description: 'Optional input description'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      result:
+        description: 'Output description'
+        value: ${{ jobs.main-job.outputs.result }}
+
+jobs:
+  main-job:
+    name: 'Main Operation'
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.operation.outputs.result }}
+    steps:
+      - name: 'Operation Step'
+        id: operation
+        run: |
+          # Implementation
+```
+
+### Documentation Requirements
+
+
+
+#### Action README.md Template
+```markdown
+# Action Name
+
+Brief description of action purpose.
+
+## Inputs
+
+| Input        | Description        | Required | Default |
+|--------------|--------------------|----------|---------|
+| `input_name` | Input description  | Yes      | -       |
+
+## Outputs
+
+| Output        | Description          |
+|---------------|----------------------|
+| `output_name` | Output description   |
+
+## Usage
+
+```yaml
+- uses: folio-org/kitfox-github/.github/actions/action-name@main
+  with:
+    input_name: 'value'
+```
+
+## Examples
+
+```
+
+## 🚫 Anti-Patterns
+
+### Avoid These Patterns
+```yaml
+# ❌ BAD: Monolithic jobs
+mega-job:
+  steps:
+    - name: 'Do Everything'
+      run: |
+        # 100+ lines of mixed operations
+
+# ❌ BAD: Unclear naming
+job1:
+  steps:
+    - name: 'Step'
+      run: echo "unclear purpose"
+
+# ❌ BAD: Mixed error handling
+- name: 'Operation'
+  run: |
+    operation || true  # Silently ignoring failures
+    
+# ❌ BAD: Hardcoded values
+- name: 'Operation'
+  run: |
+    gh workflow run workflow.yml --repo folio-org/hardcoded-repo
+```
+
+### Required Patterns
+```yaml
+# ✅ GOOD: Clear, focused jobs
+validate-input:
+  name: 'Validate Input Parameters'
+  runs-on: ubuntu-latest
+  outputs:
+    validated: ${{ steps.validation.outputs.result }}
+  steps:
+    - name: 'Validate Required Parameters'
+      id: validation
+      env:
+        INPUT_VALUE: ${{ inputs.required_input }}
+      run: |
+        if [[ -z "$INPUT_VALUE" ]]; then
+          echo "::error title=Missing Input::Required parameter not provided"
+          echo "result=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "result=true" >> "$GITHUB_OUTPUT"
+        fi
+```
+
+## 🔮 Evolution Criteria
+
+### New Component Checklist
+- [ ] **Evidence**: Used in 3+ different contexts
+- [ ] **Documentation**: Complete README.md with examples
+- [ ] **Testing**: Validated across multiple repositories
+- [ ] **Security Review**: Kitfox team approval
+- [ ] **Interface Stability**: Clear input/output contracts
+- [ ] **Error Handling**: Comprehensive failure scenarios covered
+
+### Quality Gates
+1. **Code Review**: Two Kitfox team members
+2. **Integration Testing**: Minimum 3 repository validation
+3. **Documentation**: Usage examples and troubleshooting guide
+4. **Security Assessment**: Authorization and secret handling review
+
+## 📈 FOLIO Ecosystem Integration
+
+### Supported Repository Types
+
+This infrastructure serves the entire FOLIO ecosystem:
+
+- **🏗️ Platform Repository**: `platform-lsp` - Central orchestration point
+- **📦 Application Repositories**: `app-*` (31+ repositories) - Domain-specific module collections
+- **🔧 Module Repositories**: `mod-*`, `ui-*` (100+ repositories) - Individual FOLIO modules
+- **🌐 Edge Repositories**: `edge-*` - API gateway and integration modules
+
+## 🔮 Evolution Strategy
+
+### Evidence-Based Development
+
+New infrastructure components are created based on **proven reuse patterns**:
+
+1. **Identify Common Patterns**: Look for repeated code across 3+ repositories
+2. **Extract Common Logic**: Create universal actions for shared functionality
+3. **Test Across Ecosystem**: Validate new components across multiple repositories
+4. **Document and Standardize**: Provide comprehensive documentation and usage examples
+5. **Gradual Adoption**: Roll out new components incrementally with proper testing
+
+## 📚 Documentation Structure
+
+### Repository-Level Documentation
+- **`README.md`** (this file) - Repository purpose and architectural guidance
+- **`.github/README.md`** - Workflow implementation details and usage patterns
+- **`.github/docs/`** - Detailed technical documentation for specific workflows
+
+### Component-Level Documentation
+- **`.github/actions/*/README.md`** - Individual action documentation
+- **`.github/workflows/*.yml`** - Inline documentation for workflow templates
+
+### External References
+- Platform-specific documentation in consuming repositories
+- FOLIO Eureka CI/CD process documentation
+- Team-specific implementation guides
 
 ---
 
-## 📈 Architecture Evolution & Impact
+## 🎯 Mission Statement
 
-### From Monolithic to Distributed
+**kitfox-github enables FOLIO's distributed CI/CD vision** by providing:
 
-**Before**: Monolithic workflows processing all applications sequentially
-**After**: Distributed orchestration with universal actions enabling:
+- **🏗️ Infrastructure Foundation**: Universal building blocks for complex operations
+- **🔒 Security Framework**: Team-based authorization for critical infrastructure
+- **⚡ Operational Efficiency**: Parallel processing with centralized coordination
+- **📊 Ecosystem Consistency**: Standardized patterns across all FOLIO repositories
+- **🔄 Maintainable Architecture**: Single point of change for infrastructure improvements
 
-- ⚡ **Parallel Processing**: 5x faster release preparation across 30+ applications
-- 🛡️ **Fault Isolation**: Individual application failures don't block entire release
-- 🎯 **Reusable Infrastructure**: Universal actions reduce code duplication by 80%
-- 🔒 **Centralized Security**: Team authorization enforced at orchestration layer
-- 📊 **Clean Coordination**: YAML parameters replace complex shell orchestration
+---
 
-### Key Metrics
-
-- **Code Reduction**: 136 lines → 26 lines in platform orchestrator (80% reduction)
-- **Action Reuse**: 3 universal actions + 2 reusable workflows serve 31+ repositories
-- **Notification Standardization**: 31 application repositories use centralized Slack notifications
-- **Security Coverage**: 100% of critical operations require team authorization
-- **Maintenance**: Single point of change for workflow improvements
-- **Dual Notification System**: Platform-level + individual app notifications via reusable workflows
-
-### FOLIO Ecosystem Impact
-
-This infrastructure enables FOLIO's **distributed CI/CD approach** across:
-- **30+ Application Repositories** (`app-*`)
-- **100+ Module Repositories** (`mod-*`, `ui-*`)
-- **Platform Coordination** via `platform-lsp`
-- **Release Management** with team-based authorization
-
-*Supporting FOLIO's mission to provide flexible, distributed library management software through robust DevOps practices.* 
+**Maintained by**: Kitfox Team DevOps  
+**Last Updated**: August 2025  
+**Repository Type**: Shared Infrastructure

@@ -75,13 +75,13 @@ jobs:
 
 ## Inputs
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `repository` | Target repository in `org/repo-name` format | ✅ | - |
-| `workflow_file` | Workflow filename (e.g., `my-workflow.yml`) | ✅ | - |
-| `workflow_branch` | Branch to trigger workflow on | ✅ | - |
-| `workflow_parameters` | YAML string of key-value pairs for workflow inputs | ❌ | `''` |
-| `timeout_minutes` | Minutes to wait for workflow completion | ❌ | GitHub Actions default (360 minutes) |
+| Input                 | Description                                        | Required  | Default                              |
+|-----------------------|----------------------------------------------------|-----------|--------------------------------------|
+| `repository`          | Target repository in `org/repo-name` format        | ✅         | -                                    |
+| `workflow_file`       | Workflow filename (e.g., `my-workflow.yml`)        | ✅         | -                                    |
+| `workflow_branch`     | Branch to trigger workflow on                      | ✅         | -                                    |
+| `workflow_parameters` | YAML string of key-value pairs for workflow inputs | ❌         | `''`                                 |
+| `timeout_minutes`     | Minutes to wait for workflow completion            | ❌         | GitHub Actions default (360 minutes) |
 
 ### YAML Parameters Format
 
@@ -103,10 +103,10 @@ gh workflow run workflow.yml -f parameter_one=value1 -f parameter_two=value2 -f 
 
 ## Outputs
 
-| Output | Description |
-|--------|-------------|
+| Output        | Description                                        |
+|---------------|----------------------------------------------------|
 | `dispatch_id` | Generated UUID for tracking the triggered workflow |
-| `run_id` | GitHub run ID of the triggered workflow |
+| `run_id`      | GitHub run ID of the triggered workflow            |
 
 ## How It Works
 

@@ -108,17 +108,17 @@ jobs:
 
 ## Inputs
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `username` | GitHub username to check team membership for | ✅ | - |
-| `organization` | GitHub organization name | ❌ | `folio-org` |
-| `team` | Team name to check membership for | ❌ | `kitfox` |
-| `token` | GitHub token with organization read permissions | ✅ | - |
+| Input          | Description                                     | Required  | Default     |
+|----------------|-------------------------------------------------|-----------|-------------|
+| `username`     | GitHub username to check team membership for    | ✅         | -           |
+| `organization` | GitHub organization name                        | ❌         | `folio-org` |
+| `team`         | Team name to check membership for               | ❌         | `kitfox`    |
+| `token`        | GitHub token with organization read permissions | ✅         | -           |
 
 ## Outputs
 
-| Output | Description | Values |
-|--------|-------------|---------|
+| Output       | Description                    | Values            |
+|--------------|--------------------------------|-------------------|
 | `authorized` | Whether the user is authorized | `true` or `false` |
 
 ## How It Works

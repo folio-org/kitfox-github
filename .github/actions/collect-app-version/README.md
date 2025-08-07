@@ -87,22 +87,22 @@ jobs:
 
 ## Inputs
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `app_name` | Application repository name (without `folio-org/` prefix) | ✅ | - |
-| `branch` | Branch name to collect version from | ✅ | - |
-| `token` | GitHub token with repository read permissions | ❌ | `${{ secrets.GITHUB_TOKEN }}` |
+| Input      | Description                                                 | Required | Default                        |
+|------------|-------------------------------------------------------------|----------|--------------------------------|
+| `app_name` | Application repository name \(without `folio-org/` prefix\) | ✅        | \-                             |
+| `branch`   | Branch name to collect version from                         | ✅        | \-                             |
+| `token`    | GitHub token with repository read permissions               | ❌        | `${{ secrets.GITHUB_TOKEN }}`  |
 
 ## Outputs
 
-| Output | Description | Example |
-|--------|-------------|---------|
-| `version` | Complete version string from pom.xml | `1.2.3-SNAPSHOT.45` |
-| `major` | Major version number | `1` |
-| `minor` | Minor version number | `2` |
-| `patch` | Patch version number | `3` |
-| `is_snapshot` | Whether this is a SNAPSHOT version | `SNAPSHOT` or empty |
-| `build_number` | Build number (for SNAPSHOT versions) | `45` |
+| Output         | Description                          | Example             |
+|----------------|--------------------------------------|---------------------|
+| `version`      | Complete version string from pom.xml | `1.2.3-SNAPSHOT.45` |
+| `major`        | Major version number                 | `1`                 |
+| `minor`        | Minor version number                 | `2`                 |
+| `patch`        | Patch version number                 | `3`                 |
+| `is_snapshot`  | Whether this is a SNAPSHOT version   | `SNAPSHOT` or empty |
+| `build_number` | Build number (for SNAPSHOT versions) | `45`                |
 
 ## Version Format Support
 
