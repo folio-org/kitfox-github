@@ -576,7 +576,7 @@ New infrastructure components are created based on **proven reuse patterns**:
 
 ### Repository-Level Documentation
 - **`README.md`** (this file) - Repository purpose and architectural guidance
-- **`.github/README.md`** - Workflow implementation details and usage patterns
+- **`.github/CI.md`** - Workflow implementation details and usage patterns
 - **`.github/docs/`** - Detailed technical documentation for specific workflows
 
 ### Component-Level Documentation
