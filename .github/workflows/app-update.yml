@@ -4,6 +4,10 @@ on:
   workflow_call:
     inputs:
       app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      repo:
         description: 'Application repository name (org/repo format)'
         required: true
         type: string
@@ -40,6 +44,7 @@ permissions:
 
 env:
   STATE_FILE: "application-descriptor.json"
+  APP_NAME: ${{ inputs.app_name }}
 
 jobs:
   update-descriptor:
@@ -55,7 +60,7 @@ jobs:
       - name: Checkout Application Repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.app_name }}
+          repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -63,7 +68,7 @@ jobs:
         id: collect-previous-version
         uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
         with:
-          app_name: ${{ inputs.app_name }}
+          app_name: ${{ inputs.repo }}
           branch: ${{ inputs.branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -201,8 +206,8 @@ jobs:
             exit 1
           fi
           
+          echo "::notice:: Full Maven command: mvn $SUPRESS_LOGS clean $COMMAND -U -e -DtemplatePath=$STATE_FILE"
           echo "::group::Generate application artifact"
-          echo "::debug:: Full Maven command: mvn $SUPRESS_LOGS clean $COMMAND -U -e -DtemplatePath=$STATE_FILE"
           mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=$STATE_FILE"
           echo "::endgroup::"
           
@@ -210,7 +215,7 @@ jobs:
           ls -la target/ || echo "Target directory does not exist"
           echo "::endgroup::"
           
-          if [[ ! -f "target/${{ github.event.repository.name }}*.json" ]]; then
+          if [[ ! -f "target/$APP_NAME*.json" ]]; then
             echo "::error::Generated application descriptor not found"
             exit 1
           fi
@@ -230,7 +235,7 @@ jobs:
         if: steps.update-application-version.outputs.updated == 'true'
         with:
           name: "${{ inputs.app_name }}-descriptor"
-          path: "target/${{ github.event.repository.name }}*.json"
+          path: "target/${{ env.STATE_FILE }}*.json"
           retention-days: 1
 
 #      - name: Fetch Platform Descriptor
