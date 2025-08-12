@@ -118,11 +118,11 @@ jobs:
               echo "→ Up to date (no newer version found)"
             fi
             echo "::endgroup::"
-          done < < (jq -r '
+          done <<< "$(jq -r '
             (.modules[]?    | ["backend",   .name, .version]),
             (.uiModules[]?  | ["ui", .name, .version])
             | @tsv
-          ' application-descriptor.json)
+          ' application-descriptor.json)"
 
           
           echo "::notice::Found $updates module updates available"
