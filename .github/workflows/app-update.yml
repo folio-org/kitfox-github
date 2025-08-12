@@ -134,22 +134,35 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Calculate New Version
+        id: calculate-new-version
+        if: steps.update-module-versions.outputs.has_updates == 'true'
+        env:
+          MAJOR: ${{ steps.collect-previous-version.outputs.major }}
+          MINOR: ${{ steps.collect-previous-version.outputs.minor }}
+          PATCH: ${{ steps.collect-previous-version.outputs.patch }}
+          IS_SNAPSHOT: ${{ steps.collect-previous-version.outputs.is_snapshot }}
+          RUN_NUMBER: ${{ inputs.workflow_run_number }}
+        run: |
+          set -eo pipefail
+          echo "::notice::Calculate new version"
+
+          if [[ "$IS_SNAPSHOT" == "true" ]]; then
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}-SNAPSHOT.${RUN_NUMBER}"
+          else
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          fi
+          
+          echo "::notice::Calculated new version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Update Application Version
         id: update-application-version
         if: steps.update-module-versions.outputs.has_updates == 'true'
         env:
           OLD_VERSION: ${{ steps.collect-previous-version.outputs.version }}
-          NEW_VERSION: ${{ 
-              format('{0}.{1}.{2}{3}', 
-                      steps.collect-previous-version.outputs.major,
-              steps.collect-previous-version.outputs.minor,
-              steps.collect-previous-version.outputs.is_snapshot == 'true'
-                && steps.collect-previous-version.outputs.patch 
-                || (fromJSON(steps.collect-previous-version.outputs.patch) + 1),
-              steps.collect-previous-version.outputs.is_snapshot == 'true'
-                && format('-SNAPSHOT.{0}', inputs.workflow_run_number)
-                || ''
-            ) }}
+          NEW_VERSION: ${{ steps.calculate-new-version.outputs.new_version }}
         run: |
           set -eo pipefail
           echo "::notice::Update application version from $OLD_VERSION to $NEW_VERSION"
@@ -189,7 +202,7 @@ jobs:
 
       - name: Upload State File
         uses: actions/upload-artifact@v4
-        if: always()
+        if: steps.update-application-version.outputs.updated == 'true'
         with:
           name: "${{ inputs.app_name }}-state-file"
           path: ${{ env.STATE_FILE }}
@@ -197,10 +210,10 @@ jobs:
 
       - name: Upload Descriptor
         uses: actions/upload-artifact@v4
-        if: always()
+        if: steps.update-application-version.outputs.updated == 'true'
         with:
           name: "${{ inputs.app_name }}-descriptor"
-          path: "target/${{ inputs.app_name.split('/')[1] }}*.json"
+          path: "target/${{ github.event.repository.name }}*.json"
           retention-days: 1
 
 #      - name: Fetch Platform Descriptor
