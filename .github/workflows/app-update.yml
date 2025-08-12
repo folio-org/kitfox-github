@@ -208,14 +208,14 @@ jobs:
           
           echo "::notice:: Full Maven command: mvn $SUPRESS_LOGS clean $COMMAND -U -e -DtemplatePath=$STATE_FILE"
           echo "::group::Generate application artifact"
-          mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=$STATE_FILE"
+          mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=$STATE_FILE
           echo "::endgroup::"
           
           echo "::group::Debug - Check target directory contents"
           ls -la target/ || echo "Target directory does not exist"
           echo "::endgroup::"
           
-          if [[ ! -f "target/$APP_NAME*.json" ]]; then
+          if ! compgen -G "target/${APP_NAME}*.json" > /dev/null; then
             echo "::error::Generated application descriptor not found"
             exit 1
           fi
@@ -226,7 +226,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: steps.update-application-version.outputs.updated == 'true'
         with:
-          name: "${{ inputs.app_name }}-state-file"
+          name: "${{ env.APP_NAME }}-state-file"
           path: ${{ env.STATE_FILE }}
           retention-days: 1
 
@@ -234,8 +234,8 @@ jobs:
         uses: actions/upload-artifact@v4
         if: steps.update-application-version.outputs.updated == 'true'
         with:
-          name: "${{ inputs.app_name }}-descriptor"
-          path: "target/${{ env.STATE_FILE }}*.json"
+          name: "${{ env.APP_NAME }}-descriptor"
+          path: "target/${{ env.APP_NAME }}*.json"
           retention-days: 1
 
 #      - name: Fetch Platform Descriptor
