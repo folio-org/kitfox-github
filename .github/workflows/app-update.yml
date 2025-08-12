@@ -202,16 +202,16 @@ jobs:
           fi
           
           echo "::group::Generate application artifact"
+          echo "::debug:: Full Maven command: mvn $SUPRESS_LOGS clean $COMMAND -U -e -DtemplatePath=$STATE_FILE"
           mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=$STATE_FILE"
           echo "::endgroup::"
           
           echo "::group::Debug - Check target directory contents"
-          echo "Contents of target directory:"
           ls -la target/ || echo "Target directory does not exist"
           echo "::endgroup::"
           
-          if [[ ! -f "target/application-descriptor.json" ]]; then
-            echo "::error::Generated application descriptor not found at target/application-descriptor.json"
+          if [[ ! -f "target/${{ github.event.repository.name }}*.json" ]]; then
+            echo "::error::Generated application descriptor not found"
             exit 1
           fi
           
