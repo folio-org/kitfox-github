@@ -96,6 +96,7 @@ jobs:
               jq_filter='."dist-tags".latest // empty'
             fi
                    
+            echo "::notice::Fetching tags from $image_path"
             resp="$(curl -fsSL "$image_path" || true)"
             if [[ -z "$resp" ]]; then
               echo "::warning::Failed to fetch tags for $module_name"
@@ -110,7 +111,7 @@ jobs:
           
               jq --arg name "$module_name" --arg version "$latest_version" '
                   .modules |= map(if .name == $name then .version = $version else . end)
-                ' application-descriptor.json > temp.json && mv temp.json application-descriptor.json
+                ' $STATE_FILE > temp.json && mv temp.json $STATE_FILE
               
               updated_modules+="$module_name $current_version -> $latest_version"$'\n'
               ((++updates))
@@ -122,7 +123,7 @@ jobs:
             (.modules[]?    | ["backend",   .name, .version]),
             (.uiModules[]?  | ["ui", .name, .version])
             | @tsv
-          ' application-descriptor.json)"
+          ' $STATE_FILE)"
 
           
           echo "::notice::Found $updates module updates available"
@@ -161,17 +162,21 @@ jobs:
         id: update-application-version
         if: steps.update-module-versions.outputs.has_updates == 'true'
         env:
-          OLD_VERSION: ${{ steps.collect-previous-version.outputs.version }}
           NEW_VERSION: ${{ steps.calculate-new-version.outputs.new_version }}
         run: |
           set -eo pipefail
-          echo "::notice::Update application version from $OLD_VERSION to $NEW_VERSION"
           
-          jq --arg version "$NEW_VERSION" '.version = $version' application-descriptor.json > temp.json && mv temp.json application-descriptor.json
+          echo "::notice::Extracting current application version"
+          PREVIOUS_VERSION=$(jq -r '.version' $STATE_FILE)
+          echo "::notice::Current application version is $PREVIOUS_VERSION"
           
+          echo "::notice::Update application version from $PREVIOUS_VERSION to $NEW_VERSION"          
+          jq --arg version "$NEW_VERSION" '.version = $version' $STATE_FILE > temp.json && mv temp.json $STATE_FILE          
           echo "::notice::Updated application version to $NEW_VERSION"
+          
           echo "updated=true" >> "$GITHUB_OUTPUT"
           echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "previous_version=$PREVIOUS_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Generate Application Descriptor
         id: generate-application-descriptor
@@ -190,7 +195,7 @@ jobs:
           fi
           
           echo "::group::Generate application artifact"
-          mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=application-descriptor.json"
+          mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=$STATE_FILE"
           echo "::endgroup::"
           
           if [[ ! -f "target/application-descriptor.json" ]]; then
@@ -327,13 +332,13 @@ jobs:
 #          git config --global user.name "github-actions[bot]"
 #          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 #
-#          if git diff --quiet application-descriptor.json; then
+#          if git diff --quiet $STATE_FILE; then
 #            echo "::notice::No changes to commit"
 #            echo "::endgroup::"
 #            exit 0
 #          fi
 #
-#          git add application-descriptor.json
+#          git add $STATE_FILE
 #          git commit -m "Update application snapshot to $NEW_VERSION" \
 #            -m "Automated module version updates:" \
 #            -m "- Backend modules: ${{ steps.check-versions.outputs.backend_updates }} updates" \
