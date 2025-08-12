@@ -1,0 +1,350 @@
+name: Application Update
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application repository name (org/repo format)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to update'
+        required: false
+        type: string
+        default: 'snapshot'
+      workflow_run_number:
+        description: 'GitHub run number for display'
+        required: true
+        type: string
+      dry_run:
+        description: 'Perform dry run without making changes'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      app_name:
+        description: 'Application name'
+        value: ${{ inputs.app_name }}
+      updated:
+        description: 'Whether application was updated'
+        value: ${{ jobs.snapshot-update.outputs.updated }}
+      new_version:
+        description: 'New application version if updated'
+        value: ${{ jobs.snapshot-update.outputs.new_version }}
+      commit_sha:
+        description: 'Commit SHA'
+        value: ${{ jobs.snapshot-update.outputs.commit_sha }}
+
+permissions:
+  contents: write
+
+env:
+  STATE_FILE: "application-descriptor.json"
+
+jobs:
+  update-descriptor:
+    name: ${{ inputs.app_name }} ${{ inputs.branch }} Update
+    runs-on: ubuntu-latest
+    outputs:
+      updated_modules: ${{ steps.update-module-versions.outputs.updated_modules }}
+      has_updates: ${{ steps.update-module-versions.outputs.has_updates }}
+      updates_cnt: ${{ steps.update-module-versions.outputs.updates }}
+      new_version: ${{ steps.update-module-versions.outputs.has_updates == 'true' && steps.update-application-version.outputs.new_version || 'none}}
+#      commit_sha: ${{ steps.update-modules.outputs.commit_sha }}
+    steps:
+      - name: Checkout Application Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.app_name }}
+          ref: ${{ inputs.branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect Previous Version
+        id: collect-previous-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
+        with:
+          app_name: ${{ inputs.app_name }}
+          branch: ${{ inputs.branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Module Versions
+        id: update-module-versions
+        env:
+          DOCKER_REGISTRY: "https://hub.docker.com/v2/repositories/folioci"
+          NPM_REGISTRY: "https://repository.folio.org/repository/npm-folioci"
+        run: |
+          set -eo pipefail
+          echo "::notice::Check for newer module versions"
+          
+          [[ -f $STATE_FILE ]] || { echo "::error::$STATE_FILE not found"; exit 1; }
+          
+          updated_modules=""
+          updates=0
+          
+          while IFS=$'\t' read -r type module_name current_version; do
+            echo "::group::Checking $type module: $module_name (current: $current_version)" 
+            
+            # Encode @ and / for URL
+            module_name_esc="${module_name//@/%40}"
+            module_name_esc="${module_name_esc//\//%2F}"
+          
+            if [[ "$type" == "backend" ]]; then
+              image_path="${DOCKER_REGISTRY%/}/$module_name_esc/tags?ordering=last_updated"
+              jq_filter='.results[]? | select(.name | test("-SNAPSHOT(\\.|-|$)")) | .name'
+            else
+              image_path="${NPM_REGISTRY%/}/$module_name_esc"
+              jq_filter='."dist-tags".latest // empty'
+            fi
+                   
+            resp="$(curl -fsSL "$image_path" || true)"
+            if [[ -z "$resp" ]]; then
+              echo "::warning::Failed to fetch tags for $module_name"
+              echo "::endgroup::"
+              continue
+            fi
+
+            latest_version="$(echo "$resp" | jq -r "$jq_filter" | head -n1)"
+            
+            if [[ -n "$latest_version" && "$latest_version" != "$current_version" ]]; then
+              echo "A new $type module version discovered: $module_name $current_version -> $latest_version"
+          
+              jq --arg name "$module_name" --arg version "$latest_version" '
+                  .modules |= map(if .name == $name then .version = $version else . end)
+                ' application-descriptor.json > temp.json && mv temp.json application-descriptor.json
+              
+              updated_modules+="$module_name $current_version -> $latest_version"$'\n'
+              ((++updates))
+            else
+              echo "→ Up to date (no newer version found)"
+            fi
+            echo "::endgroup::"
+          done < < (jq -r '
+            (.modules[]?    | ["backend",   .name, .version]),
+            (.uiModules[]?  | ["ui", .name, .version])
+            | @tsv
+          ' application-descriptor.json)
+
+          
+          echo "::notice::Found $updates module updates available"
+          echo "has_updates=$([[ $updates -gt 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "updates=$updates" >> "$GITHUB_OUTPUT"
+          {
+            echo 'updated_modules<<EOF'
+            printf '%s' "$updated_modules"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update Application Version
+        id: update-application-version
+        if: steps.update-module-versions.outputs.has_updates == 'true'
+        env:
+          OLD_VERSION: ${{ steps.collect-previous-version.outputs.version }}
+          NEW_VERSION: ${{ format(
+              '{0}.{1}.{2}{3}',
+              steps.collect-previous-version.outputs.major,
+              steps.collect-previous-version.outputs.minor,
+              steps.collect-previous-version.outputs.is_snapshot == 'true'
+                && steps.collect-previous-version.outputs.patch
+                || (fromJSON(steps.collect-previous-version.outputs.patch) + 1),
+              steps.collect-previous-version.outputs.is_snapshot == 'true'
+                && format('-SNAPSHOT.{0}', inputs.workflow_run_number)
+                || ''
+            ) }}
+        run: |
+          set -eo pipefail
+          echo "::notice::Update application version from $OLD_VERSION to $NEW_VERSION"
+          
+          jq --arg version "$NEW_VERSION" '.version = $version' application-descriptor.json > temp.json && mv temp.json application-descriptor.json
+          
+          echo "::notice::Updated application version to $NEW_VERSION"
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Application Descriptor
+        id: generate-application-descriptor
+        if: steps.update-application-version.outputs.updated == 'true'
+        env:
+          SUPRESS_LOGS: "-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
+          COMMAND: "org.folio:folio-application-generator:generateFromJson"
+          FOLIO_REGISTRY: "https://folio-registry.dev.folio.org"
+          S3_REGISTRY_ARN: "https://s3.amazonaws.com/folio-registry"
+        run: |
+          set -eo pipefail
+                    
+          if [[ ! -f "pom.xml" ]]; then
+            echo "::error::pom.xml not found"
+            exit 1
+          fi
+          
+          echo "::group::Generate application artifact"
+          mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=application-descriptor.json"
+          echo "::endgroup::"
+          
+          if [[ ! -f "target/application-descriptor.json" ]]; then
+            echo "::error::Generated application descriptor not found"
+            exit 1
+          fi
+          
+          echo "::notice::Application artifact generated successfully"
+
+      - name: Upload State File
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "${{ inputs.app_name }}-state-file"
+          path: ${{ env.STATE_FILE }}
+          retention-days: 1
+
+      - name: Upload Descriptor
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "${{ inputs.app_name }}-descriptor"
+          path: "target/${{ inputs.app_name.split('/')[1] }}*.json"
+          retention-days: 1
+
+#      - name: Fetch Platform Descriptor
+#        if: steps.update-modules.outputs.updated == 'true'
+#        id: fetch-platform
+#        env:
+#          FAR_API_URL: "https://far.ci.folio.org/api/applications"
+#        run: |
+#          set -eo pipefail
+#          echo "::group::Fetch platform descriptor from application registry"
+#
+#          platform_response=$(curl -s "$FAR_API_URL" || echo '{}')
+#          platform_apps=$(echo "$platform_response" | jq -r '.applications[]? | select(.name == "platform-lsp") | .descriptor' 2>/dev/null || echo '{}')
+#
+#          if [[ "$platform_apps" != '{}' ]]; then
+#            echo "$platform_apps" > platform-descriptor.json
+#            echo "::notice::Platform descriptor fetched successfully"
+#          else
+#            echo "::warning::Could not fetch platform descriptor, proceeding without dependency validation"
+#            echo '{"applications":{"required":[],"optional":[]}}' > platform-descriptor.json
+#          fi
+#          echo "::endgroup::"
+#
+#      - name: Validate Application Descriptor
+#        if: steps.update-modules.outputs.updated == 'true'
+#        env:
+#          FAR_API_URL: "https://far.ci.folio.org/api/applications"
+#        run: |
+#          set -eo pipefail
+#          echo "::group::Validate application descriptor format"
+#
+#          validation_response=$(curl -s -X POST \
+#            -H "Content-Type: application/json" \
+#            -d @target/application-descriptor.json \
+#            "$FAR_API_URL/validate-descriptor" || echo '{"valid":false}')
+#
+#          is_valid=$(echo "$validation_response" | jq -r '.valid // false')
+#
+#          if [[ "$is_valid" != "true" ]]; then
+#            echo "::error::Application descriptor validation failed"
+#            echo "$validation_response" | jq -r '.errors[]? // "Unknown validation error"'
+#            exit 1
+#          fi
+#
+#          echo "::notice::Application descriptor format validation passed"
+#          echo "::endgroup::"
+#
+#      - name: Validate Dependencies Integrity
+#        if: steps.update-modules.outputs.updated == 'true'
+#        env:
+#          FAR_API_URL: "https://far.ci.folio.org/api/applications"
+#        run: |
+#          set -eo pipefail
+#          echo "::group::Validate application dependencies integrity"
+#
+#          combined_descriptors=$(jq -n --slurpfile platform platform-descriptor.json --slurpfile app target/application-descriptor.json '
+#            {
+#              "platformDescriptor": $platform[0],
+#              "applicationDescriptors": [$app[0]]
+#            }
+#          ')
+#
+#          validation_response=$(curl -s -X POST \
+#            -H "Content-Type: application/json" \
+#            -d "$combined_descriptors" \
+#            "$FAR_API_URL/validate-descriptors-dependencies-integrity" || echo '{"valid":false}')
+#
+#          is_valid=$(echo "$validation_response" | jq -r '.valid // false')
+#
+#          if [[ "$is_valid" != "true" ]]; then
+#            echo "::error::Dependencies integrity validation failed"
+#            echo "$validation_response" | jq -r '.errors[]? // "Unknown validation error"'
+#            exit 1
+#          fi
+#
+#          echo "::notice::Dependencies integrity validation passed"
+#          echo "::endgroup::"
+#
+#      - name: Upload to Application Registry
+#        if: steps.update-modules.outputs.updated == 'true' && inputs.dry_run != true
+#        env:
+#          FAR_API_URL: "https://far.ci.folio.org/api/applications"
+#        run: |
+#          set -eo pipefail
+#          echo "::group::Upload application to registry"
+#
+#          upload_response=$(curl -s -X POST \
+#            -H "Content-Type: application/json" \
+#            -d @target/application-descriptor.json \
+#            "$FAR_API_URL" || echo '{"success":false}')
+#
+#          success=$(echo "$upload_response" | jq -r '.success // false')
+#
+#          if [[ "$success" != "true" ]]; then
+#            echo "::error::Failed to upload application to registry"
+#            echo "$upload_response" | jq -r '.message // "Unknown upload error"'
+#            exit 1
+#          fi
+#
+#          echo "::notice::Application uploaded to registry successfully"
+#          echo "::endgroup::"
+#
+#      - name: Commit Changes
+#        if: steps.update-modules.outputs.updated == 'true' && inputs.dry_run != true
+#        env:
+#          NEW_VERSION: ${{ steps.update-modules.outputs.new_version }}
+#        run: |
+#          set -eo pipefail
+#          echo "::group::Commit updated application descriptor"
+#
+#          git config --global user.name "github-actions[bot]"
+#          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+#
+#          if git diff --quiet application-descriptor.json; then
+#            echo "::notice::No changes to commit"
+#            echo "::endgroup::"
+#            exit 0
+#          fi
+#
+#          git add application-descriptor.json
+#          git commit -m "Update application snapshot to $NEW_VERSION" \
+#            -m "Automated module version updates:" \
+#            -m "- Backend modules: ${{ steps.check-versions.outputs.backend_updates }} updates" \
+#            -m "- Frontend modules: ${{ steps.check-versions.outputs.frontend_updates }} updates" \
+#            -m "Total modules updated: ${{ steps.check-versions.outputs.total_updates }}"
+#
+#          git push origin snapshot
+#
+#          echo "::notice::Changes committed and pushed to snapshot branch"
+#          echo "::endgroup::"
+#
+#      - name: Report Results
+#        if: always()
+#        run: |
+#          echo "::group::Snapshot update summary"
+#
+#          if [[ "${{ steps.check-versions.outputs.has_updates }}" == "true" ]]; then
+#            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+#              echo "::notice::DRY RUN: Would update ${{ steps.check-versions.outputs.total_updates }} modules"
+#            else
+#              echo "::notice::Successfully updated ${{ steps.check-versions.outputs.total_updates }} modules"
+#              echo "::notice::New version: ${{ steps.update-modules.outputs.new_version }}"
+#            fi
+#          else
+#            echo "::notice::No module updates available"
+#          fi
+#          echo "::endgroup::"
