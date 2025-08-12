@@ -49,7 +49,7 @@ jobs:
       updated_modules: ${{ steps.update-module-versions.outputs.updated_modules }}
       has_updates: ${{ steps.update-module-versions.outputs.has_updates }}
       updates_cnt: ${{ steps.update-module-versions.outputs.updates }}
-      new_version: ${{ steps.update-module-versions.outputs.has_updates == 'true' && steps.update-application-version.outputs.new_version || 'none}}
+      new_version: ${{ steps.update-module-versions.outputs.has_updates == 'true' && steps.update-application-version.outputs.new_version || 'none' }}
 #      commit_sha: ${{ steps.update-modules.outputs.commit_sha }}
     steps:
       - name: Checkout Application Repository
@@ -139,12 +139,12 @@ jobs:
         if: steps.update-module-versions.outputs.has_updates == 'true'
         env:
           OLD_VERSION: ${{ steps.collect-previous-version.outputs.version }}
-          NEW_VERSION: ${{ format(
-              '{0}.{1}.{2}{3}',
-              steps.collect-previous-version.outputs.major,
+          NEW_VERSION: ${{ 
+              format('{0}.{1}.{2}{3}', 
+                      steps.collect-previous-version.outputs.major,
               steps.collect-previous-version.outputs.minor,
               steps.collect-previous-version.outputs.is_snapshot == 'true'
-                && steps.collect-previous-version.outputs.patch
+                && steps.collect-previous-version.outputs.patch 
                 || (fromJSON(steps.collect-previous-version.outputs.patch) + 1),
               steps.collect-previous-version.outputs.is_snapshot == 'true'
                 && format('-SNAPSHOT.{0}', inputs.workflow_run_number)
