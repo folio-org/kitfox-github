@@ -84,9 +84,16 @@ jobs:
           while IFS=$'\t' read -r type module_name current_version; do
             echo "::group::Checking $type module: $module_name (current: $current_version)" 
             
-            # Encode @ and / for URL
-            module_name_esc="${module_name//@/%40}"
-            module_name_esc="${module_name_esc//\//%2F}"
+            module_name_esc=$module_name
+            
+            if [[ "$type" != "backend" ]]; then
+              module_name_esc="${module_name#folio_}" # Remove folio_ prefix
+              module_name_esc="${module_name_esc//_/-}" # Replace _ with -
+              [ "$type" = "ui" ] && module_name_esc="@folio/$module_name_esc" # Add @folio scope for UI modules
+            
+              module_name_esc="${module_name_esc//@/%40}" # Replace @ with %40
+              module_name_esc="${module_name_esc//\//%2F}" # Replace / with %2F        
+            fi
           
             if [[ "$type" == "backend" ]]; then
               image_path="${DOCKER_REGISTRY%/}/$module_name_esc/tags?ordering=last_updated"
