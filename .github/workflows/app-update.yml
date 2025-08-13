@@ -208,7 +208,7 @@ jobs:
           
           echo "::notice:: Full Maven command: mvn $SUPRESS_LOGS clean $COMMAND -U -e -DtemplatePath=$STATE_FILE"
           echo "::group::Generate application artifact"
-          mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=$STATE_FILE
+          mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=$STATE_FILE"
           echo "::endgroup::"
           
           echo "::group::Debug - Check target directory contents"
