@@ -20,6 +20,11 @@ on:
         description: 'GitHub run number for display'
         required: true
         type: string
+      descriptor_build_offset:
+        description: 'Offset to apply to application artifact version'
+        required: false
+        type: number
+        default: 100100000000000
       dry_run:
         description: 'Perform dry run without making changes'
         required: false
@@ -49,7 +54,7 @@ env:
 
 jobs:
   update-descriptor:
-    name: ${{ inputs.app_name }} ${{ inputs.branch }} Update
+    name: Update Application Descriptor
     runs-on: ubuntu-latest
     outputs:
       updated_modules: ${{ steps.update-module-versions.outputs.updated_modules }}
@@ -157,12 +162,14 @@ jobs:
           PATCH: ${{ steps.collect-previous-version.outputs.patch }}
           IS_SNAPSHOT: ${{ steps.collect-previous-version.outputs.is_snapshot }}
           RUN_NUMBER: ${{ inputs.workflow_run_number }}
+          DESCRIPTOR_BUILD_OFFSET: ${{ inputs.descriptor_build_offset || 0 }}
         run: |
           set -eo pipefail
           echo "::notice::Calculate new version"
 
           if [[ "$IS_SNAPSHOT" == "true" ]]; then
-            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}-SNAPSHOT.${RUN_NUMBER}"
+            BUILD_NUMBER=$((DESCRIPTOR_BUILD_OFFSET + RUN_NUMBER))
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}-SNAPSHOT.${BUILD_NUMBER}"
           else
             NEW_PATCH=$((PATCH + 1))
             NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
@@ -240,8 +247,8 @@ jobs:
           path: "target/${{ env.APP_NAME }}*.json"
           retention-days: 1
 
-  verify-descriptor:
-    name: Verify ${{ inputs.app_name }} Updated Descriptor
+  verify-publish-descriptor:
+    name: Verify and Publish Updated Descriptor
     runs-on: ubuntu-latest
     needs: update-descriptor
     if: needs.update-descriptor.outputs.updated == 'true'
