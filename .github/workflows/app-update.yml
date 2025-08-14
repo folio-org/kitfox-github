@@ -226,10 +226,11 @@ jobs:
             echo "::error::Generated application descriptor not found"
             exit 1
           fi
-          echo "::notice::Generated application descriptor file: $APP_DESCRIPTOR_FILE"
-          echo "app_descriptor_file=$APP_DESCRIPTOR_FILE" >> "$GITHUB_OUTPUT"
           
-          echo "::notice::Application artifact generated successfully"
+          APP_DESCRIPTOR_FILENAME=$(basename "$APP_DESCRIPTOR_FILE")
+          echo "app_descriptor_file=$APP_DESCRIPTOR_FILENAME" >> "$GITHUB_OUTPUT"
+          
+          echo "::notice::Application artifact generated successfully: $APP_DESCRIPTOR_FILENAME"
 
       - name: Upload State File
         uses: actions/upload-artifact@v4
