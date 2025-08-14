@@ -23,8 +23,8 @@ on:
       descriptor_build_offset:
         description: 'Offset to apply to application artifact version'
         required: false
-        type: number
-        default: 100100000000000
+        type: string
+        default: '100100000000000'
       rely_on_FAR:
         description: 'Whether to rely on FAR for application descriptor dependencies'
         required: false
@@ -167,7 +167,7 @@ jobs:
           PATCH: ${{ steps.collect-previous-version.outputs.patch }}
           IS_SNAPSHOT: ${{ steps.collect-previous-version.outputs.is_snapshot }}
           RUN_NUMBER: ${{ inputs.workflow_run_number }}
-          DESCRIPTOR_BUILD_OFFSET: ${{ inputs.descriptor_build_offset || 0 }}
+          DESCRIPTOR_BUILD_OFFSET: ${{ fromJSON(inputs.descriptor_build_offset || '0') }}
         run: |
           set -eo pipefail
           echo "::notice::Calculate new version"
