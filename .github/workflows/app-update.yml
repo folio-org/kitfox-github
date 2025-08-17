@@ -56,6 +56,7 @@ env:
   STATE_FILE: "application-descriptor.json"
   PLATFORM_DESCRIPTOR: "platform-descriptor"
   APP_NAME: ${{ inputs.app_name }}
+  FAR_API_URL: "https://far.ci.folio.org/applications"
 
 jobs:
   update-descriptor:
@@ -275,8 +276,6 @@ jobs:
       - name: Fetch Application Descriptors from FAR
         id: fetch-app-descriptors
         if: ${{ !inputs.rely_on_FAR }}
-        env:
-          FAR_API_URL: "https://far.ci.folio.org/applications"
         run: |
           set -eo pipefail
           echo "::notice::Fetch application descriptors from FAR for validation"
@@ -319,7 +318,6 @@ jobs:
       - name: Validate Application Module Interface Integrity
         id: validate-interfaces
         env:
-          FAR_API_URL: "https://far.ci.folio.org/applications"
           APP_DESCRIPTOR_FILE: "/tmp/app-descriptors/${{ needs.update-descriptor.outputs.app_descriptor_file }}"
         run: |
           set -eo pipefail
@@ -346,7 +344,6 @@ jobs:
       - name: Validate Application Dependencies Integrity
         id: validate-dependencies
         env:
-          FAR_API_URL: "https://far.ci.folio.org/applications"
           RELY_ON_FAR: ${{ inputs.rely_on_FAR }}
         run: |
           set -eo pipefail
@@ -382,8 +379,6 @@ jobs:
 #
 #      - name: Upload to Application Registry
 #        if: steps.update-modules.outputs.updated == 'true' && inputs.dry_run != true
-#        env:
-#          FAR_API_URL: "https://far.ci.folio.org/api/applications"
 #        run: |
 #          set -eo pipefail
 #          echo "::group::Upload application to registry"
