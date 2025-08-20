@@ -128,6 +128,16 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*${{ inputs.app_name }} Application Update SUCCESS <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: >-
+                    ${{
+                        format(
+                          'Reason: Update failed
+                     Failed module(s): {0}', inputs.updated_modules
+                        )
+                    }}            
             attachments:
               - color: "good"
                 fields:
