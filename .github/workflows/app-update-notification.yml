@@ -114,7 +114,19 @@ jobs:
                   type: mrkdwn
                   text: |
                     *Updated Modules*
-                    ```${{ inputs.updated_modules }}```            
+                    ${{ env.UPDATED_MODULES }}
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    *Updated Modules*
+                    ```${{ inputs.updated_modules }}```
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    *Updated Modules*
+                    ${{ inputs.updated_modules }}
             attachments:
               - color: "good"
                 fields:
