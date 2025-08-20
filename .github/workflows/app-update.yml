@@ -54,6 +54,9 @@ on:
       updated_modules:
         description: 'List of updated modules'
         value: ${{ jobs.update-descriptor.outputs.updated_modules }}
+      updated_modules_b64:
+        description: 'List of updated modules in base64'
+        value: ${{ jobs.update-descriptor.outputs.updated_modules_b64 }}
       failure_reason:
         description: 'Reason for failure'
         value: ${{ jobs.update-descriptor.outputs.failure_reason || 
@@ -78,6 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       updated_modules: ${{ steps.update-module-versions.outputs.updated_modules }}
+      updated_modules_b64: ${{ steps.update-module-versions.outputs.updated_modules_b64 }}
       updated: ${{ steps.update-module-versions.outputs.updated }}
       updates_cnt: ${{ steps.update-module-versions.outputs.updates }}
       previous_version: ${{ steps.update-application-version.outputs.previous_version }}
@@ -179,6 +183,7 @@ jobs:
             printf '%s' "$updated_modules"
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
+          echo "updated_modules_b64=$(printf '%s' "$updated_modules" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
 
       - name: Calculate New Version
         id: calculate-new-version
