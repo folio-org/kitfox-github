@@ -125,7 +125,7 @@ jobs:
                   - title: "Previous Version"
                     value: "${{ inputs.previous_version }}"
                     short: true                    
-                  - title: "Updated"9
+                  - title: "Updated"
                     value: "${{ inputs.updated_cnt }}"
                     short: true                   
                   - title: "Commit"
