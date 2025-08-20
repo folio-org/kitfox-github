@@ -11,11 +11,6 @@ on:
         description: 'Application repository name (org/repo format)'
         required: true
         type: string
-      branch:
-        description: 'Branch to update'
-        required: false
-        type: string
-        default: 'snapshot'
       new_version:
         description: 'Application new version'
         required: true
