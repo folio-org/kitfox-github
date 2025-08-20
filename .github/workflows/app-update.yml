@@ -42,12 +42,26 @@ on:
       updated:
         description: 'Whether application was updated'
         value: ${{ jobs.update-descriptor.outputs.updated }}
+      previous_version:
+        description: 'Previous application version'
+        value: ${{ jobs.update-descriptor.outputs.previous_version }}
       new_version:
         description: 'New application version if updated'
         value: ${{ jobs.update-descriptor.outputs.new_version }}
-      # commit_sha:
-      #   description: 'Commit SHA'
-      #   value: ${{ jobs.snapshot-update.outputs.commit_sha }}
+      updated_cnt:
+        description: 'Number of updated modules'
+        value: ${{ jobs.update-descriptor.outputs.updates_cnt }}
+      updated_modules:
+        description: 'List of updated modules'
+        value: ${{ jobs.update-descriptor.outputs.updated_modules }}
+      failure_reason:
+        description: 'Reason for failure'
+        value: ${{ jobs.update-descriptor.outputs.failure_reason || 
+          jobs.verify-publish-descriptor.outputs.failure_reason || 
+          jobs.commit-statefile.outputs.failure_reason || '' }}
+      commit_sha:
+        description: 'Commit SHA'
+        value: ${{ jobs.commit-statefile.outputs.commit_sha }}
 
 permissions:
   contents: write
@@ -66,8 +80,11 @@ jobs:
       updated_modules: ${{ steps.update-module-versions.outputs.updated_modules }}
       updated: ${{ steps.update-module-versions.outputs.updated }}
       updates_cnt: ${{ steps.update-module-versions.outputs.updates }}
+      previous_version: ${{ steps.update-application-version.outputs.previous_version }}
       new_version: ${{ steps.update-application-version.outputs.new_version }}
       app_descriptor_file: ${{ steps.generate-application-descriptor.outputs.app_descriptor_file }}
+      failure_reason: ${{ steps.update-module-versions.outputs.failure_reason || 
+        steps.generate-application-descriptor.outputs.failure_reason || '' }}
     steps:
       - name: Checkout Application Repository
         uses: actions/checkout@v4
@@ -93,7 +110,11 @@ jobs:
           set -eo pipefail
           echo "::notice::Check for newer module versions"
           
-          [[ -f $STATE_FILE ]] || { echo "::error::$STATE_FILE not found"; exit 1; }
+          if [[ -f $STATE_FILE ]] then
+            echo "::error::$STATE_FILE not found"
+            echo "failure_reason=$STATE_FILE not found" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
           
           updated_modules=""
           updates=0
@@ -215,6 +236,7 @@ jobs:
                     
           if [[ ! -f "pom.xml" ]]; then
             echo "::error::pom.xml not found"
+            echo "failure_reason=pom.xml not found" >> "$GITHUB_OUTPUT"
             exit 1
           fi
           
@@ -230,6 +252,7 @@ jobs:
           APP_DESCRIPTOR_FILE=$(compgen -G "target/${APP_NAME}*.json" | head -n 1)
           if [[ -z "$APP_DESCRIPTOR_FILE" ]]; then
             echo "::error::Generated application descriptor not found"
+            echo "failure_reason=Generated application descriptor not found" >> "$GITHUB_OUTPUT"
             exit 1
           fi
           
@@ -259,6 +282,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: update-descriptor
     if: needs.update-descriptor.outputs.updated == 'true'
+    outputs:
+        failure_reason: ${{ steps.fetch-app-descriptors.outputs.failure_reason ||
+          steps.validate-interfaces.outputs.failure_reason ||
+          steps.validate-dependencies.outputs.failure_reason ||
+          steps.upload-to-registry.outputs.failure_reason || '' }}
     steps:
       - name: Download Descriptor Artifact
         uses: actions/download-artifact@v4
@@ -280,7 +308,11 @@ jobs:
           set -eo pipefail
           echo "::notice::Fetch application descriptors from FAR for validation"
 
-          [ ! -f "/tmp/$PLATFORM_DESCRIPTOR/$PLATFORM_DESCRIPTOR.json" ] && { echo "::error::Platform descriptor artifact not found"; exit 1; }
+          if [ ! -f "/tmp/$PLATFORM_DESCRIPTOR/$PLATFORM_DESCRIPTOR.json" ] then
+            echo "::error::Platform descriptor artifact not found"
+            echo "failure_reason=Platform descriptor artifact not found" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
 
           cp /tmp/$PLATFORM_DESCRIPTOR/$PLATFORM_DESCRIPTOR.json ./$PLATFORM_DESCRIPTOR.json
           echo "::notice::Platform descriptor loaded successfully"
@@ -309,6 +341,7 @@ jobs:
               echo "::notice:: Fetched $app_name"
             else
               echo "::error:: Could not fetch $app_name from FAR"
+              echo "failure_reason=Could not fetch $app_name from FAR" >> "$GITHUB_OUTPUT"
               exit 1
             fi
           done
@@ -323,7 +356,11 @@ jobs:
           set -eo pipefail
           echo "::notice::Validate application module interface integrity"
 
-          [ ! -f "$APP_DESCRIPTOR_FILE" ] && { echo "::error::Updated descriptor not found: $APP_DESCRIPTOR_FILE"; exit 1; }
+          if [ ! -f "$APP_DESCRIPTOR_FILE" ] then
+            echo "::error::Updated descriptor not found: $APP_DESCRIPTOR_FILE"
+            echo "failure_reason=Updated descriptor not found: $APP_DESCRIPTOR_FILE" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
           
           validation_response_and_code=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Content-Type: application/json" \
@@ -336,6 +373,7 @@ jobs:
           if ! [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
             echo "::error::Module interface integrity validation request failed (HTTP $http_code)"
             echo "::error::$validation_response"
+            echo "failure_reason=Module interface integrity validation request failed (HTTP $http_code)" >> "$GITHUB_OUTPUT"
             exit 1
           fi
           
@@ -364,83 +402,165 @@ jobs:
           if ! [[ "$http_code" =~ ^2[0-9]{2}$ ]]; then
             echo "::error::Dependencies integrity validation request failed (HTTP $http_code)"
             
-            [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2            
+            [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2  
+            
+            echo "failure_reason=Dependencies integrity validation request failed (HTTP $http_code)" >> "$GITHUB_OUTPUT"
             exit 1
           elif [[ "$RELY_ON_FAR" == "true" ]]; then
             echo "::notice::Dependencies integrity validation passed"
           else
             echo "::error::Dependencies integrity validation failed"
+            echo "failure_reason=Dependencies integrity validation failed" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           echo "::notice::Dependencies integrity validation passed"
           [[ "$RELY_ON_FAR" == "true" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
           rm -f "$resp_file"
-#
-#      - name: Upload to Application Registry
-#        if: steps.update-modules.outputs.updated == 'true' && inputs.dry_run != true
-#        run: |
-#          set -eo pipefail
-#          echo "::group::Upload application to registry"
-#
-#          upload_response=$(curl -s -X POST \
-#            -H "Content-Type: application/json" \
-#            -d @target/application-descriptor.json \
-#            "$FAR_API_URL" || echo '{"success":false}')
-#
-#          success=$(echo "$upload_response" | jq -r '.success // false')
-#
-#          if [[ "$success" != "true" ]]; then
-#            echo "::error::Failed to upload application to registry"
-#            echo "$upload_response" | jq -r '.message // "Unknown upload error"'
-#            exit 1
-#          fi
-#
-#          echo "::notice::Application uploaded to registry successfully"
-#          echo "::endgroup::"
-#
-#      - name: Commit Changes
-#        if: steps.update-modules.outputs.updated == 'true' && inputs.dry_run != true
-#        env:
-#          NEW_VERSION: ${{ steps.update-modules.outputs.new_version }}
-#        run: |
-#          set -eo pipefail
-#          echo "::group::Commit updated application descriptor"
-#
-#          git config --global user.name "github-actions[bot]"
-#          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-#
-#          if git diff --quiet $STATE_FILE; then
-#            echo "::notice::No changes to commit"
-#            echo "::endgroup::"
-#            exit 0
-#          fi
-#
-#          git add $STATE_FILE
-#          git commit -m "Update application snapshot to $NEW_VERSION" \
-#            -m "Automated module version updates:" \
-#            -m "- Backend modules: ${{ steps.check-versions.outputs.backend_updates }} updates" \
-#            -m "- Frontend modules: ${{ steps.check-versions.outputs.frontend_updates }} updates" \
-#            -m "Total modules updated: ${{ steps.check-versions.outputs.total_updates }}"
-#
-#          git push origin snapshot
-#
-#          echo "::notice::Changes committed and pushed to snapshot branch"
-#          echo "::endgroup::"
-#
-#      - name: Report Results
-#        if: always()
-#        run: |
-#          echo "::group::Snapshot update summary"
-#
-#          if [[ "${{ steps.check-versions.outputs.has_updates }}" == "true" ]]; then
-#            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
-#              echo "::notice::DRY RUN: Would update ${{ steps.check-versions.outputs.total_updates }} modules"
-#            else
-#              echo "::notice::Successfully updated ${{ steps.check-versions.outputs.total_updates }} modules"
-#              echo "::notice::New version: ${{ steps.update-modules.outputs.new_version }}"
-#            fi
-#          else
-#            echo "::notice::No module updates available"
-#          fi
-#          echo "::endgroup::"
+
+      - name: Upload to Application Registry
+        id: upload-to-registry
+        if: inputs.dry_run != true
+        env:
+          APP_DESCRIPTOR_FILE: "/tmp/app-descriptors/${{ needs.update-descriptor.outputs.app_descriptor_file }}"
+        run: |
+          set -eo pipefail
+          echo "::notice::Upload application to registry"
+
+          upload_response=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d @"$APP_DESCRIPTOR_FILE" \
+            "$FAR_API_URL" || echo '{"success":false}')
+
+          success=$(echo "$upload_response" | jq -r '.success // false')
+
+          if [[ "$success" != "true" ]]; then
+            echo "::error::Failed to upload application to registry"
+            echo "$upload_response" | jq -r '.message // "Unknown upload error"'
+            
+            echo "failure_reason=Failed to upload application to registry" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "::notice::Application uploaded to registry successfully"
+
+  commit-statefile:
+    name: Commit and push sate file
+    runs-on: ubuntu-latest
+    needs: [update-descriptor, verify-publish-descriptor]
+    outputs:
+      commit_sha: ${{ steps.commit-changes.outputs.commit_sha }}
+      failure_reason: ${{ steps.commit-changes.outputs.failure_reason || 
+        steps.delete-uploaded-app-in-registry.outputs.failure_reason || ''}}
+    steps:
+
+      - name: Checkout Application Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download StateFile Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: "${{ env.APP_NAME }}-state-file"
+          path: /
+
+      - name: Configure Git
+        run: |
+          set -eo pipefail
+          
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "::notice::Git configured for automated commits"
+
+      - name: Commit Changes
+        id: commit-changes
+        env:
+          PREVIOUS_VERSION: ${{ needs.update-descriptor.outputs.previous_version }}
+          NEW_VERSION: ${{ needs.update-descriptor.outputs.new_version }}
+          UPDATED_MODULES: ${{ needs.update-descriptor.outputs.updated_modules }}
+          UPDATED_CNT: ${{ needs.update-descriptor.outputs.updates_cnt }}
+        run: |
+          set -eo pipefail
+
+          echo "::group::Stage changes for commit"
+          git status
+          echo "::endgroup::"
+          
+          git add $STATE_FILE 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "::error::No changes to commit"
+            echo "failure_reason=No changes to commit" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          git commit -F - <<EOF
+          Update application state file to $NEW_VERSION".
+
+          Previous version: $PREVIOUS_VERSION
+          Total modules updated: $UPDATED_CNT
+          Modules: $UPDATED_MODULES
+          EOF
+          
+          commit_sha=$(git rev-parse HEAD)
+          
+          echo "::notice::Successfully committed changes #$commit_sha"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Push Changes
+        if: inputs.dry_run == false
+        env:
+          BRANCH_NAME: ${{ inputs.branch }}
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
+          git push -u origin "$BRANCH_NAME"
+          echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
+
+      - name: Delete Uploaded Application in Registry
+        id: delete-uploaded-app-in-registry
+        if: failure() && inputs.dry_run != true
+        env:
+          APP_DESCRIPTOR_FILE: "${{ needs.update-descriptor.outputs.app_descriptor_file }}"
+        run: |
+          set -eo pipefail
+          echo "::notice::Delete previously uploaded application $APP_DESCRIPTOR_FILE in registry"
+
+          upload_response=$(curl -s -X DEL \
+            -H "Content-Type: application/json" \
+            "$FAR_API_URL/$APP_DESCRIPTOR_FILE" || echo '{"success":false}')
+
+          success=$(echo "$upload_response" | jq -r '.success // false')
+
+          if [[ "$success" != "true" ]]; then
+            echo "::error::Failed to delete application in registry"
+            echo "$upload_response" | jq -r '.message // "Unknown upload error"'
+            
+            echo "failure_reason=Failed to delete application in registry" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "::notice::Application descriptor deleted in registry successfully"
+
+      - name: Workflow Summary
+        run: |
+          set -eo pipefail
+
+          echo "::notice::$APP_NAME Update Summary"
+          echo ""
+          echo "Branch: ${{ inputs.branch }}"
+          echo "Previous Version: ${{ needs.update-descriptor.outputs.previous_version }}"
+          echo "New Version: ${{ needs.update-descriptor.outputs.new_version }}"
+          echo "Updated Modules Count: ${{ needs.update-descriptor.outputs.updates_cnt }}"
+          echo "Updated Modules: ${{ needs.update-descriptor.outputs.updated_modules }}"
+          echo "Commit: ${{ steps.commit-changes.outputs.commit_sha }}"
+          echo ""
+          
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::notice::This was a dry run - no actual changes were made"
+            echo "::notice::Set dry_run=false to apply changes"
+          fi
