@@ -102,16 +102,14 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build multiline string
+        id: multiline
         run: |
           updated_modules=""
           updated_modules+="app-core 1.2.3 -> 1.4.0"$'\n'
           updated_modules+="app-ui 2.0.0 -> 2.1.1"
 
-          {
-            echo "UPDATED_MODULES_3<<EOF"
-            printf "%s\n" "$updated_modules"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
+          $payload=$(printf 'updated_modules')
+          echo "PAYLOAD<<EOF"$'\n'"$payload"$'\n'EOF >> "$GITHUB_OUTPUT"
 
       - name: Post to Slack
         uses: slackapi/slack-github-action@v2.1.1
@@ -128,7 +126,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*Updated modules:*\n```${{ env.UPDATED_MODULES_3 }}```"
+                    "text": ${{ toJSON(steps.multiline.outputs.PAYLOAD) }}
                   }
                 }
               ]
