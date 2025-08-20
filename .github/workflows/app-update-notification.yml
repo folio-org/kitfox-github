@@ -110,7 +110,7 @@ jobs:
                     short: true
               - color: "good"
                 mrkdwn_in: ["fields"]
-                text: ${{ toJSON(steps.multiline.outputs.updated_modules) }}
+                text: "```${{ toJSON(steps.multiline.outputs.updated_modules) }}```"
                 footer: "Eureka CI/CD"
 
       - name: Send FAILED Slack Notification
