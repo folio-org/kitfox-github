@@ -58,7 +58,7 @@ on:
         description: 'Reason for failure'
         value: ${{ jobs.update-descriptor.outputs.failure_reason || 
           jobs.verify-publish-descriptor.outputs.failure_reason || 
-          jobs.commit-statefile.outputs.failure_reason || '' }}
+          jobs.commit-statefile.outputs.failure_reason || 'unknown' }}
       commit_sha:
         description: 'Commit SHA'
         value: ${{ jobs.commit-statefile.outputs.commit_sha }}
