@@ -158,9 +158,15 @@ jobs:
             if [[ -n "$latest_version" && "$latest_version" != "$current_version" ]]; then
               echo "A new $type module version discovered: $module_name $current_version -> $latest_version"
           
-              jq --arg name "$module_name" --arg version "$latest_version" '
-                  .modules |= map(if .name == $name then .version = $version else . end)
-                ' $STATE_FILE > temp.json && mv temp.json $STATE_FILE
+              if [[ "$type" == "backend" ]]; then
+                jq --arg name "$module_name" --arg version "$latest_version" '
+                    .modules |= map(if .name == $name then .version = $version else . end)
+                  ' $STATE_FILE > temp.json && mv temp.json $STATE_FILE
+              else
+                jq --arg name "$module_name" --arg version "$latest_version" '
+                    .uiModules |= map(if .name == $name then .version = $version else . end)
+                  ' $STATE_FILE > temp.json && mv temp.json $STATE_FILE
+              fi
               
               updated_modules+="$module_name $current_version -> $latest_version"$'\n'
               ((++updates))
