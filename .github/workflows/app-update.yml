@@ -70,7 +70,7 @@ env:
   STATE_FILE: "application-descriptor.json"
   PLATFORM_DESCRIPTOR: "platform-descriptor"
   APP_NAME: ${{ inputs.app_name }}
-  FAR_API_URL: "https://far-test.ci.folio.org/applications"
+  FAR_API_URL: "https://far-test.ci.folio.org/applications" # TODO: Change to production URL
 
 jobs:
   update-descriptor:
