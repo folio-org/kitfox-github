@@ -99,7 +99,19 @@ jobs:
             echo 'UPDATED_MODULES_2<<EOF'
             printf '%s\n' "$MODULES"
             echo 'EOF'
-          } >> "$GITHUB_ENV"          
+          } >> "$GITHUB_ENV"
+
+      - name: Build multiline string
+        run: |
+          updated_modules=""
+          updated_modules+="app-core 1.2.3 -> 1.4.0"$'\n'
+          updated_modules+="app-ui 2.0.0 -> 2.1.1"
+
+          {
+            echo "UPDATED_MODULES_3<<EOF"
+            printf "%s\n" "$updated_modules"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Send SUCCESS Slack Notification
         if: inputs.workflow_result == 'success'
@@ -148,6 +160,12 @@ jobs:
                 fields:
                   - title: "Updated Modules"
                     value: "${{ env.UPDATED_MODULES_2 }}"
+                    short: false
+              - color: "good"
+                mrkdwn_in: ["fields"]
+                fields:
+                  - title: "Updated Modules"
+                    value: "${{ env.UPDATED_MODULES_3 }}"
                     short: false
                 footer: "Eureka CI/CD"
 
