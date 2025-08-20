@@ -4,18 +4,41 @@ on:
   workflow_call:
     inputs:
       app_name:
-        description: 'Application repository name'
+        description: 'Application name'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository name (org/repo format)'
         required: true
         type: string
       branch:
-        description: 'New release branch name'
+        description: 'Branch to update'
         required: false
         type: string
         default: 'snapshot'
-      app_version:
-        description: 'Application version'
+      new_version:
+        description: 'Application new version'
         required: true
         type: string
+      previous_version:
+        description: 'Application previous version'
+        required: true
+        type: string
+      update_cnt:
+        description: 'Number of updated modules'
+        required: false
+        type: string
+        default: ''
+      updated_modules:
+        description: 'List of updated modules'
+        required: false
+        type: string
+        default: ''
+      failure_reason:
+        description: 'Reason for failure if applicable'
+        required: false
+        type: string
+        default: ''
       commit_sha:
         description: 'Commit SHA of the release'
         required: true
@@ -54,27 +77,32 @@ jobs:
           errors: true
           payload: |
             channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
-            text: "Application Release Preparation SUCCESS"
+            text: "Application Update SUCCESS"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*${{ inputs.app_name }} Application Release Preparation SUCCESS <${{ github.server_url }}/${{ inputs.app_name }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+                  text: "*${{ inputs.app_name }} Application Update SUCCESS <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
             attachments:
               - color: "good"
                 fields:
-                  - title: "New Release"
-                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.new_release_branch }}|${{ inputs.new_release_branch }}>"
-                    short: true
-                  - title: "Source Branch"
-                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.source_branch }}|${{ inputs.source_branch }}>"
-                    short: true                    
                   - title: "New Version"
-                    value: "${{ inputs.app_version }}"
+                    value: "${{ inputs.new_version }}"
+                    short: true
+                  - title: "Previous Version"
+                    value: "${{ inputs.previous_version }}"
+                    short: true                    
+                  - title: "Updated"
+                    value: "${{ inputs.update_cnt }}"
                     short: true                   
                   - title: "Commit"
-                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
+                    value: "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
                     short: true
+              - color: "good"
+                fields:
+                  - title: "Updated Modules"
+                    value: "${{ inputs.updated_modules }}"
+                    short: false         
                 footer: "Eureka CI/CD"
 
       - name: Send FAILED Slack Notification
@@ -86,19 +114,16 @@ jobs:
           errors: true
           payload: |
             channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
-            text: "Application Release Preparation FAILED"
+            text: "Application Update FAILED"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*${{ inputs.app_name }} Application Release Preparation FAILED <${{ github.server_url }}/${{ inputs.app_name }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+                  text: "*${{ inputs.app_name }} Application Update FAILED <${{ github.server_url }}/${{ inputs.app_name }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
             attachments:
               - color: "danger"
                 fields:
-                  - title: "New Release"
-                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.new_release_branch }}|${{ inputs.new_release_branch }}>"
-                    short: true
-                  - title: "Source Branch"
-                    value: "<${{ github.server_url }}/${{ inputs.app_name }}/tree/${{ inputs.source_branch }}|${{ inputs.source_branch }}>"
-                    short: true                    
+                  - title: "Reason"
+                    value: "${{ inputs.failure_reason }}"
+                    short: false                  
                 footer: "Eureka CI/CD"
