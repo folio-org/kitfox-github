@@ -73,65 +73,15 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
       SLACK_NOTIF_CHANNEL: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}  # TODO: Switch to ${{ inputs.slack_notif_channel }} before merging to master
     steps:
-      - name: Decode updated modules
-        id: decode-updated-modules
-        run: |
-          set -eo pipefail
-          
-          decoded="$(printf '%s' "${{ inputs.updated_modules_b64 }}" | base64 -d)"
-
-          delim="EOF_$(date +%s%N)"
-
-          {
-            printf 'UPDATED_MODULES<<%s\n' "$delim"
-            printf '%s\n' "$decoded"
-            printf '%s\n' "$delim"
-          } >> "$GITHUB_ENV"
-
-      - name: Prepare updated modules for Slack message
-        id: prepare-updated-modules
-        env:
-          MODULES: "${{ inputs.updated_modules }}"
-        run: |
-          set -eo pipefail
-          
-          {
-            echo 'UPDATED_MODULES_2<<EOF'
-            printf '%s\n' "$MODULES"
-            echo 'EOF'
-          } >> "$GITHUB_ENV"
-
       - name: Build multiline string
         id: multiline
         env:
           MODULES: "${{ inputs.updated_modules }}"
         run: |
-          updated_modules=""
-          updated_modules+="app-core 1.2.3 -> 1.4.0"$'\n'
-          updated_modules+="app-ui 2.0.0 -> 2.1.1"
-
-          echo "PAYLOAD<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
-
-      - name: Post to Slack
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          method: chat.postMessage
-          token: ${{ env.SLACK_BOT_TOKEN }}
-          errors: true
-          payload: |
-            {
-              "channel": "${{ env.SLACK_NOTIF_CHANNEL }}",
-              "text": "Updated modules",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ${{ toJSON(steps.multiline.outputs.PAYLOAD) }}
-                  }
-                }
-              ]
-            }          
+          set -eo pipefail
+          
+          echo "::notice::Build multiline string"
+          echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
 
       - name: Send SUCCESS Slack Notification
         if: inputs.workflow_result == 'success'
@@ -165,34 +115,7 @@ jobs:
                     short: true
               - color: "good"
                 mrkdwn_in: ["fields"]
-                fields:
-                  - title: "Updated Modules"
-                    value: "```${{ inputs.updated_modules }}```"
-                    short: false
-              - color: "good"
-                mrkdwn_in: ["fields"]
-                fields:
-                  - title: "Updated Modules"
-                    value: "```${{ env.UPDATED_MODULES }}```"
-                    short: false
-              - color: "good"
-                mrkdwn_in: ["fields"]
-                fields:
-                  - title: "Updated Modules"
-                    value: "${{ env.UPDATED_MODULES_2 }}"
-                    short: false
-              - color: "good"
-                mrkdwn_in: ["fields"]
-                fields:
-                  - title: "Updated Modules"
-                    value: "${{ env.UPDATED_MODULES_3 }}"
-                    short: false
-              - color: "good"
-                mrkdwn_in: ["fields"]
-                fields:
-                  - title: "Updated Modules"
-                    value: ${{ toJSON(steps.multiline.outputs.PAYLOAD) }}
-                    short: false            
+                text: ${{ toJSON(steps.multiline.outputs.updated_modules) }}
                 footer: "Eureka CI/CD"
 
       - name: Send FAILED Slack Notification
