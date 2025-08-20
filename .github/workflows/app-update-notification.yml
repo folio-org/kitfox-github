@@ -128,7 +128,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*Updated modules:*\n```$UPDATED_MODULES_3```"
+                    "text": "*Updated modules:*\n```${{ env.UPDATED_MODULES_3 }}```"
                   }
                 }
               ]
