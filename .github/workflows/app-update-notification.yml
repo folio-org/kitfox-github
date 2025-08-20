@@ -88,8 +88,8 @@ jobs:
             printf '%s\n' "$delim"
           } >> "$GITHUB_ENV"
 
-      - name: Decode updated modules
-        id: decode-updated-modules
+      - name: Prepare updated modules for Slack message
+        id: prepare-updated-modules
         env:
           MODULES: "${{ inputs.updated_modules }}"
         run: |
