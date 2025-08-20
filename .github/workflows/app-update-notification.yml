@@ -108,7 +108,7 @@ jobs:
           updated_modules+="app-core 1.2.3 -> 1.4.0"$'\n'
           updated_modules+="app-ui 2.0.0 -> 2.1.1"
 
-          $payload=$(printf "$updated_modules")
+          payload=$(printf '%s' "$updated_modules")
           echo "PAYLOAD<<EOF"$'\n'"$payload"$'\n'EOF >> "$GITHUB_OUTPUT"
 
       - name: Post to Slack
