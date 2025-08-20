@@ -111,9 +111,16 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*Updated Modules*\n```$${{ env.UPDATED_MODULES }}```"
+                    "text": "*Updated Modules*\n```${{ env.UPDATED_MODULES }}```"
                   }
-                }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Updated Modules*\n${{ env.UPDATED_MODULES }}"
+                  }
+                }            
               ],
               "attachments": [
                 {
@@ -129,7 +136,7 @@ jobs:
                   "color": "good",
                   "mrkdwn_in": ["fields"],
                   "fields": [
-                    { "title": "Updated Modules", "value": "```$${{ env.UPDATED_MODULES }}```", "short": false }
+                    { "title": "Updated Modules", "value": "```${{ env.UPDATED_MODULES }}```", "short": false }
                   ],
                   "footer": "Eureka CI/CD"
                 }
