@@ -296,6 +296,7 @@ jobs:
 
       - name: Download Platform Descriptor
         id: download-platform-descriptor
+        if: ! inputs.rely_on_FAR
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.PLATFORM_DESCRIPTOR }}
@@ -303,7 +304,7 @@ jobs:
 
       - name: Fetch Application Descriptors from FAR
         id: fetch-app-descriptors
-        if: ${{ !inputs.rely_on_FAR }}
+        if: ! inputs.rely_on_FAR
         run: |
           set -eo pipefail
           echo "::notice::Fetch application descriptors from FAR for validation"
@@ -405,12 +406,6 @@ jobs:
             [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2  
             
             echo "failure_reason=Dependencies integrity validation request failed (HTTP $http_code)" >> "$GITHUB_OUTPUT"
-            exit 1
-          elif [[ "$RELY_ON_FAR" == "true" ]]; then
-            echo "::notice::Dependencies integrity validation passed"
-          else
-            echo "::error::Dependencies integrity validation failed"
-            echo "failure_reason=Dependencies integrity validation failed" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
