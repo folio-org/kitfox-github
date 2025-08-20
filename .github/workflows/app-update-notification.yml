@@ -120,7 +120,21 @@ jobs:
                     "type": "mrkdwn",
                     "text": "*Updated Modules*\n${{ env.UPDATED_MODULES }}"
                   }
-                }            
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Updated Modules*\n${{ inputs.updated_modules }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Updated Modules*\n```${{ inputs.updated_modules }}```"
+                  }
+                }
               ],
               "attachments": [
                 {
