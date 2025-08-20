@@ -97,7 +97,7 @@ jobs:
           
           {
             echo 'UPDATED_MODULES_2<<EOF'
-            printf '%s' "$MODULES"
+            printf '%s\n' "$MODULES"
             echo 'EOF'
           } >> "$GITHUB_ENV"          
 
