@@ -110,7 +110,7 @@ jobs:
           set -eo pipefail
           echo "::notice::Check for newer module versions"
           
-          if [[ -f $STATE_FILE ]] then
+          if [[ ! -f $STATE_FILE ]]; then
             echo "::error::$STATE_FILE not found"
             echo "failure_reason=$STATE_FILE not found" >> "$GITHUB_OUTPUT"
             exit 1
