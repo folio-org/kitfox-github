@@ -83,7 +83,7 @@ jobs:
           delim="EOF_$(date +%s%N)"
 
           {
-            printf 'updated_modules<<%s\n' "$delim"
+            printf 'UPDATED_MODULES<<%s\n' "$delim"
             printf '%s\n' "$decoded"
             printf '%s\n' "$delim"
           } >> "$GITHUB_ENV"
@@ -128,7 +128,7 @@ jobs:
                 mrkdwn_in: ["fields"]
                 fields:
                   - title: "Updated Modules"
-                    value: "```${{ steps.decode-updated-modules.outputs.updated_modules }}```"
+                    value: "```${{ env.UPDATED_MODULES }}```"
                     short: false            
                 footer: "Eureka CI/CD"
 
