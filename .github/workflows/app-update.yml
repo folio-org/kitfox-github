@@ -465,7 +465,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: "${{ env.APP_NAME }}-state-file"
-          path: /
+          path: .
 
       - name: Configure Git
         run: |
