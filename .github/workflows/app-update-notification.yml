@@ -24,7 +24,7 @@ on:
         description: 'Application previous version'
         required: true
         type: string
-      update_cnt:
+      updated_cnt:
         description: 'Number of updated modules'
         required: false
         type: string
@@ -93,7 +93,7 @@ jobs:
                     value: "${{ inputs.previous_version }}"
                     short: true                    
                   - title: "Updated"
-                    value: "${{ inputs.update_cnt }}"
+                    value: "${{ inputs.updated_cnt }}"
                     short: true                   
                   - title: "Commit"
                     value: "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
