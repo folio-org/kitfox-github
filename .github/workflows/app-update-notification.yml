@@ -187,6 +187,12 @@ jobs:
                   - title: "Updated Modules"
                     value: "${{ env.UPDATED_MODULES_3 }}"
                     short: false
+              - color: "good"
+                mrkdwn_in: ["fields"]
+                fields:
+                  - title: "Updated Modules"
+                    value: ${{ toJSON(steps.multiline.outputs.PAYLOAD) }}
+                    short: false            
                 footer: "Eureka CI/CD"
 
       - name: Send FAILED Slack Notification
