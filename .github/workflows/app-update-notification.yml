@@ -99,9 +99,10 @@ jobs:
                     value: "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
                     short: true
               - color: "good"
+                mrkdwn_in: ["fields"]
                 fields:
                   - title: "Updated Modules"
-                    value: "${{ inputs.updated_modules }}"
+                    value: "```${{ inputs.updated_modules }}```"
                     short: false         
                 footer: "Eureka CI/CD"
 
