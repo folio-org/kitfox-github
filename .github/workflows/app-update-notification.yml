@@ -96,53 +96,45 @@ jobs:
           token: ${{ env.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
-            text: "Application Update SUCCESS"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*${{ inputs.app_name }} Application Update SUCCESS <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: |
-                    *Updated Modules*
-                    ```${{ env.UPDATED_MODULES }}```
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: |
-                    *Updated Modules*
-                    ${{ env.UPDATED_MODULES }}
-            attachments:
-              - color: "good"
-                fields:
-                  - title: "New Version"
-                    value: "${{ inputs.new_version }}"
-                    short: true
-                  - title: "Previous Version"
-                    value: "${{ inputs.previous_version }}"
-                    short: true                    
-                  - title: "Updated"
-                    value: "${{ inputs.updated_cnt }}"
-                    short: true                   
-                  - title: "Commit"
-                    value: "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
-                    short: true
-              - color: "good"
-                mrkdwn_in: ["fields"]
-                fields:
-                  - title: "Updated Modules"
-                    value: "```${{ inputs.updated_modules }}```"
-                    short: false
-              - color: "good"
-                mrkdwn_in: ["fields"]
-                fields:
-                  - title: "Updated Modules"
-                    value: "```${{ env.UPDATED_MODULES }}```"
-                    short: false            
-                footer: "Eureka CI/CD"
+            {
+              "channel": "${{ env.SLACK_NOTIF_CHANNEL }}",
+              "text": "Application Update SUCCESS",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*${{ inputs.app_name }} Application Update SUCCESS <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Updated Modules*\n```$${{ env.UPDATED_MODULES }}```"
+                  }
+                }
+              ],
+              "attachments": [
+                {
+                  "color": "good",
+                  "fields": [
+                    { "title": "New Version", "value": "${{ inputs.new_version }}", "short": true },
+                    { "title": "Previous Version", "value": "${{ inputs.previous_version }}", "short": true },
+                    { "title": "Updated", "value": "${{ inputs.updated_cnt }}", "short": true },
+                    { "title": "Commit", "value": "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>", "short": true }
+                  ]
+                },
+                {
+                  "color": "good",
+                  "mrkdwn_in": ["fields"],
+                  "fields": [
+                    { "title": "Updated Modules", "value": "```$${{ env.UPDATED_MODULES }}```", "short": false }
+                  ],
+                  "footer": "Eureka CI/CD"
+                }
+              ]
+            }
 
       - name: Send FAILED Slack Notification
         if: inputs.workflow_result == 'failure'
