@@ -308,7 +308,7 @@ jobs:
           set -eo pipefail
           echo "::notice::Fetch application descriptors from FAR for validation"
 
-          if [ ! -f "/tmp/$PLATFORM_DESCRIPTOR/$PLATFORM_DESCRIPTOR.json" ] then
+          if [ ! -f "/tmp/$PLATFORM_DESCRIPTOR/$PLATFORM_DESCRIPTOR.json" ]; then
             echo "::error::Platform descriptor artifact not found"
             echo "failure_reason=Platform descriptor artifact not found" >> "$GITHUB_OUTPUT"
             exit 1
@@ -356,7 +356,7 @@ jobs:
           set -eo pipefail
           echo "::notice::Validate application module interface integrity"
 
-          if [ ! -f "$APP_DESCRIPTOR_FILE" ] then
+          if [ ! -f "$APP_DESCRIPTOR_FILE" ]; then
             echo "::error::Updated descriptor not found: $APP_DESCRIPTOR_FILE"
             echo "failure_reason=Updated descriptor not found: $APP_DESCRIPTOR_FILE" >> "$GITHUB_OUTPUT"
             exit 1
