@@ -116,7 +116,7 @@ jobs:
                   - title: "Commit"
                     value: "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
                     short: true
-                  - title: "Application Descriptor"
+                  - title: "Descriptor"
                     value: "<${{ inputs.app_descriptor_url }}|${{ inputs.app_descriptor_file_name }}>"
                     short: false
               - color: "good"
