@@ -76,14 +76,15 @@ jobs:
       SLACK_BOT_TOKEN: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
       SLACK_NOTIF_CHANNEL: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}  # TODO: Switch to ${{ inputs.slack_notif_channel }} before merging to master
     steps:
-      - name: Build multiline string
-        id: multiline
+      - name: Build Updated Modules Info String
+        id: updated-modules-info-string
+        if: inputs.workflow_result == 'success'
         env:
           MODULES: "${{ inputs.updated_modules }}"
         run: |
           set -eo pipefail
           
-          echo "::notice::Build multiline string"
+          echo "::notice::Build updated modules info string"
           echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
 
       - name: Send SUCCESS Slack Notification
@@ -121,7 +122,7 @@ jobs:
                     short: false
               - color: "good"
                 mrkdwn_in: ["fields"]
-                text: ${{ toJSON(steps.multiline.outputs.updated_modules) }}
+                text: ${{ toJSON(steps.updated-modules-info-string.outputs.updated_modules) }}
                 footer: "Eureka CI/CD"
 
       - name: Send FAILED Slack Notification
