@@ -523,8 +523,6 @@ jobs:
           
           commit_sha=$(git rev-parse HEAD)
           
-          exit 1
-          
           echo "::notice::Successfully committed changes #$commit_sha"
           echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
 
