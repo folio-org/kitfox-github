@@ -43,6 +43,14 @@ on:
         description: 'Commit SHA of the release'
         required: true
         type: string
+      app_descriptor_file_name:
+        description: 'Name of generated application descriptor file'
+        required: true
+        type: string
+      app_descriptor_url:
+        description: 'Application descriptor URL'
+        required: true
+        type: string
       workflow_result:
         description: 'Result of the main workflow (success/failure)'
         required: true
@@ -108,6 +116,9 @@ jobs:
                   - title: "Commit"
                     value: "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
                     short: true
+                  - title: "Application Descriptor"
+                    value: "<${{ inputs.app_descriptor_url }}|${{ inputs.app_descriptor_file_name }}>"
+                    short: false
               - color: "good"
                 mrkdwn_in: ["fields"]
                 text: ${{ toJSON(steps.multiline.outputs.updated_modules) }}
