@@ -240,7 +240,7 @@ jobs:
                 module_name_esc="@folio/$module_name_esc" # Add @folio scope for UI modules    
               fi
           
-              is_snapshot=$([[ "$version" == *SNAPSHOT* ]] && echo true || echo false)
+              is_snapshot=$([[ "$version" == *SNAPSHOT* || $(awk -F'.' '{print length($NF)}' <<< "$version") -gt 4 ]] && echo true || echo false)
               repository=$([[ "$is_snapshot" == "true" ]] && echo "folioci" || echo "folioorg")
               repository=$([[ "$type" == "ui" ]] && echo "npm-$repository" || echo "$repository")
           
