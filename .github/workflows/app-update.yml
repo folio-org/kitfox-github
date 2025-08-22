@@ -30,6 +30,11 @@ on:
         required: false
         type: boolean
         default: false
+      pre_release:
+        description: 'Pre-release modules (only | true | false)'
+        required: false
+        type: string
+        default: 'only'
       dry_run:
         description: 'Perform dry run without making changes'
         required: false
@@ -112,10 +117,10 @@ jobs:
           branch: ${{ inputs.branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update Module Versions
-        id: update-module-versions
+      - name: Update Module Versions (OUTDATED)
+        id: update-module-versions-old
         env:
-          DOCKER_REGISTRY: "https://hub.docker.com/v2/repositories/folioci"
+          DOCKER_REGISTRY: "https://hub.docker.com/v2/repositories"
           NPM_REGISTRY: "https://repository.folio.org/repository/npm-folioci"
         run: |
           set -eo pipefail
@@ -145,7 +150,7 @@ jobs:
             fi
           
             if [[ "$type" == "backend" ]]; then
-              image_path="${DOCKER_REGISTRY%/}/$module_name_esc/tags?ordering=last_updated"
+              image_path="${DOCKER_REGISTRY%/}/folioci/$module_name_esc/tags?ordering=last_updated"
               jq_filter='.results[]? | select(.name | test("-SNAPSHOT(\\.|-|$)")) | .name'
             else
               image_path="${NPM_REGISTRY%/}/$module_name_esc"
@@ -174,6 +179,105 @@ jobs:
                     .uiModules |= map(if .name == $name then .version = $version else . end)
                   ' $STATE_FILE > temp.json && mv temp.json $STATE_FILE
               fi
+              
+              updated_modules+="$module_name $current_version -> $latest_version"$'\n'
+              ((++updates))
+            else
+              echo "→ Up to date (no newer version found)"
+            fi
+            echo "::endgroup::"
+          done <<< "$(jq -r '
+            (.modules[]?    | ["backend",   .name, .version]),
+            (.uiModules[]?  | ["ui", .name, .version])
+            | @tsv
+          ' $STATE_FILE)"
+
+          
+          echo "::notice::Found $updates module updates available"
+
+      - name: Update Module Versions
+        id: update-module-versions
+        env:
+          DOCKER_REGISTRY: "https://hub.docker.com/v2/repositories"
+          NPM_REGISTRY: "https://repository.folio.org/repository"
+          FOLIO_REGISTRY: "https://folio-registry.dev.folio.org/_/proxy/modules?latest=10&order=desc&orderBy=id&filter="
+        run: |
+          set -eo pipefail
+          echo "::notice::Check for newer module versions"
+          
+          if [[ ! -f $STATE_FILE ]]; then
+            echo "::error::$STATE_FILE not found"
+            echo "failure_reason=$STATE_FILE not found" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          
+          local updated_modules=""
+          local updates=0
+          
+          while IFS=$'\t' read -r type module_name current_version; do
+            echo "::group::Checking $type module: $module_name (current: $current_version)"
+          
+            local pre_release = "&$([[ "$type" == "backend" ]] && echo "preRelease" || echo "npmSnapshot")${{ inputs.pre_release }}"
+          
+            echo "::notice::Fetching tags from $FOLIO_REGISTRY$module_name$pre_release"
+            registry_resp="$(curl -fsSL "$FOLIO_REGISTRY$module_name$pre_release" || true)"          
+          
+            if [[ -z "$registry_resp" ]]; then
+              echo "::error::Failed to fetch latest module versions from registry for $module_name"
+              echo "failure_reason=Failed to fetch latest module versions from registry for $module_name" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+          
+            local latest_version
+          
+            jq -r '.[].id' registry.json | sed "s/^${module_name}-//" | \
+            while read -r version; do
+              local module_name_esc=$module_name
+              
+              if [[ "$type" == "ui" ]]; then
+                module_name_esc="${module_name#folio_}" # Remove folio_ prefix
+                module_name_esc="${module_name_esc//_/-}" # Replace _ with -
+                module_name_esc="@folio/$module_name_esc" # Add @folio scope for UI modules    
+              fi
+          
+              local is_snapshot=$(echo "$version" | grep -q "SNAPSHOT" && echo "true" || echo "false")
+              local repository=$([[ "$is_snapshot" == "true" ]] && echo "folioci" || echo "folioorg")
+              repository=$([[ "$type" == "ui" ]] && echo "npm-$repository" || echo "$repository")
+          
+              local artifact_path=$([[ $is_backend == "true" ]] && \
+                        echo "$DOCKER_REGISTRY/$module_name_esc/$version" || \
+                        echo "$NPM_REGISTRY/$repository/$module_name_esc")
+          
+              echo "::notice::Fetching artifact from $artifact_path"
+              resp="$(curl -fsSL "$image_path" || true)"
+              if [[ -z "$resp" ]]; then
+                echo "::warning::Failed to fetch tags for $module_name version $version"
+                continue
+              fi
+          
+              local ui_version=$(echo "$resp" | jq -r --arg ver "$version" '.versions[$ver] // empty' | head -n1)
+          
+              if [[ -z "$ui_version" ]]; then
+                echo "::warning::Failed to find ui npm package for $module_name version $version"
+                continue
+              fi
+          
+              latest_version="$ui_version"
+              break
+            done
+          
+            if [[ -z "$latest_version" ]]; then
+              echo "::error::Failed to fetch module artifacts from repository for $module_name"
+              echo "failure_reason=Failed to fetch module artifacts from repository for $module_name" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+            
+            if [[ -n "$latest_version" && "$latest_version" != "$current_version" ]]; then
+              echo "A new $type module version discovered: $module_name $current_version -> $latest_version"
+          
+              jq --arg name "$module_name" --arg version "$latest_version" '
+                  (.modules, .uiModules) |= map(if .name == $name then .version = $version else . end)
+                ' $STATE_FILE > temp.json && mv temp.json $STATE_FILE
               
               updated_modules+="$module_name $current_version -> $latest_version"$'\n'
               ((++updates))
