@@ -254,15 +254,16 @@ jobs:
                 echo "::warning::Failed to fetch tags for $module_name version $version"
                 continue
               fi
-          
-              ui_version=$(echo "$resp" | jq -r --arg ver "$version" '.versions[$ver] // empty' | head -n1)
-          
-              if [[ -z "$ui_version" ]]; then
-                echo "::warning::Failed to find ui npm package for $module_name version $version"
-                continue
+              
+              if [[ "$type" == "ui" ]]; then                
+                ui_version=$(jq -r --arg ver "$version" '.versions[$ver] // empty' <<< "$resp" | head -n1)
+                if [[ -z "$ui_version" ]]; then
+                  echo "::warning::Failed to find ui npm package for $module_name version $version"
+                  continue
+                fi
               fi
           
-              latest_version="$ui_version"
+              latest_version="$version"
               break
             done
           
