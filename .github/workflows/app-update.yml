@@ -240,12 +240,12 @@ jobs:
                 module_name_esc="@folio/$module_name_esc" # Add @folio scope for UI modules    
               fi
           
-              is_snapshot=$(echo "$version" | grep -q "SNAPSHOT" && echo "true" || echo "false")
+              is_snapshot=$([[ "$version" == *SNAPSHOT* ]] && echo true || echo false)
               repository=$([[ "$is_snapshot" == "true" ]] && echo "folioci" || echo "folioorg")
               repository=$([[ "$type" == "ui" ]] && echo "npm-$repository" || echo "$repository")
           
-              artifact_path=$([[ "$is_backend" == "true" ]] && \
-                        echo "$DOCKER_REGISTRY/$module_name_esc/$version" || \
+              artifact_path=$([[ "$type" == "backend" ]] && \
+                        echo "$DOCKER_REGISTRY/$repository/$module_name_esc/tags/$version" || \
                         echo "$NPM_REGISTRY/$repository/$module_name_esc")
           
               echo "::notice::Fetching artifact from $artifact_path"
