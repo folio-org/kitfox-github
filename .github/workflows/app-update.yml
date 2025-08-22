@@ -256,7 +256,10 @@ jobs:
               fi
               
               if [[ "$type" == "ui" ]]; then                
-                ui_version=$(jq -r --arg ver "$version" '.versions[$ver] // empty' <<< "$resp" | head -n1)
+                ui_version=$(jq -r --arg ver "$version" '
+                    if .versions[$ver] then $ver else "" end
+                  ' <<<"$resp")
+          
                 if [[ -z "$ui_version" ]]; then
                   echo "::warning::Failed to find ui npm package for $module_name version $version"
                   continue
