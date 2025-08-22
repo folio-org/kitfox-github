@@ -228,9 +228,9 @@ jobs:
               exit 1
             fi
           
-            latest_version
-          
-            jq -r '.[].id' registry.json | sed "s/^${module_name}-//" | \
+            latest_version=""
+
+            jq -r '.[].id' <<< "$registry_resp" | sed "s/^${module_name}-//" | \
             while read -r version; do
               module_name_esc=$module_name
               
