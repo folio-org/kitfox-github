@@ -217,7 +217,7 @@ jobs:
           while IFS=$'\t' read -r type module_name current_version; do
             echo "::group::Checking $type module: $module_name (current: $current_version)"
           
-            pre_release = "&$([[ "$type" == "backend" ]] && echo "preRelease" || echo "npmSnapshot")${{ inputs.pre_release }}"
+            pre_release="&$([[ "$type" == "backend" ]] && echo "preRelease" || echo "npmSnapshot")${{ inputs.pre_release }}"
           
             echo "::notice::Fetching tags from $FOLIO_REGISTRY$module_name$pre_release"
             registry_resp="$(curl -fsSL "$FOLIO_REGISTRY$module_name$pre_release" || true)"          
