@@ -217,7 +217,7 @@ jobs:
           while IFS=$'\t' read -r type module_name current_version; do
             echo "::group::Checking $type module: $module_name (current: $current_version)"
           
-            pre_release="&$([[ "$type" == "backend" ]] && echo "preRelease" || echo "npmSnapshot")${{ inputs.pre_release }}"
+            pre_release="&$([[ "$type" == "backend" ]] && echo "preRelease=" || echo "npmSnapshot=")${{ inputs.pre_release }}"
           
             echo "::notice::Fetching tags from $FOLIO_REGISTRY$module_name$pre_release"
             registry_resp="$(curl -fsSL "$FOLIO_REGISTRY$module_name$pre_release" || true)"          
@@ -244,7 +244,7 @@ jobs:
               repository=$([[ "$is_snapshot" == "true" ]] && echo "folioci" || echo "folioorg")
               repository=$([[ "$type" == "ui" ]] && echo "npm-$repository" || echo "$repository")
           
-              artifact_path=$([[ $is_backend == "true" ]] && \
+              artifact_path=$([[ "$is_backend" == "true" ]] && \
                         echo "$DOCKER_REGISTRY/$module_name_esc/$version" || \
                         echo "$NPM_REGISTRY/$repository/$module_name_esc")
           
