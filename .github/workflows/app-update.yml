@@ -229,9 +229,9 @@ jobs:
             fi
           
             latest_version=""
+            mapfile -t versions < <(jq -r '.[].id' <<<"$registry_resp" | sed "s/^${module_name}-//")
 
-            jq -r '.[].id' <<< "$registry_resp" | sed "s/^${module_name}-//" | \
-            while read -r version; do
+            for version in "${versions[@]}"; do
               module_name_esc=$module_name
               
               if [[ "$type" == "ui" ]]; then
