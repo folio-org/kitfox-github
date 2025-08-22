@@ -213,7 +213,7 @@ jobs:
           
             pre_release="&$([[ "$type" == "backend" ]] && echo "preRelease=" || echo "npmSnapshot=")${{ inputs.pre_release }}"
           
-            echo "::notice::Fetching tags from $FOLIO_REGISTRY$module_name$pre_release"
+            echo "::notice::Fetching latest version list from $FOLIO_REGISTRY$module_name$pre_release"
             registry_resp="$(curl -fsSL "$FOLIO_REGISTRY$module_name$pre_release" || true)"          
           
             if [[ -z "$registry_resp" ]]; then
@@ -242,10 +242,10 @@ jobs:
                         echo "$DOCKER_REGISTRY/$repository/$module_name_esc/tags/$version" || \
                         echo "$NPM_REGISTRY/$repository/$module_name_esc")
           
-              echo "::notice::Fetching artifact from $artifact_path"
+              echo "::notice::Check artifact existence in $artifact_path"
               resp="$(curl -fsSL "$artifact_path" || true)"
               if [[ -z "$resp" ]]; then
-                echo "::warning::Failed to fetch tags for $module_name version $version"
+                echo "::warning::Failed to check artifact existence for $module_name version $version"
                 continue
               fi
               
