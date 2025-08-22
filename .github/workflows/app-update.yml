@@ -211,13 +211,13 @@ jobs:
             exit 1
           fi
           
-          local updated_modules=""
-          local updates=0
+          updated_modules=""
+          updates=0
           
           while IFS=$'\t' read -r type module_name current_version; do
             echo "::group::Checking $type module: $module_name (current: $current_version)"
           
-            local pre_release = "&$([[ "$type" == "backend" ]] && echo "preRelease" || echo "npmSnapshot")${{ inputs.pre_release }}"
+            pre_release = "&$([[ "$type" == "backend" ]] && echo "preRelease" || echo "npmSnapshot")${{ inputs.pre_release }}"
           
             echo "::notice::Fetching tags from $FOLIO_REGISTRY$module_name$pre_release"
             registry_resp="$(curl -fsSL "$FOLIO_REGISTRY$module_name$pre_release" || true)"          
@@ -228,11 +228,11 @@ jobs:
               exit 1
             fi
           
-            local latest_version
+            latest_version
           
             jq -r '.[].id' registry.json | sed "s/^${module_name}-//" | \
             while read -r version; do
-              local module_name_esc=$module_name
+              module_name_esc=$module_name
               
               if [[ "$type" == "ui" ]]; then
                 module_name_esc="${module_name#folio_}" # Remove folio_ prefix
@@ -240,22 +240,22 @@ jobs:
                 module_name_esc="@folio/$module_name_esc" # Add @folio scope for UI modules    
               fi
           
-              local is_snapshot=$(echo "$version" | grep -q "SNAPSHOT" && echo "true" || echo "false")
-              local repository=$([[ "$is_snapshot" == "true" ]] && echo "folioci" || echo "folioorg")
+              is_snapshot=$(echo "$version" | grep -q "SNAPSHOT" && echo "true" || echo "false")
+              repository=$([[ "$is_snapshot" == "true" ]] && echo "folioci" || echo "folioorg")
               repository=$([[ "$type" == "ui" ]] && echo "npm-$repository" || echo "$repository")
           
-              local artifact_path=$([[ $is_backend == "true" ]] && \
+              artifact_path=$([[ $is_backend == "true" ]] && \
                         echo "$DOCKER_REGISTRY/$module_name_esc/$version" || \
                         echo "$NPM_REGISTRY/$repository/$module_name_esc")
           
               echo "::notice::Fetching artifact from $artifact_path"
-              resp="$(curl -fsSL "$image_path" || true)"
+              resp="$(curl -fsSL "$artifact_path" || true)"
               if [[ -z "$resp" ]]; then
                 echo "::warning::Failed to fetch tags for $module_name version $version"
                 continue
               fi
           
-              local ui_version=$(echo "$resp" | jq -r --arg ver "$version" '.versions[$ver] // empty' | head -n1)
+              ui_version=$(echo "$resp" | jq -r --arg ver "$version" '.versions[$ver] // empty' | head -n1)
           
               if [[ -z "$ui_version" ]]; then
                 echo "::warning::Failed to find ui npm package for $module_name version $version"
