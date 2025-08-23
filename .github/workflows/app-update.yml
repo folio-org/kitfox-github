@@ -76,6 +76,10 @@ on:
       app_descriptor_file_name:
         description: 'Name of generated application descriptor file'
         value: ${{ jobs.update-descriptor.outputs.app_descriptor_file_name }}
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token for repository access'
+        required: true
 
 permissions:
   contents: write
