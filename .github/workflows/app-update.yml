@@ -593,11 +593,15 @@ jobs:
           path: .
 
       - name: Configure Git
+        env:
+          PUSH_TOKEN: ${{ secrets.GH_APP_TOKEN || github.token }}
         run: |
           set -eo pipefail
           
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${{ inputs.repo }}.git"
+          git remote -v
           echo "::notice::Git configured for automated commits"
 
       - name: Commit Changes
