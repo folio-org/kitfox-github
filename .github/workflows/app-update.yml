@@ -690,3 +690,55 @@ jobs:
             echo "::notice::This was a dry run - no actual changes were made"
             echo "::notice::Set dry_run=false to apply changes"
           fi
+
+  upload_results:
+    name: Upload Results
+    runs-on: ubuntu-latest
+    needs: [update-descriptor, verify-publish-descriptor, commit-statefile]
+    if: always()
+    steps:
+      - name: Prepare Output Artifact
+        id: prepare-artifact
+        if: always()
+        env:
+          STATUS: >-
+            ${{ 
+                ((needs.commit-statefile.result == 'failure' || needs.verify-publish-descriptor.result == 'failure' || needs.update-descriptor.result == 'failure') && 'failed') ||
+                'success'
+            }}
+          FAILURE_REASON: >-
+            ${{ 
+                needs.update-descriptor.outputs.failure_reason || 
+                needs.verify-publish-descriptor.outputs.failure_reason || 
+                needs.commit-statefile.outputs.failure_reason || 'unknown' 
+            }}
+          APP_DESCRIPTOR_URL: ${{ format('{0}/{1}?full=true', 'https://far-test.ci.folio.org/applications', needs.update-descriptor.outputs.app_descriptor_file_name) }} # TODO: Change to production URL
+        run: |
+          set -eo pipefail
+
+          mkdir -p /tmp/results
+          cat > "/tmp/results/$APP_NAME.json" <<EOF
+          {
+            "application": "${{ inputs.app_name }}",
+            "status": "$STATUS",
+            "previous_version": "${{ needs.update-descriptor.outputs.previous_version }}",
+            "new_version": "${{ needs.update-descriptor.outputs.new_version }}",
+            "updated_modules": "${{ needs.update-descriptor.outputs.updated_modules }}",
+            "updated_cnt": "${{ needs.update-descriptor.outputs.updates_cnt }}",
+            "updated": ${{ needs.update-descriptor.outputs.updated == 'true' }},
+            "failure_reason": "$FAILURE_REASON",
+            "commit_sha": "${{ needs.commit-statefile.outputs.commit_sha }}",
+            "app_descriptor_file_name": "${{ needs.update-descriptor.outputs.app_descriptor_file_name }}",
+            "app_descriptor_url": "$APP_DESCRIPTOR_URL"
+          }
+          EOF
+          
+          cat "/tmp/results/${{ inputs.app_name }}.json"
+
+      - name: Upload Application Result
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "result-${{ matrix.application }}"
+          path: "/tmp/results/${{ matrix.application }}.json"
+          retention-days: 1
