@@ -76,7 +76,7 @@ on:
     secrets:
       GH_APP_TOKEN:
         description: 'GitHub token for repository access'
-        required: false
+        required: true
 
 permissions:
   contents: write
@@ -579,7 +579,7 @@ jobs:
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
-          token: ${{ secrets.GH_APP_TOKEN || github.token }}
+          token: ${{ secrets.GH_APP_TOKEN }}
 
       - name: Download StateFile Artifact
         uses: actions/download-artifact@v4
@@ -588,15 +588,11 @@ jobs:
           path: .
 
       - name: Configure Git
-        env:
-          PUSH_TOKEN: ${{ secrets.GH_APP_TOKEN || github.token }}
         run: |
           set -eo pipefail
           
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${{ inputs.repo }}.git"
-          git remote -v
           echo "::notice::Git configured for automated commits"
 
       - name: Commit Changes
