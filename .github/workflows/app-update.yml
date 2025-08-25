@@ -40,6 +40,12 @@ on:
         required: false
         type: boolean
         default: false
+      app_token:
+        description: 'GitHub token for repository access'
+        required: false
+        default: ''
+        type: string
+
     outputs:
       app_name:
         description: 'Application name'
@@ -73,10 +79,6 @@ on:
       app_descriptor_file_name:
         description: 'Name of generated application descriptor file'
         value: ${{ jobs.update-descriptor.outputs.app_descriptor_file_name }}
-    secrets:
-      GH_APP_TOKEN:
-        description: 'GitHub token for repository access'
-        required: true
 
 permissions:
   contents: write
@@ -579,7 +581,7 @@ jobs:
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
-          token: ${{ secrets.GH_APP_TOKEN }}
+          token: ${{ inputs.app_token || github.token }}
 
       - name: Download StateFile Artifact
         uses: actions/download-artifact@v4
