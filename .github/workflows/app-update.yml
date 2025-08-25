@@ -40,11 +40,6 @@ on:
         required: false
         type: boolean
         default: false
-      app_token:
-        description: 'GitHub token for repository access'
-        required: true
-        type: string
-
     outputs:
       app_name:
         description: 'Application name'
@@ -78,6 +73,10 @@ on:
       app_descriptor_file_name:
         description: 'Name of generated application descriptor file'
         value: ${{ jobs.update-descriptor.outputs.app_descriptor_file_name }}
+    secrets:
+      GH_APP_TOKEN:
+        description: 'GitHub token for repository access'
+        required: true
 
 permissions:
   contents: write
@@ -580,7 +579,7 @@ jobs:
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
-          token: ${{ inputs.app_token || github.token }}
+          token: ${{ secrets.GH_APP_TOKEN || github.token }}
 
       - name: Download StateFile Artifact
         uses: actions/download-artifact@v4
@@ -630,19 +629,6 @@ jobs:
           
           echo "::notice::Successfully committed changes #$commit_sha"
           echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Debug which token is being used
-        run: |
-          if [ -z "${{ inputs.app_token }}" ]; then
-            echo "::error::inputs.app_token is EMPTY"
-            exit 1
-          fi
-          
-          echo "::add-mask::${{ inputs.app_token }}"
-          echo "app_token length: ${#{{ inputs.app_token }}}"
-          
-          git remote -v
-          git config --get-regexp '^http\..*\.extraheader$' || true          
 
       - name: Push Changes
         if: inputs.dry_run == false
