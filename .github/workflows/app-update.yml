@@ -42,8 +42,7 @@ on:
         default: false
       app_token:
         description: 'GitHub token for repository access'
-        required: false
-        default: ''
+        required: true
         type: string
 
     outputs:
