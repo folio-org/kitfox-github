@@ -631,6 +631,19 @@ jobs:
           echo "::notice::Successfully committed changes #$commit_sha"
           echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
 
+      - name: Debug which token is being used
+        run: |
+          if [ -z "${{ inputs.app_token }}" ]; then
+            echo "::error::inputs.app_token is EMPTY"
+            exit 1
+          fi
+          
+          echo "::add-mask::${{ inputs.app_token }}"
+          echo "app_token length: ${#{{ inputs.app_token }}}"
+          
+          git remote -v
+          git config --get-regexp '^http\..*\.extraheader$' || true          
+
       - name: Push Changes
         if: inputs.dry_run == false
         env:
