@@ -32,6 +32,30 @@ All workflows in this repository follow the `workflow_call` pattern, enabling:
 
 ## 📋 Available Workflows
 
+### Application Update
+**File**: [`app-update.yml`](workflows/app-update.yml)  
+**Purpose**: Automated module version updates and application descriptor management  
+**Documentation**: [App Update Guide](docs/app-update.md)
+
+**Key Features**:
+- Automated module version discovery from FOLIO registry
+- Application descriptor updates with latest module versions
+- Maven artifact generation and validation
+- FAR registry integration and publishing
+- Comprehensive validation and rollback handling
+- Dry-run support for safe testing
+
+### Application Update Notification
+**File**: [`app-update-notification.yml`](workflows/app-update-notification.yml)  
+**Purpose**: Rich Slack notifications for application update operations  
+**Documentation**: [App Update Notification Guide](docs/app-update-notification.md)
+
+**Key Features**:
+- Detailed update notifications with module-level changes
+- Success and failure message templates with rich formatting
+- Direct links to commits, descriptors, and workflow runs
+- Integration with Eureka CI Slack channels
+
 ### Application Release Preparation
 **File**: [`app-release-preparation.yml`](workflows/app-release-preparation.yml)  
 **Purpose**: Standardized release branch preparation for FOLIO applications  
@@ -152,6 +176,48 @@ jobs:
       slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
 ```
 
+### Snapshot CI Pattern
+
+```yaml
+on:
+  schedule:
+    - cron: "*/20 * * * *"  # Automated snapshot updates
+
+jobs:
+  fetch-platform-descriptor:
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: folio-org/platform-lsp
+          ref: snapshot
+      - uses: actions/upload-artifact@v4
+        with:
+          name: platform-descriptor
+          path: platform-descriptor.json
+
+  update-application:
+    needs: fetch-platform-descriptor
+    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    with:
+      app_name: ${{ github.event.repository.name }}
+      repo: ${{ github.repository }}
+      workflow_run_number: ${{ github.run_number }}
+    secrets: inherit
+
+  notify-results:
+    needs: update-application
+    if: always() && needs.update-application.outputs.updated == 'true'
+    uses: folio-org/kitfox-github/.github/workflows/app-update-notification.yml@master
+    with:
+      app_name: ${{ github.event.repository.name }}
+      repo: ${{ github.repository }}
+      new_version: ${{ needs.update-application.outputs.new_version }}
+      previous_version: ${{ needs.update-application.outputs.previous_version }}
+      workflow_result: ${{ needs.update-application.result }}
+      slack_notif_channel: ${{ vars.SLACK_NOTIF_CHANNEL }}
+    secrets: inherit
+```
+
 ### Matrix Orchestration Pattern
 
 ```yaml
@@ -206,6 +272,8 @@ inputs:
 
 ### Workflow-Specific Guides
 
+- **[App Update](docs/app-update.md)**: Automated module updates and descriptor management
+- **[App Update Notification](docs/app-update-notification.md)**: Rich Slack notifications for update operations
 - **[App Release Preparation](docs/app-release-preparation.md)**: Complete guide to release preparation workflow
 - **[App Notification](docs/app-notification.md)**: Slack notification patterns and customization
 - **[Distributed Orchestration](docs/distributed-orchestration.md)**: Cross-repository coordination patterns
