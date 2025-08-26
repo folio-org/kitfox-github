@@ -40,6 +40,11 @@ on:
         required: false
         type: boolean
         default: false
+      use_github_app:
+        description: 'Use GitHub App for authentication'
+        required: false
+        type: boolean
+        default: false
     outputs:
       app_name:
         description: 'Application name'
@@ -73,10 +78,6 @@ on:
       app_descriptor_file_name:
         description: 'Name of generated application descriptor file'
         value: ${{ jobs.update-descriptor.outputs.app_descriptor_file_name }}
-    secrets:
-      GH_APP_TOKEN:
-        description: 'GitHub token for repository access'
-        required: false
 
 permissions:
   contents: write
@@ -573,13 +574,22 @@ jobs:
       failure_reason: ${{ steps.commit-changes.outputs.failure_reason || 
         steps.delete-uploaded-app-in-registry.outputs.failure_reason || ''}}
     steps:
+      - name: Generate App Token
+        id: app-token
+        if: inputs.use_github_app == true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.app_name }}
 
       - name: Checkout Application Repository
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
-          token: ${{ secrets.GH_APP_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Download StateFile Artifact
         uses: actions/download-artifact@v4
@@ -588,15 +598,11 @@ jobs:
           path: .
 
       - name: Configure Git
-        env:
-          PUSH_TOKEN: ${{ secrets.GH_APP_TOKEN || github.token }}
         run: |
           set -eo pipefail
           
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${{ inputs.repo }}.git"
-          git remote -v
           echo "::notice::Git configured for automated commits"
 
       - name: Commit Changes
