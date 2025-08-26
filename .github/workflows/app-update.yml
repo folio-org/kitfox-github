@@ -576,7 +576,7 @@ jobs:
     steps:
       - name: Generate App Token
         id: app-token
-        if: inputs.use_github_app == 'true'
+        if: inputs.use_github_app == true
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ vars.EUREKA_CI_APP_ID }}
