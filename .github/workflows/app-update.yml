@@ -628,7 +628,7 @@ jobs:
           fi
 
           git commit -F - <<EOF
-          Update application state file to $NEW_VERSION".
+          Update application state file to $NEW_VERSION.
 
           Previous version: $PREVIOUS_VERSION
           Total modules updated: $UPDATED_CNT
