@@ -648,7 +648,12 @@ jobs:
           set -eo pipefail
 
           echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
-          git push -u origin "$BRANCH_NAME"
+          if ! output=$(git push -u origin "$BRANCH_NAME" 2>&1); then
+            echo "::error::Failed to push changes to '$BRANCH_NAME'"
+            echo "::error::$output"
+            echo "failure_reason=Failed to push changes. Reason: $output" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
           echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
 
       - name: Delete Uploaded Application in Registry
