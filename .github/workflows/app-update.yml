@@ -734,7 +734,7 @@ jobs:
           --arg new_version             "${{ needs.update-descriptor.outputs.new_version }}" \
           --rawfile updated_modules     /tmp/updated_modules.txt \
           --arg updated_cnt             "${{ needs.update-descriptor.outputs.updates_cnt }}" \
-          --argjson updated             ${{ needs.update-descriptor.outputs.updated == 'true' }} \
+          --argjson updated             ${{ needs.update-descriptor.outputs.updated }} \
           --rawfile failure_reason      /tmp/failure_reason.txt \
           --arg commit_sha              "${{ needs.commit-statefile.outputs.commit_sha }}" \
           --arg app_descriptor_file_name "${{ needs.update-descriptor.outputs.app_descriptor_file_name }}" \
