@@ -1,0 +1,144 @@
+name: Application Update Slack Notification
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository name (org/repo format)'
+        required: true
+        type: string
+      new_version:
+        description: 'Application new version'
+        required: true
+        type: string
+      previous_version:
+        description: 'Application previous version'
+        required: true
+        type: string
+      updated_cnt:
+        description: 'Number of updated modules'
+        required: false
+        type: string
+        default: ''
+      updated_modules:
+        description: 'List of updated modules'
+        required: false
+        type: string
+        default: ''
+      failure_reason:
+        description: 'Reason for failure if applicable'
+        required: false
+        type: string
+        default: ''
+      commit_sha:
+        description: 'Commit SHA of the release'
+        required: true
+        type: string
+      app_descriptor_file_name:
+        description: 'Name of generated application descriptor file'
+        required: true
+        type: string
+      app_descriptor_url:
+        description: 'Application descriptor URL'
+        required: true
+        type: string
+      workflow_result:
+        description: 'Result of the main workflow (success/failure)'
+        required: true
+        type: string
+      workflow_run_id:
+        description: 'GitHub run ID for linking'
+        required: true
+        type: string
+      workflow_run_number:
+        description: 'GitHub run number for display'
+        required: true
+        type: string
+      slack_notif_channel:
+        description: 'Slack notification channel'
+        required: true
+        type: string
+
+jobs:
+  send-notification:
+    name: Send Slack Notification
+    runs-on: ubuntu-latest
+    env:
+      SLACK_BOT_TOKEN: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+      SLACK_NOTIF_CHANNEL: ${{ inputs.slack_notif_channel }}
+    steps:
+      - name: Build Updated Modules Info String
+        id: updated-modules-info-string
+        if: inputs.workflow_result == 'success'
+        env:
+          MODULES: "${{ inputs.updated_modules }}"
+        run: |
+          set -eo pipefail
+          
+          echo "::notice::Build updated modules info string"
+          echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
+
+      - name: Send SUCCESS Slack Notification
+        if: inputs.workflow_result == 'success'
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ env.SLACK_BOT_TOKEN }}
+          errors: true
+          payload: |
+            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            text: "Application Update SUCCESS"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ inputs.app_name }} Application Update SUCCESS <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"            
+            attachments:
+              - color: "good"
+                fields:
+                  - title: "New Version"
+                    value: "${{ inputs.new_version }}"
+                    short: true
+                  - title: "Previous Version"
+                    value: "${{ inputs.previous_version }}"
+                    short: true                    
+                  - title: "Updated"
+                    value: "${{ inputs.updated_cnt }}"
+                    short: true                   
+                  - title: "Commit"
+                    value: "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ inputs.commit_sha }}|${{ inputs.commit_sha }}>"
+                    short: true
+                  - title: "Descriptor"
+                    value: "<${{ inputs.app_descriptor_url }}|${{ inputs.app_descriptor_file_name }}>"
+                    short: false
+              - color: "good"
+                mrkdwn_in: ["fields"]
+                text: ${{ toJSON(steps.updated-modules-info-string.outputs.updated_modules) }}
+                footer: "Eureka CI/CD"
+
+      - name: Send FAILED Slack Notification
+        if: inputs.workflow_result == 'failure'
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ env.SLACK_BOT_TOKEN }}
+          errors: true
+          payload: |
+            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            text: "Application Update FAILED"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ inputs.app_name }} Application Update FAILED <${{ github.server_url }}/${{ inputs.app_name }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+            attachments:
+              - color: "danger"
+                fields:
+                  - title: "Reason"
+                    value: "${{ inputs.failure_reason }}"
+                    short: false                  
+                footer: "Eureka CI/CD"
