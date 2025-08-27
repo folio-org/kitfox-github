@@ -589,7 +589,7 @@ jobs:
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.branch }}
-          token: ${{ steps.app-token.outputs.token || github.token }}
+          token: ${{ github.token }}
 
       - name: Download StateFile Artifact
         uses: actions/download-artifact@v4
