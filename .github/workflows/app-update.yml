@@ -572,7 +572,8 @@ jobs:
     outputs:
       commit_sha: ${{ steps.commit-changes.outputs.commit_sha }}
       failure_reason: ${{ steps.commit-changes.outputs.failure_reason || 
-        steps.delete-uploaded-app-in-registry.outputs.failure_reason || ''}}
+        steps.delete-uploaded-app-in-registry.outputs.failure_reason || 
+        steps.push-changes.outputs.failure_reason || ''}}
     steps:
       - name: Generate App Token
         id: app-token
@@ -628,7 +629,7 @@ jobs:
           fi
 
           git commit -F - <<EOF
-          Update application state file to $NEW_VERSION".
+          Update application state file to $NEW_VERSION.
 
           Previous version: $PREVIOUS_VERSION
           Total modules updated: $UPDATED_CNT
@@ -641,6 +642,7 @@ jobs:
           echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
 
       - name: Push Changes
+        id: push-changes
         if: inputs.dry_run == false
         env:
           BRANCH_NAME: ${{ inputs.branch }}
@@ -648,7 +650,12 @@ jobs:
           set -eo pipefail
 
           echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
-          git push -u origin "$BRANCH_NAME"
+          if ! output=$(git push -u origin "$BRANCH_NAME" 2>&1); then
+            echo "::error::Failed to push changes to '$BRANCH_NAME'"
+            echo "::error::$output"
+            echo "failure_reason=Failed to push changes" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
           echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
 
       - name: Delete Uploaded Application in Registry
@@ -734,7 +741,7 @@ jobs:
           --arg new_version             "${{ needs.update-descriptor.outputs.new_version }}" \
           --rawfile updated_modules     /tmp/updated_modules.txt \
           --arg updated_cnt             "${{ needs.update-descriptor.outputs.updates_cnt }}" \
-          --argjson updated             ${{ needs.update-descriptor.outputs.updated == 'true' }} \
+          --argjson updated             ${{ needs.update-descriptor.outputs.updated }} \
           --rawfile failure_reason      /tmp/failure_reason.txt \
           --arg commit_sha              "${{ needs.commit-statefile.outputs.commit_sha }}" \
           --arg app_descriptor_file_name "${{ needs.update-descriptor.outputs.app_descriptor_file_name }}" \
