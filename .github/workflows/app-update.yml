@@ -572,7 +572,8 @@ jobs:
     outputs:
       commit_sha: ${{ steps.commit-changes.outputs.commit_sha }}
       failure_reason: ${{ steps.commit-changes.outputs.failure_reason || 
-        steps.delete-uploaded-app-in-registry.outputs.failure_reason || ''}}
+        steps.delete-uploaded-app-in-registry.outputs.failure_reason || 
+        steps.push-changes.outputs.failure_reason || ''}}
     steps:
       - name: Generate App Token
         id: app-token
@@ -641,6 +642,7 @@ jobs:
           echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
 
       - name: Push Changes
+        id: push-changes
         if: inputs.dry_run == false
         env:
           BRANCH_NAME: ${{ inputs.branch }}
