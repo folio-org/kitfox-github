@@ -30,11 +30,6 @@ on:
         required: false
         type: string
         default: 'only'
-      is_release_flow:
-        description: 'Whether this is a release flow (affects version calculation)'
-        required: false
-        type: boolean
-        default: false
     outputs:
       updated:
         description: 'Whether application was updated'
@@ -104,7 +99,8 @@ jobs:
         env:
           DOCKER_REGISTRY: "https://hub.docker.com/v2/repositories"
           NPM_REGISTRY: "https://repository.folio.org/repository"
-          FOLIO_REGISTRY: "https://folio-registry.dev.folio.org/_/proxy/modules?latest=10&order=desc&orderBy=id&filter="
+          FOLIO_REGISTRY: "https://folio-registry.dev.folio.org/_/proxy/modules?latest=20&order=desc&orderBy=id&filter="
+          RELEASE_ONLY: ${{ inputs.pre_release == 'false' && echo true || echo false }}
         run: |
           set -eo pipefail
           echo "::notice::Check for newer module versions"
@@ -120,6 +116,18 @@ jobs:
           
           while IFS=$'\t' read -r type module_name current_version; do
             echo "::group::Checking $type module: $module_name (current: $current_version)"
+          
+            if ! [[ "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z\.-]+)?$ ]]; then
+              echo "::warning::The current version '$current_version' is not semver; skipping $module_name"
+              echo "::endgroup::"
+              continue
+            fi
+          
+            if ! [[ "$RELEASE_ONLY" && "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]{1,3}$ ]]; then
+              echo "::warning::The current version '$current_version' is not a release version; skipping $module_name""
+              echo "::endgroup::"
+              continue
+            fi
           
             pre_release="&$([[ "$type" == "backend" ]] && echo "preRelease=" || echo "npmSnapshot=")${{ inputs.pre_release }}"
           
@@ -137,6 +145,12 @@ jobs:
 
             for version in "${versions[@]}"; do
               module_name_esc=$module_name
+          
+              # e.g., skip 2.x.x when current is 1.x.x
+              if [[ $RELEASE_ONLY && "${version%%.*}" != "${current_version%%.*}" ]]; then
+                echo "::warning::Skipping $type module $module_name version $version"
+                continue
+              fi
               
               if [[ "$type" == "ui" ]]; then
                 module_name_esc="${module_name#folio_}" # Remove folio_ prefix
@@ -221,21 +235,14 @@ jobs:
           IS_SNAPSHOT: ${{ steps.collect-previous-version.outputs.is_snapshot }}
           RUN_NUMBER: ${{ inputs.workflow_run_number }}
           DESCRIPTOR_BUILD_OFFSET: ${{ fromJSON(inputs.descriptor_build_offset || '0') }}
-          IS_RELEASE_FLOW: ${{ inputs.is_release_flow }}
         run: |
           set -eo pipefail
           echo "::notice::Calculate new version"
 
-          if [[ "$IS_RELEASE_FLOW" == "true" ]]; then
-            # For release flow, increment patch version
-            NEW_PATCH=$((PATCH + 1))
-            NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
-          elif [[ "$IS_SNAPSHOT" == "true" ]]; then
-            # For snapshot flow, use build number
+          if [[ "$IS_SNAPSHOT" == "true" ]]; then
             BUILD_NUMBER=$((DESCRIPTOR_BUILD_OFFSET + RUN_NUMBER))
             NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}-SNAPSHOT.${BUILD_NUMBER}"
           else
-            # Default: increment patch
             NEW_PATCH=$((PATCH + 1))
             NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
           fi
