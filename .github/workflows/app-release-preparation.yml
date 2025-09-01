@@ -322,8 +322,7 @@ jobs:
         All module versions set to placeholder <CHANGE_ME> for team updates.
       dry_run: false
       use_github_app: false
-      create_branch: true  # Create the new release branch
-      source_branch: ${{ needs.prepare-branch.outputs.source_branch }}  # From this source
+      source_branch: ${{ needs.prepare-branch.outputs.source_branch }}
     secrets: inherit
 
   workflow-summary:
