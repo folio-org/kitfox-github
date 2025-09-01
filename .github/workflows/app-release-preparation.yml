@@ -84,7 +84,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ inputs.app_name }}
+          repository: ${{ inputs.repo }}
           fetch-depth: 0
 
       - name: Verify Branches
