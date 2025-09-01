@@ -25,11 +25,21 @@ on:
         required: false
         type: string
         default: '100100000000000'
-      pre_release:
-        description: 'Pre-release modules (only | true | false)'
+      mode:
+        description: 'Update mode (snapshot | release)'
         required: false
         type: string
-        default: 'only'
+        default: 'snapshot'
+      target_version:
+        description: 'Target version to set (overrides calculated version)'
+        required: false
+        type: string
+        default: ''
+      placeholder_modules:
+        description: 'Use placeholder <CHANGE_ME> for module versions (for release preparation)'
+        required: false
+        type: boolean
+        default: false
     outputs:
       updated:
         description: 'Whether application was updated'
@@ -69,14 +79,15 @@ jobs:
     name: Update Application
     runs-on: ubuntu-latest
     outputs:
-      updated_modules: ${{ steps.update-module-versions.outputs.updated_modules }}
-      updated: ${{ steps.update-module-versions.outputs.updated }}
-      updates_cnt: ${{ steps.update-module-versions.outputs.updates }}
+      updated_modules: ${{ steps.update-module-versions.outputs.updated_modules || steps.set-placeholder-modules.outputs.updated_modules }}
+      updated: ${{ steps.update-module-versions.outputs.updated || steps.set-placeholder-modules.outputs.updated }}
+      updates_cnt: ${{ steps.update-module-versions.outputs.updates || steps.set-placeholder-modules.outputs.updates }}
       previous_version: ${{ steps.update-application-version.outputs.previous_version }}
       new_version: ${{ steps.update-application-version.outputs.new_version }}
       app_descriptor_file: ${{ steps.generate-application-descriptor.outputs.app_descriptor_file }}
       app_descriptor_file_name: ${{ steps.generate-application-descriptor.outputs.app_descriptor_file_name }}
       failure_reason: ${{ steps.update-module-versions.outputs.failure_reason || 
+        steps.set-placeholder-modules.outputs.failure_reason ||
         steps.generate-application-descriptor.outputs.failure_reason || '' }}
     steps:
       - name: Checkout Application Repository
@@ -94,13 +105,39 @@ jobs:
           branch: ${{ inputs.branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set Placeholder Module Versions
+        id: set-placeholder-modules
+        if: inputs.placeholder_modules == true
+        env:
+          TARGET_VERSION: ${{ inputs.target_version }}
+        run: |
+          set -eo pipefail
+          
+          echo "::notice::Setting placeholder module versions"
+          
+          jq --arg newVer "${TARGET_VERSION:-<CHANGE_ME>}" '
+            (if $newVer != "<CHANGE_ME>" then .version = $newVer else . end)
+            | .modules     
+            |= map(.version = "<CHANGE_ME>")
+            | .uiModules    
+            |= map(.version = "<CHANGE_ME>")
+          ' $STATE_FILE > temp.json && mv temp.json $STATE_FILE
+          
+          echo "::notice::Set placeholder versions for all modules"
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+          echo "updates=0" >> "$GITHUB_OUTPUT"
+          echo "updated_modules=All modules set to placeholder <CHANGE_ME>" >> "$GITHUB_OUTPUT"
+
       - name: Update Module Versions
         id: update-module-versions
+        if: inputs.placeholder_modules != true
         env:
           DOCKER_REGISTRY: "https://hub.docker.com/v2/repositories"
           NPM_REGISTRY: "https://repository.folio.org/repository"
           FOLIO_REGISTRY: "https://folio-registry.dev.folio.org/_/proxy/modules?latest=20&order=desc&orderBy=id&filter="
-          RELEASE_ONLY: ${{ inputs.pre_release == 'false' && echo true || echo false }}
+          MODE: ${{ inputs.mode }}
+          BACKEND_PRE_RELEASE: ${{ inputs.mode == 'snapshot' && 'preRelease=only' || 'preRelease=false' }}
+          UI_PRE_RELEASE: ${{ inputs.mode == 'snapshot' && 'npmSnapshot=only' || 'npmSnapshot=false' }}
         run: |
           set -eo pipefail
           echo "::notice::Check for newer module versions"
@@ -123,13 +160,13 @@ jobs:
               continue
             fi
           
-            if ! [[ "$RELEASE_ONLY" && "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]{1,3}$ ]]; then
+            if [[ "$MODE" == "release" ]] && ! [[ "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]{1,3}$ ]]; then
               echo "::warning::The current version '$current_version' is not a release version; skipping $module_name"
               echo "::endgroup::"
               continue
             fi
-          
-            pre_release="&$([[ "$type" == "backend" ]] && echo "preRelease=" || echo "npmSnapshot=")${{ inputs.pre_release }}"
+
+            pre_release="&$([[ "$type" == "backend" ]] && echo "$BACKEND_PRE_RELEASE" || echo "$UI_PRE_RELEASE")"
           
             echo "::notice::Fetching latest version list from $FOLIO_REGISTRY$module_name$pre_release"
             registry_resp="$(curl -fsSL "$FOLIO_REGISTRY$module_name$pre_release" || true)"          
@@ -227,7 +264,7 @@ jobs:
 
       - name: Calculate New Version
         id: calculate-new-version
-        if: steps.update-module-versions.outputs.updated == 'true'
+        if: (steps.update-module-versions.outputs.updated == 'true' || steps.set-placeholder-modules.outputs.updated == 'true') && inputs.target_version == ''
         env:
           MAJOR: ${{ steps.collect-previous-version.outputs.major }}
           MINOR: ${{ steps.collect-previous-version.outputs.minor }}
@@ -250,11 +287,38 @@ jobs:
           echo "::notice::Calculated new version: $NEW_VERSION"
           echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Update POM Version
+        id: update-pom-version
+        if: inputs.target_version != '' || (inputs.mode == 'release' && (steps.update-module-versions.outputs.updated == 'true' || steps.set-placeholder-modules.outputs.updated == 'true'))
+        env:
+          NEW_VERSION: ${{ inputs.target_version || steps.calculate-new-version.outputs.new_version }}
+        run: |
+          set -eo pipefail
+
+          if [[ -n "$NEW_VERSION" && -f "pom.xml" ]]; then
+            CURRENT_POM_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+            
+            if [[ "$CURRENT_POM_VERSION" != "$NEW_VERSION" ]]; then
+              echo "::notice::Updating pom.xml for ${{ inputs.mode == 'release' && 'release' || 'explicit version' }}"
+              echo "::group::Updating pom.xml version from $CURRENT_POM_VERSION to $NEW_VERSION"
+              mvn versions:set \
+                  -DnewVersion="$NEW_VERSION" \
+                  -DgenerateBackupPoms=false
+              echo "::endgroup::"
+              
+              echo "::notice::Successfully updated pom.xml version to $NEW_VERSION"
+            else
+              echo "::notice::POM version already matches target version: $NEW_VERSION"
+            fi
+          else
+            echo "::notice::Skipping POM update (snapshot mode with calculated version)"
+          fi
+
       - name: Update Application Version
         id: update-application-version
-        if: steps.update-module-versions.outputs.updated == 'true'
+        if: steps.update-module-versions.outputs.updated == 'true' || steps.set-placeholder-modules.outputs.updated == 'true'
         env:
-          NEW_VERSION: ${{ steps.calculate-new-version.outputs.new_version }}
+          NEW_VERSION: ${{ inputs.target_version || steps.calculate-new-version.outputs.new_version }}
         run: |
           set -eo pipefail
           
