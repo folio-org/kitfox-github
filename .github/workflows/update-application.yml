@@ -336,7 +336,7 @@ jobs:
 
       - name: Generate Application Descriptor
         id: generate-application-descriptor
-        if: steps.update-application-version.outputs.updated == 'true'
+        if: inputs.placeholder_modules != true && steps.update-application-version.outputs.updated == 'true'
         env:
           SUPRESS_LOGS: "-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
           COMMAND: "org.folio:folio-application-generator:generateFromJson"
@@ -383,7 +383,7 @@ jobs:
 
       - name: Upload Descriptor
         uses: actions/upload-artifact@v4
-        if: steps.update-application-version.outputs.updated == 'true'
+        if: inputs.placeholder_modules != true && steps.update-application-version.outputs.updated == 'true'
         with:
           name: "${{ env.APP_NAME }}-descriptor"
           path: "target/${{ env.APP_NAME }}*.json"
