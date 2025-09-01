@@ -7,6 +7,10 @@ on:
         description: 'Application name'
         required: true
         type: string
+      repo:
+        description: 'Application repository name (org/repo format)'
+        required: true
+        type: string
       previous_release_branch:
         description: 'Previous release branch (e.g., R1-2024)'
         required: true
@@ -129,7 +133,7 @@ jobs:
         id: collect-previous-version
         uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
         with:
-          app_name: ${{ inputs.app_name }}
+          app_name: ${{ inputs.repo }}
           branch: ${{ steps.verify-branches.outputs.source_branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -138,7 +142,7 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
         if: steps.verify-branches.outputs.has_previous_branch == 'false'
         with:
-          app_name: ${{ inputs.app_name }}
+          app_name: ${{ inputs.repo }}
           branch: ${{ steps.verify-branches.outputs.default_branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -294,7 +298,7 @@ jobs:
     uses: ./.github/workflows/update-application.yml
     with:
       app_name: ${{ inputs.app_name }}
-      repo: ${{ inputs.app_name }}
+      repo: ${{ inputs.repo }}
       branch: ${{ needs.prepare-branch.outputs.source_branch }}
       workflow_run_number: ${{ github.run_number }}
       target_version: ${{ needs.prepare-branch.outputs.app_version }}
@@ -308,8 +312,8 @@ jobs:
     uses: ./.github/workflows/commit-application-changes.yml
     with:
       app_name: ${{ inputs.app_name }}
-      repo: ${{ inputs.app_name }}
-      branch: ${{ inputs.new_release_branch }}  # Target branch to create and push to
+      repo: ${{ inputs.repo }}
+      branch: ${{ inputs.new_release_branch }}
       commit_message: |
         Prepare ${{ inputs.app_name }} for release. Initial commit.
         
