@@ -124,7 +124,7 @@ jobs:
             fi
           
             if ! [[ "$RELEASE_ONLY" && "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]{1,3}$ ]]; then
-              echo "::warning::The current version '$current_version' is not a release version; skipping $module_name""
+              echo "::warning::The current version '$current_version' is not a release version; skipping $module_name"
               echo "::endgroup::"
               continue
             fi
