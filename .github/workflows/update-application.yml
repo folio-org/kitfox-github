@@ -371,12 +371,14 @@ jobs:
           
           echo "::notice::Application artifact generated successfully: $APP_DESCRIPTOR_FILENAME"
 
-      - name: Upload State File
+      - name: Upload Application Update Files
         uses: actions/upload-artifact@v4
         if: steps.update-application-version.outputs.updated == 'true'
         with:
-          name: "${{ env.APP_NAME }}-state-file"
-          path: ${{ env.STATE_FILE }}
+          name: "${{ env.APP_NAME }}-update-files"
+          path: |
+            ${{ env.STATE_FILE }}
+            pom.xml
           retention-days: 1
 
       - name: Upload Descriptor
