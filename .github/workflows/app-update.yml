@@ -164,35 +164,12 @@ jobs:
           echo "::notice::Application descriptor deleted in registry successfully"
           rm -f "$resp_file"
 
-  workflow-summary:
-    name: Workflow Summary
-    runs-on: ubuntu-latest
-    needs: [update-application, verify-application, commit-changes]
-    if: always()
-    steps:
-      - name: Display Summary
-        run: |
-          set -eo pipefail
 
-          echo "::notice::$APP_NAME Update Summary"
-          echo ""
-          echo "Branch: ${{ inputs.branch }}"
-          echo "Previous Version: ${{ needs.update-application.outputs.previous_version }}"
-          echo "New Version: ${{ needs.update-application.outputs.new_version }}"
-          echo "Updated Modules Count: ${{ needs.update-application.outputs.updates_cnt }}"
-          echo "Updated Modules: ${{ needs.update-application.outputs.updated_modules }}"
-          echo "Commit: ${{ needs.commit-changes.outputs.commit_sha }}"
-          echo ""
-          
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            echo "::notice::This was a dry run - no actual changes were made"
-            echo "::notice::Set dry_run=false to apply changes"
-          fi
 
   upload_results:
     name: Upload Results
     runs-on: ubuntu-latest
-    needs: [update-application, verify-application, commit-changes, cleanup-on-failure, workflow-summary]
+    needs: [update-application, verify-application, commit-changes, cleanup-on-failure]
     if: always()
     steps:
       - name: Prepare Output Artifact
