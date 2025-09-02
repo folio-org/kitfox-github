@@ -1,34 +1,43 @@
 # Application Release Preparation Workflow
 
 **Workflow**: `app-release-preparation.yml`  
-**Purpose**: Standardized release branch preparation for FOLIO applications  
+**Purpose**: Orchestrates release branch preparation for FOLIO applications  
 **Type**: Reusable workflow (`workflow_call`)
 
 ## 🎯 Overview
 
-This workflow automates the preparation of FOLIO application repositories for release cycles. It handles version extraction, branch management, and application descriptor updates with proper placeholder versioning for coordinated releases.
+This workflow orchestrates the preparation of FOLIO application repositories for release cycles. It coordinates the modular workflows to create release branches, set placeholder versions for team-managed modules, and update both application descriptors and pom.xml files.
+
+## 🏗️ Refactored Architecture
+
+The workflow leverages modular components for better reusability:
+
+1. **`update-application.yml`** - Sets placeholder versions and updates pom.xml
+2. **`commit-application-changes.yml`** - Creates branch and commits changes
+
+This orchestrator coordinates these components for release preparation.
 
 ## 📋 Workflow Interface
 
 ### Inputs
 
-| Input | Description | Required | Type | Default |
-|-------|-------------|----------|------|---------|
-| `app_name` | Application repository name (e.g., 'app-acquisitions') | Yes | string | - |
-| `previous_release_branch` | Previous release branch (e.g., 'R1-2024') | Yes | string | - |
-| `new_release_branch` | New release branch to create (e.g., 'R2-2025') | Yes | string | - |
-| `use_snapshot_fallback` | Use snapshot branch if previous branch not found | No | boolean | `false` |
-| `use_snapshot_version` | Use snapshot version for new release | No | boolean | `false` |
-| `dry_run` | Perform dry run without making changes | No | boolean | `false` |
+| Input                     | Description                                            | Required  | Type    | Default |
+|---------------------------|--------------------------------------------------------|-----------|---------|---------|
+| `app_name`                | Application repository name (e.g., 'app-acquisitions') | Yes       | string  | -       |
+| `previous_release_branch` | Previous release branch (e.g., 'R1-2024')              | Yes       | string  | -       |
+| `new_release_branch`      | New release branch to create (e.g., 'R2-2025')         | Yes       | string  | -       |
+| `use_snapshot_fallback`   | Use snapshot branch if previous branch not found       | No        | boolean | `false` |
+| `use_snapshot_version`    | Use snapshot version for new release                   | No        | boolean | `false` |
+| `dry_run`                 | Perform dry run without making changes                 | No        | boolean | `false` |
 
 ### Outputs
 
-| Output | Description |
-|--------|-------------|
-| `app_name` | Application name (pass-through) |
-| `app_version` | Extracted application version from pom.xml |
+| Output          | Description                                |
+|-----------------|--------------------------------------------|
+| `app_name`      | Application name (pass-through)            |
+| `app_version`   | Extracted application version from pom.xml |
 | `source_branch` | Source branch used for release preparation |
-| `target_branch` | Target release branch created |
+| `target_branch` | Target release branch created              |
 
 ## 🔄 Workflow Execution Flow
 
@@ -36,26 +45,20 @@ This workflow automates the preparation of FOLIO application repositories for re
 - **Check Target Branch**: Ensures new release branch doesn't already exist
 - **Validate Source Branch**: Confirms previous release branch exists
 - **Fallback Logic**: Uses snapshot branch if previous release branch missing (when enabled)
+- **Determine Source**: Selects appropriate source branch for release preparation
 
-### 2. Repository Preparation
-- **Checkout Source**: Fetches and checks out the source branch
-- **Create Release Branch**: Creates new release branch from source
-- **Configure Git**: Sets up GitHub Actions bot identity for commits
+### 2. Update Application (`update-application.yml`)
+- **Mode**: Always runs in `release` mode
+- **Version Setting**: Uses major version increment from source branch
+- **Placeholder Modules**: Sets all module versions to `<CHANGE_ME>`
+- **POM Update**: Updates pom.xml with new release version
+- **Artifact Generation**: Creates updated state files
 
-### 3. Version Management
-- **Extract Version**: Reads current version from Maven pom.xml
-- **Version Processing**: Handles both SNAPSHOT and release versions
-- **Semantic Parsing**: Extracts major.minor.patch components
-
-### 4. Application Descriptor Updates
-- **Template Processing**: Updates application descriptor template
-- **Placeholder Injection**: Sets module versions to `<CHANGE_ME>` placeholders
-- **JSON Validation**: Ensures descriptor remains valid JSON
-
-### 5. Git Operations
-- **Commit Changes**: Creates descriptive commit with operation context
-- **Push Branch**: Pushes new release branch to remote repository
-- **Branch Protection**: Respects repository branch protection rules
+### 3. Commit and Create Branch (`commit-application-changes.yml`)
+- **Branch Creation**: Creates new release branch from source
+- **File Download**: Retrieves updated state files from artifacts
+- **Commit Creation**: Commits with detailed release preparation message
+- **Push Changes**: Pushes new branch to remote (unless dry-run)
 
 ## 🛡️ Security Considerations
 
@@ -232,6 +235,6 @@ collect-results:
 
 ---
 
-**Last Updated**: August 2025  
-**Workflow Version**: 2.0  
+**Last Updated**: September 2025  
+**Workflow Version**: 2.5
 **Compatibility**: All FOLIO application repositories
