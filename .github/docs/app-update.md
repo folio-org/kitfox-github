@@ -1,12 +1,22 @@
 # Application Update Workflow
 
 **Workflow**: `app-update.yml`  
-**Purpose**: Automated module version updates and application descriptor management for FOLIO applications  
+**Purpose**: Orchestrates automated module version updates and application descriptor management for FOLIO applications  
 **Type**: Reusable workflow (`workflow_call`)
 
 ## 🎯 Overview
 
-This workflow automates the continuous integration process for FOLIO applications by checking for newer module versions, updating application descriptors, generating artifacts, and publishing to the application registry. It's the core workflow powering FOLIO's snapshot CI system.
+This workflow orchestrates the complete continuous integration process for FOLIO applications. It coordinates three specialized workflows to check for newer module versions, validate changes, and commit updates. It's the core orchestration workflow powering FOLIO's snapshot CI system.
+
+## 🏗️ Refactored Architecture
+
+The workflow has been refactored into modular components for better reusability and maintainability:
+
+1. **`update-application.yml`** - Module version checking and descriptor generation
+2. **`verify-application.yml`** - Application validation and registry operations  
+3. **`commit-application-changes.yml`** - Git operations for committing changes
+
+This orchestrator workflow coordinates these components and handles failure scenarios.
 
 ## 📋 Workflow Interface
 
@@ -20,8 +30,9 @@ This workflow automates the continuous integration process for FOLIO application
 | `workflow_run_number`     | GitHub run number for display                                  | Yes       | string  | -                   |
 | `descriptor_build_offset` | Offset to apply to application artifact version                | No        | string  | `'100100000000000'` |
 | `rely_on_FAR`             | Whether to rely on FAR for application descriptor dependencies | No        | boolean | `false`             |
-| `pre_release`             | Pre-release modules (only \| true \| false)                    | No        | string  | `'only'`            |
+| `mode`                    | Update mode: 'snapshot' or 'release'                           | No        | string  | `'snapshot'`        |
 | `dry_run`                 | Perform dry run without making changes                         | No        | boolean | `false`             |
+| `use_github_app`          | Use GitHub App for authentication                              | No        | boolean | `false`             |
 
 ### Outputs
 
@@ -46,35 +57,37 @@ This workflow automates the continuous integration process for FOLIO application
 
 ## 🔄 Workflow Execution Flow
 
-### 1. Update Application Descriptor
-- **Version Collection**: Extracts current application version from Maven pom.xml
+### 1. Update Application (`update-application.yml`)
 - **Module Version Checking**: Queries FOLIO registry for latest module versions
 - **Version Comparison**: Compares current vs. available versions
 - **Descriptor Updates**: Updates application-descriptor.json with new module versions
-- **Version Calculation**: Calculates new application version based on updates
+- **POM Updates**: Updates pom.xml version when in release mode
+- **Artifact Generation**: Creates state files for downstream processing
 
-### 2. Generate Application Artifact
-- **Maven Generation**: Uses folio-application-generator to create application descriptor
-- **Artifact Validation**: Ensures generated descriptor is valid
-- **File Management**: Handles artifact upload and storage
-
-### 3. Verify and Publish Descriptor
+### 2. Verify Application (`verify-application.yml`) - *Conditional*
+- **Runs only if**: Updates were found in step 1
 - **Platform Integration**: Downloads platform descriptor for validation context
 - **Interface Validation**: Validates module interface integrity via FAR API
 - **Dependency Validation**: Validates application dependencies integrity
-- **Registry Upload**: Publishes application descriptor to FAR registry
+- **Registry Upload**: Publishes application descriptor to FAR registry (unless dry-run)
 
-### 4. Commit State File
+### 3. Commit Changes (`commit-application-changes.yml`) - *Conditional*
+- **Runs only if**: Updates were found and validation passed
 - **Git Configuration**: Sets up GitHub Actions bot identity
-- **Change Staging**: Stages updated application-descriptor.json
+- **File Download**: Retrieves updated state files from artifacts
 - **Commit Creation**: Creates descriptive commit with update details
-- **Branch Push**: Pushes changes to target branch
-- **Rollback Handling**: Removes uploaded descriptor on commit failure
+- **Branch Push**: Pushes changes to target branch (unless dry-run)
 
-### 5. Results Upload
+### 4. Cleanup on Failure - *Conditional*
+- **Runs only if**: Commit failed after registry upload
+- **Registry Cleanup**: Removes uploaded descriptor from FAR registry
+- **Error Reporting**: Provides failure context for troubleshooting
+
+### 5. Upload Results
+- **Always runs**: Regardless of success or failure
 - **Result Aggregation**: Collects all workflow outputs
 - **Artifact Creation**: Creates structured JSON result artifact
-- **Status Reporting**: Provides comprehensive operation summary
+- **Status Reporting**: Provides comprehensive operation summary for aggregation
 
 ## 🔍 Module Version Discovery
 
@@ -341,6 +354,6 @@ jobs:
 
 ---
 
-**Last Updated**: August 2025  
-**Workflow Version**: 2.0  
+**Last Updated**: September 2025  
+**Workflow Version**: 2.5  
 **Compatibility**: All FOLIO application repositories

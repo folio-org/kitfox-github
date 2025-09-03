@@ -33,6 +33,26 @@ Standardized workflow templates for common FOLIO operations:
 - **📢 Consistent Experience**: Standardized patterns and notification formats
 - **🧪 Testing Support**: Built-in dry-run capabilities for safe validation
 
+#### Core Workflow Categories
+
+**Application Management Workflows**:
+- Module version checking and updates
+- Application descriptor generation and validation
+- Registry operations and dependency management
+- Release branch preparation and versioning
+
+**CI/CD Orchestration Workflows**:
+- Snapshot and release build coordination
+- Multi-repository operation management
+- Result aggregation and reporting
+- Notification and status management
+
+**Git Operations Workflows**:
+- Branch creation and management
+- Commit and push operations
+- Pull request automation
+- Tag and release management
+
 ### `.github/` - Infrastructure Documentation
 
 - **`README.md`** - Workflow-specific implementation details and usage guides

@@ -7,6 +7,10 @@ on:
         description: 'Application name'
         required: true
         type: string
+      repo:
+        description: 'Application repository name (org/repo format)'
+        required: true
+        type: string
       previous_release_branch:
         description: 'Previous release branch (e.g., R1-2024)'
         required: true
@@ -29,33 +33,32 @@ on:
         description: 'Perform dry run without making changes'
         required: false
         type: boolean
-        default: false        
+        default: false
     outputs:
       app_name:
         description: 'Application name (passed through from input)'
         value: ${{ inputs.app_name }}
       app_version:
         description: 'Determined application version'
-        value: ${{ jobs.prepare-release.outputs.app_version }}
+        value: ${{ jobs.prepare-branch.outputs.app_version }}
       source_branch:
         description: 'Source branch'
-        value: ${{ jobs.prepare-release.outputs.source_branch }}
+        value: ${{ jobs.prepare-branch.outputs.source_branch }}
       commit_sha:
         description: 'Commit SHA'
-        value: ${{ jobs.prepare-release.outputs.commit_sha }}
+        value: ${{ jobs.commit-changes.outputs.commit_sha }}
 
 permissions:
   contents: write
 
 jobs:
-  prepare-release:
-    name: Prepare Application for Release
+  prepare-branch:
+    name: Prepare Release Branch
     runs-on: ubuntu-latest
 
     outputs:
       app_version: ${{ steps.determine-new-version.outputs.new_version }}
       source_branch: ${{ steps.verify-branches.outputs.source_branch }}
-      commit_sha: ${{ steps.commit-changes.outputs.commit_sha }}
 
     env:
       PREV_BRANCH: ${{ inputs.previous_release_branch }}
@@ -73,7 +76,7 @@ jobs:
           echo ""
 
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            echo "::notice::This was a dry run - no actual changes were made"
+            echo "::notice::This is a dry run - no actual changes will be made"
             echo "::notice::Set dry_run=false to apply changes"
           fi
 
@@ -81,7 +84,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ inputs.app_name }}
+          repository: ${{ inputs.repo }}
           fetch-depth: 0
 
       - name: Verify Branches
@@ -130,7 +133,7 @@ jobs:
         id: collect-previous-version
         uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
         with:
-          app_name: ${{ inputs.app_name }}
+          app_name: ${{ inputs.repo }}
           branch: ${{ steps.verify-branches.outputs.source_branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -139,7 +142,7 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
         if: steps.verify-branches.outputs.has_previous_branch == 'false'
         with:
-          app_name: ${{ inputs.app_name }}
+          app_name: ${{ inputs.repo }}
           branch: ${{ steps.verify-branches.outputs.default_branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -186,123 +189,37 @@ jobs:
           echo "::notice::New determined version: $new_version"
           echo "new_version=$new_version"       >>"$GITHUB_OUTPUT"
 
-      - name: Create Release Branch
-        id: create-branch
-        env:
-          SOURCE_BRANCH: ${{ steps.verify-branches.outputs.source_branch }}
-          TARGET_BRANCH: ${{ inputs.new_release_branch }}
-        run: |
-          set -eo pipefail
+  update-application:
+    name: Update Application Files
+    needs: prepare-branch
+    uses: ./.github/workflows/update-application.yml
+    with:
+      app_name: ${{ inputs.app_name }}
+      repo: ${{ inputs.repo }}
+      branch: ${{ needs.prepare-branch.outputs.source_branch }}
+      workflow_run_number: ${{ github.run_number }}
+      target_version: ${{ needs.prepare-branch.outputs.app_version }}
+      placeholder_modules: true
+    secrets: inherit
 
-          echo "::notice::Creating release branch '$TARGET_BRANCH' from '$SOURCE_BRANCH'"
-
-          git checkout "origin/$SOURCE_BRANCH"
-          git checkout -b "$TARGET_BRANCH"
-          
-          echo "::notice::Successfully created branch '$TARGET_BRANCH'"
-
-      - name: Update Application Files
-        id: update-files
-        env:
-          APP_VERSION: ${{ steps.determine-new-version.outputs.new_version }}
-        run: |          
-          set -eo pipefail
-
-          echo "::group::Updating pom.xml file version to $APP_VERSION"
-          mvn versions:set \
-              -DnewVersion="$APP_VERSION" \
-              -DgenerateBackupPoms=false
-          echo "::endgroup::"
-          
-          echo "::group::Successfully updated pom.xml file version to $APP_VERSION"
-          cat pom.xml
-          echo "::endgroup::"
-
-          test -f application-descriptor.json || { echo "::error::Missing file. application-descriptor.json not found"; exit 1; }
-
-          echo "::group::Updating application-descriptor.json version to $APP_VERSION and placeholder all module versions to <CHANGE_ME>"
-          cat application-descriptor.json
-          echo "::endgroup::"
-
-          tmp="$(mktemp)"
-
-          jq --arg newVer "$APP_VERSION" '
-            .version = $newVer                      #bump top-level version
-            | .modules     
-            |= map(.version = "<CHANGE_ME>")        #placeholder all module versions
-            | .uiModules    
-            |= map(.version = "<CHANGE_ME>")        #placeholder all uiModule versions
-          ' application-descriptor.json > "$tmp" \
-          && mv "$tmp" application-descriptor.json
-
-          echo "::group::Updated application-descriptor.json"
-          cat application-descriptor.json
-          echo "::endgroup::"
-
-      - name: Configure Git
-        run: |
-          set -eo pipefail
-          
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          echo "::notice::Git configured for automated commits"           
-
-      - name: Commit Changes
-        id: commit-changes
-        if: inputs.dry_run == false
-        run: |
-          set -eo pipefail
-
-          echo "::group::Stage changes for commit"
-          git status
-          echo "::endgroup::"
-          
-          git add pom.xml application-descriptor.json 2>/dev/null || true
-
-          if git diff --cached --quiet; then
-            echo "::error::No changes to commit"
-            exit 1
-          fi
-
-          git commit -F - <<EOF
-          Prepare ${{ inputs.app_name }} for release. Initial commit.
-
-          Previous release: ${{ inputs.previous_release_branch }}
-          Source branch: ${{ steps.verify-branches.outputs.source_branch }}
-          Previous version: ${{ steps.collect-previous-version.outputs.version }}
-          New version: ${{ steps.determine-new-version.outputs.new_version }}
-          EOF
-            
-          commit_sha=$(git rev-parse HEAD)
+  commit-changes:
+    name: Commit and Push Changes
+    needs: [prepare-branch, update-application]
+    if: needs.update-application.outputs.updated == 'true'
+    uses: ./.github/workflows/commit-application-changes.yml
+    with:
+      app_name: ${{ inputs.app_name }}
+      repo: ${{ inputs.repo }}
+      branch: ${{ inputs.new_release_branch }}
+      commit_message: |
+        Prepare ${{ inputs.app_name }} for release. Initial commit.
         
-          echo "::notice::Successfully committed changes #$commit_sha"
-          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
-
-      - name: Push Changes
-        if: inputs.dry_run == false
-        env:
-          BRANCH_NAME: ${{ inputs.new_release_branch }}
-        run: |
-          set -eo pipefail
-
-          echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
-          git push -u origin "$BRANCH_NAME"
-          echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
-
-      - name: Workflow Summary
-        run: |
-          set -eo pipefail
-
-          echo "::notice::${{ inputs.app_name }} Release Preparation Summary"
-          echo ""
-          echo "Previous Release: ${{ inputs.previous_release_branch }}"
-          echo "New Release: ${{ inputs.new_release_branch }}"
-          echo "Source Branch: ${{ steps.verify-branches.outputs.source_branch }}"
-          echo "New Version: ${{ steps.determine-new-version.outputs.new_version }}"
-          echo "Commit: ${{ steps.commit-changes.outputs.commit_sha }}"
-          echo ""
-          
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            echo "::notice::This was a dry run - no actual changes were made"
-            echo "::notice::Set dry_run=false to apply changes"
-          fi
+        Previous release: ${{ inputs.previous_release_branch }}
+        New release: ${{ inputs.new_release_branch }}
+        Source branch: ${{ needs.prepare-branch.outputs.source_branch }}
+        Version: ${{ needs.prepare-branch.outputs.app_version }}
+        
+        All module versions set to placeholder <CHANGE_ME> for team updates.
+      dry_run: ${{ inputs.dry_run }}
+      source_branch: ${{ needs.prepare-branch.outputs.source_branch }}
+    secrets: inherit
