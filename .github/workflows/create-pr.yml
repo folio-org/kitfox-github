@@ -129,9 +129,11 @@ jobs:
             --title \"$TITLE\" \
             --body-file \"$pr_body_file\""
           
-          if [ -n "$label_args" ]; then
-            pr_cmd="$pr_cmd $label_args"
+          if [ -n "$PR_LABELS" ]; then
+            pr_cmd="$pr_cmd $PR_LABELS"
           fi
+          
+          echo "::notice::Creating PR with command: $pr_cmd"
 
           pr_url=$(eval $pr_cmd)
             
