@@ -54,9 +54,6 @@ permissions:
   contents: read
   issues: write
 
-env:
-
-
 jobs:
   manage-pr:
     name: Manage Pull Request
