@@ -340,7 +340,7 @@ jobs:
         run: |
           set -eo pipefail
           
-          echo "::group::Checking for placeholder versions in updated state file"
+          echo "::notice::Checking for placeholder versions in updated state file"
           has_placeholders=$(jq -r '
             [(.modules[]?.version), (.uiModules[]?.version)] 
             | map(select(. == "<CHANGE_ME>")) 
@@ -356,7 +356,6 @@ jobs:
             echo "::notice::No placeholders found, descriptor can be generated"
             echo "has_placeholders=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "::endgroup::"
 
       - name: Generate Application Descriptor
         id: generate-application-descriptor
