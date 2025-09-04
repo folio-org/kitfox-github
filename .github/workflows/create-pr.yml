@@ -33,6 +33,11 @@ on:
         required: false
         type: string
         default: ''
+      use_github_app:
+        description: 'Use GitHub App for authentication'
+        required: false
+        type: boolean
+        default: false
     outputs:
       created:
         description: 'Whether a new PR was created'
@@ -50,7 +55,7 @@ permissions:
   issues: write
 
 env:
-  GH_TOKEN: ${{ github.token }}
+
 
 jobs:
   manage-pr:
@@ -61,6 +66,16 @@ jobs:
       pr_number: ${{ steps.check-existing-pr.outputs.existing_pr || steps.create-pr.outputs.pr_number || '' }}
       pr_url: ${{ steps.check-existing-pr.outputs.existing_pr_url || steps.create-pr.outputs.pr_url || '' }}
     steps:
+      - name: Generate App Token
+        id: app-token
+        if: inputs.use_github_app == true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.repo }}
+            -
       - name: Check existing PR
         id: check-existing-pr
         env:
@@ -68,6 +83,7 @@ jobs:
           BASE_BRANCH: ${{ inputs.base_branch }}
           HEAD_BRANCH: ${{ inputs.head_branch }}
           PR_LABELS: ${{ inputs.pr_labels }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
           set -eo pipefail
           
@@ -115,6 +131,7 @@ jobs:
         env:
           REPO: ${{ inputs.repo }}
           PR_LABELS: ${{ inputs.pr_labels }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
           set -eo pipefail
           
@@ -151,6 +168,7 @@ jobs:
           BODY: ${{ inputs.pr_body }}
           LABEL_ARGS: ${{ steps.ensure-labels.outputs.label_args }}
           PR_REVIEWERS: ${{ inputs.pr_reviewers }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
           set -eo pipefail
           
