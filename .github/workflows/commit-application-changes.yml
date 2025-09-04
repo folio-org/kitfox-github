@@ -77,12 +77,6 @@ jobs:
           token: ${{ steps.app-token.outputs.token || github.token }}
           fetch-depth: 0
 
-      - name: Download Application Update Files
-        uses: actions/download-artifact@v4
-        with:
-          name: "${{ env.APP_NAME }}-update-files"
-          path: .
-
       - name: Configure Git
         run: |
           set -eo pipefail
@@ -106,6 +100,13 @@ jobs:
           git switch $TARGET_BRANCH
           
           echo "::notice::Successfully switched to branch '$TARGET_BRANCH'"
+
+
+      - name: Download Application Update Files
+        uses: actions/download-artifact@v4
+        with:
+          name: "${{ env.APP_NAME }}-update-files"
+          path: .
 
       - name: Commit Changes
         id: commit-changes
