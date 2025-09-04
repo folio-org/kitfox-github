@@ -89,7 +89,7 @@ jobs:
   create-pr:
     name: Create PR
     needs: [update-application, commit-changes]
-    if: always() && needs.commit-changes.result == 'success'
+    if: always() && needs.commit-changes.result == 'success' && inputs.dry_run == 'false'
     uses: ./.github/workflows/create-pr.yml
     with:
       repo: ${{ inputs.repo }}
