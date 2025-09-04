@@ -86,6 +86,8 @@ jobs:
             pr_cmd="$pr_cmd $label_args || echo '{}'"
           fi
           
+          echo "::notice::Checking for existing PR with command: $pr_cmd"
+          
           pr_json=$(eval $pr_cmd || echo '{}')
           
           if [ "$pr_json" != "{}" ] && [ -n "$pr_json" ]; then
