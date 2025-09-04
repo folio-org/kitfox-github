@@ -334,9 +334,33 @@ jobs:
           echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "previous_version=$PREVIOUS_VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Check for Placeholder Versions
+        id: check-placeholders
+        if: steps.update-application-version.outputs.updated == 'true'
+        run: |
+          set -eo pipefail
+          
+          echo "::group::Checking for placeholder versions in updated state file"
+          has_placeholders=$(jq -r '
+            [(.modules[]?.version), (.uiModules[]?.version)] 
+            | map(select(. == "<CHANGE_ME>")) 
+            | length > 0
+          ' $STATE_FILE)
+          
+          if [[ "$has_placeholders" == "true" ]]; then
+            echo "::warning::Found <CHANGE_ME> placeholders in module versions. Skipping descriptor generation."
+            echo "::notice::The application state file has been updated, but descriptor generation will be skipped."
+            echo "::notice::Release team needs to update all <CHANGE_ME> placeholders with actual versions."
+            echo "has_placeholders=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No placeholders found, descriptor can be generated"
+            echo "has_placeholders=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "::endgroup::"
+
       - name: Generate Application Descriptor
         id: generate-application-descriptor
-        if: inputs.placeholder_modules != true && steps.update-application-version.outputs.updated == 'true'
+        if: inputs.placeholder_modules != true && steps.update-application-version.outputs.updated == 'true' && steps.check-placeholders.outputs.has_placeholders != 'true'
         env:
           SUPRESS_LOGS: "-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
           COMMAND: "org.folio:folio-application-generator:generateFromJson"
@@ -383,7 +407,7 @@ jobs:
 
       - name: Upload Descriptor
         uses: actions/upload-artifact@v4
-        if: inputs.placeholder_modules != true && steps.update-application-version.outputs.updated == 'true'
+        if: inputs.placeholder_modules != true && steps.update-application-version.outputs.updated == 'true' && steps.check-placeholders.outputs.has_placeholders != 'true'
         with:
           name: "${{ env.APP_NAME }}-descriptor"
           path: "target/${{ env.APP_NAME }}*.json"
