@@ -128,6 +128,7 @@ jobs:
     if: always() && needs.commit-changes.result == 'success' && !inputs.dry_run
     uses: ./.github/workflows/create-pr.yml
     with:
+      app_name: ${{ inputs.app_name }}
       repo: ${{ inputs.repo }}
       base_branch: ${{ inputs.release_branch }}
       head_branch: "release-update/${{ inputs.release_branch }}"

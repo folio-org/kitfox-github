@@ -3,6 +3,10 @@ name: Create Pull Request (Reusable)
 on:
   workflow_call:
     inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
       repo:
         description: 'Repository (org/repo format)'
         required: true
@@ -71,7 +75,7 @@ jobs:
           app-id: ${{ vars.EUREKA_CI_APP_ID }}
           private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
           owner: ${{ github.repository_owner }}
-          repositories: ${{ inputs.repo }}
+          repositories: ${{ inputs.app_name }}
 
       - name: Check existing PR
         id: check-existing-pr
