@@ -72,7 +72,7 @@ jobs:
           private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ inputs.repo }}
-            -
+
       - name: Check existing PR
         id: check-existing-pr
         env:
