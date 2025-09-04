@@ -43,6 +43,9 @@ permissions:
   pull-requests: write
   contents: read
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   manage-pr:
     name: Manage Pull Request
