@@ -252,7 +252,7 @@ jobs:
             if [ $status -ne 0 ]; then
               echo "::warning::GitHub API returned non-zero status when adding reviewers."
               echo "::group::API stderr"
-              cat $resp_err" || true
+              cat "$resp_err" || true
               echo "::endgroup::"
             fi
           
