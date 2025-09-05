@@ -188,16 +188,14 @@ jobs:
           if [ -n "$LABEL_ARGS" ]; then
             pr_cmd="$pr_cmd $LABEL_ARGS"
           fi
-          
-          pr_edit="gh pr edit \"$pr_number\" --repo \"$REPO\""
 
-          if [ -n "$PR_REVIEWERS" ]; then
-            IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
-            for reviewer in "${REVIEWERS[@]}"; do
-              reviewer=$(echo "$reviewer" | xargs)  # Trim whitespace
-              pr_edit="$pr_edit --reviewer \"$reviewer\""
-            done
-          fi
+          #if [ -n "$PR_REVIEWERS" ]; then
+          #  IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
+          #  for reviewer in "${REVIEWERS[@]}"; do
+          #    reviewer=$(echo "$reviewer" | xargs)  # Trim whitespace
+          #    pr_cmd="$pr_cmd --reviewer \"$reviewer\""
+          #  done
+          #fi
           
           echo "::notice::Creating PR with command: $pr_cmd"
 
@@ -212,6 +210,16 @@ jobs:
           echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
           
           echo "::notice::Successfully created PR #$pr_number: $pr_url"
+          
+          pr_edit="gh pr edit \"$pr_number\" --repo \"$REPO\""
+
+          if [ -n "$PR_REVIEWERS" ]; then
+            IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
+            for reviewer in "${REVIEWERS[@]}"; do
+              reviewer=$(echo "$reviewer" | xargs)  # Trim whitespace
+              pr_edit="$pr_edit --add-reviewer \"$reviewer\""
+            done
+          fi
           
           echo "::notice::Adding reviewers with command: $pr_edit"
           
