@@ -210,20 +210,15 @@ jobs:
           echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
           
           echo "::notice::Successfully created PR #$pr_number: $pr_url"
-          
-          pr_edit="gh pr edit \"$pr_number\" --repo \"$REPO\""
 
-          if [ -n "$PR_REVIEWERS" ]; then
-            IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
-            for reviewer in "${REVIEWERS[@]}"; do
-              reviewer=$(echo "$reviewer" | xargs)  # Trim whitespace
-              pr_edit="$pr_edit --add-reviewer \"$reviewer\""
-            done
-          fi
+          add_args=()
+          for reviewer in "${REVIEWERS[@]}"; do
+            reviewer=$(echo "$reviewer" | xargs) # trim
+            [ -z "$reviewer" ] && continue
+            add_args+=(--add-reviewer "$reviewer")
+          done
           
-          echo "::notice::Adding reviewers with command: $pr_edit"
-          
-          if "${pr_edit[@]}"; then
+          if gh pr edit "$pr_number" --repo "$REPO" "${add_args[@]}"; then
             echo -e "::notice::Added reviewers successfully"            
           else
             echo -e "::error::Failed to add reviewers"            
