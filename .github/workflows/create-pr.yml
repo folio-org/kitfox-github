@@ -52,6 +52,12 @@ on:
       url:
         description: 'Pull request URL'
         value: ${{ jobs.manage-pr.outputs.pr_url }}
+      successful_reviewers:
+        description: 'Space-separated list of successfully added reviewers'
+        value: ${{ jobs.manage-pr.outputs.successful_reviewers }}
+      failed_reviewers:
+        description: 'Space-separated list of reviewers that failed to be added'
+        value: ${{ jobs.manage-pr.outputs.failed_reviewers }}
 
 permissions:
   pull-requests: write
@@ -66,6 +72,8 @@ jobs:
       pr_created: ${{ steps.check-existing-pr.outputs.existing_pr == '' && steps.create-pr.outputs.pr_number != '' }}
       pr_number: ${{ steps.check-existing-pr.outputs.existing_pr || steps.create-pr.outputs.pr_number || '' }}
       pr_url: ${{ steps.check-existing-pr.outputs.existing_pr_url || steps.create-pr.outputs.pr_url || '' }}
+      successful_reviewers: ${{ steps.add-reviewers.outputs.successful_reviewers || '' }}
+      failed_reviewers: ${{ steps.add-reviewers.outputs.failed_reviewers || '' }}
     steps:
       - name: Generate App Token
         id: app-token
@@ -204,6 +212,7 @@ jobs:
           echo "::notice::Successfully created PR #$pr_number: $pr_url"
 
       - name: Add Reviewers to PR
+        id: add-reviewers
         if: steps.create-pr.outputs.pr_number != '' && inputs.pr_reviewers != ''
         env:
           REPO: ${{ inputs.repo }}
@@ -214,53 +223,51 @@ jobs:
           set -eo pipefail
           
           echo "::notice::Adding reviewers to PR #$PR_NUMBER"
-
-          individual_reviewers=""
-          team_reviewers=""
+          
+          successful_reviewers=()
+          failed_reviewers=()
           
           IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
           for reviewer in "${REVIEWERS[@]}"; do
             reviewer=$(echo "$reviewer" | xargs)  # Trim whitespace
+            [ -z "$reviewer" ] && continue
             
-            if [[ "$reviewer" == *"/"* ]]; then
-              team_name="${reviewer#*/}"
-              team_reviewers="${team_reviewers} -f team_reviewers[]=$team_name"
-              echo "Adding team reviewer: $team_name"
-            else
-              individual_reviewers="${individual_reviewers} -f reviewers[]=$reviewer"
-              echo "Adding individual reviewer: $reviewer"
-            fi
-          done
-          
-          if [ -n "$individual_reviewers$team_reviewers" ]; then
-            echo "::notice::Calling API to add reviewers"
-          
+            echo "::notice::Adding reviewer: $reviewer"
+            
             resp_json="$(mktemp)"
             resp_err="$(mktemp)"
-          
+
+            if [[ "$reviewer" == *"/"* ]]; then
+              team_name="${reviewer#*/}"
+              api_params="-f team_reviewers[]=$team_name"
+              reviewer_type="team"
+            else
+              api_params="-f reviewers[]=$reviewer"
+              reviewer_type="user"
+            fi
+            
             set +e
             gh api "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
               -X POST \
               -H "Accept: application/vnd.github+json" \
-              $individual_reviewers \
-              $team_reviewers \
+              $api_params \
               >"$resp_json" 2>"$resp_err"
-          
+            
             status=$?
             set -e
-          
-            if [ $status -ne 0 ]; then
-              echo "::warning::GitHub API returned non-zero status when adding reviewers."
-              echo "::group::API stderr"
+            
+            if [ $status -eq 0 ]; then
+              echo "::notice::Successfully added $reviewer_type: $reviewer"
+              successful_reviewers+=("$reviewer")
+            else
+              echo "::warning::Failed to add $reviewer_type: $reviewer"
+              echo "Error details:"
               cat "$resp_err" || true
-              echo "::endgroup::"
+              failed_reviewers+=("$reviewer")
             fi
-          
-            echo "::notice::Successfully added reviewers"
-          
-            accepted_users=$(jq -r '.requested_reviewers[]?.login | ascii_downcase' "$resp_json" | paste -sd',' -)
-            accepted_teams=$(jq -r '.requested_teams[]?.slug | ascii_downcase' "$resp_json" | paste -sd',' -)
-        
-            echo "::notice::Accepted users: ${accepted_users:-<none>}"
-            echo "::notice::Accepted teams: ${accepted_teams:-<none>}"
-          fi
+            
+            rm -f "$resp_json" "$resp_err"
+          done
+
+          echo "successful_reviewers=${successful_reviewers[*]}" >> "$GITHUB_OUTPUT"
+          echo "failed_reviewers=${failed_reviewers[*]}" >> "$GITHUB_OUTPUT"
