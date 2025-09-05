@@ -212,8 +212,9 @@ jobs:
           echo "::notice::Successfully created PR #$pr_number: $pr_url"
 
           add_args=()
+          IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
           for reviewer in "${REVIEWERS[@]}"; do
-            reviewer=$(echo "$reviewer" | xargs) # trim
+            reviewer=$(echo "$reviewer" | xargs)  # Trim whitespace
             [ -z "$reviewer" ] && continue
             add_args+=(--add-reviewer "$reviewer")
           done
