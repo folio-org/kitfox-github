@@ -76,9 +76,9 @@ runs:
         echo "::notice::Building updated modules info string"
         echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
 
-    - name: Send Updates Found Notification (Without Modules)
-      id: send-updates-no-modules
-      if: inputs.workflow_result == 'success' && inputs.updated == 'true' && (inputs.updated_modules == '' || steps.updated-modules-info.outputs.updated_modules == '')
+    - name: Send Updates Found Notification
+      id: send-updates
+      if: inputs.workflow_result == 'success' && inputs.updated == 'true'
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
       with:
@@ -94,7 +94,7 @@ runs:
                 type: mrkdwn
                 text: "*${{ inputs.app_name }} Release Scan: Updates Found <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
           attachments:
-            - color: "warning"
+            - color: "good"
               fields:
                 - title: "Release Branch"
                   value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
@@ -106,47 +106,12 @@ runs:
                   value: "${{ inputs.updates_cnt }}"
                   short: true
                 - title: "Pull Request"
-                  value: "${{ inputs.pr_created == 'true' && format('<{0}|Created PR #{1}>', inputs.pr_url, inputs.pr_number) || (inputs.pr_url != '' && format('<{0}|Updated PR #{1}>', inputs.pr_url, inputs.pr_number)) || 'No PR created' }}"
+                  value: "${{ inputs.pr_url != '' && format('<{0}|{1} PR #{2}>', inputs.pr_url, inputs.pr_created == 'true' && 'Created' || 'Updated', inputs.pr_number) || 'No PR created' }}"
                   short: true
-              footer: "Eureka CI/CD Release Scanner"
-
-    - name: Send Updates Found Notification (With Modules)
-      id: send-updates-with-modules
-      if: inputs.workflow_result == 'success' && inputs.updated == 'true' && inputs.updated_modules != '' && steps.updated-modules-info.outputs.updated_modules != ''
-      continue-on-error: true
-      uses: slackapi/slack-github-action@v2.1.1
-      with:
-        method: chat.postMessage
-        token: ${{ inputs.slack_bot_token }}
-        errors: false
-        payload: |
-          channel: "${{ inputs.slack_channel }}"
-          text: "Release Scan: Updates Found"
-          blocks:
-            - type: section
-              text:
-                type: mrkdwn
-                text: "*${{ inputs.app_name }} Release Scan: Updates Found <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
-          attachments:
-            - color: "warning"
-              fields:
-                - title: "Release Branch"
-                  value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
-                  short: true
-                - title: "New Version"
-                  value: "${{ inputs.new_version }}"
-                  short: true
-                - title: "Updates Found"
-                  value: "${{ inputs.updates_cnt }}"
-                  short: true
-                - title: "Pull Request"
-                  value: "${{ inputs.pr_created == 'true' && format('<{0}|Created PR #{1}>', inputs.pr_url, inputs.pr_number) || (inputs.pr_url != '' && format('<{0}|Updated PR #{1}>', inputs.pr_url, inputs.pr_number)) || 'No PR created' }}"
-                  short: true
-              footer: "Eureka CI/CD Release Scanner"
-            - color: "warning"
+            - color: "good"
               mrkdwn_in: ["text"]
-              text: ${{ toJSON(steps.updated-modules-info.outputs.updated_modules) }}
-              footer: "Updated Modules"
+              text: ${{ toJSON(steps.updated-modules-info.outputs.updated_modules || inputs.updated_modules) }}
+              footer: "Eureka CI/CD"
 
     - name: Send Failure Notification
       id: send-failure
@@ -177,7 +142,7 @@ runs:
                 - title: "Error"
                   value: "${{ inputs.error_message != '' && inputs.error_message || 'Check workflow logs for details' }}"
                   short: false
-              footer: "Eureka CI/CD Release Scanner"
+              footer: "Eureka CI/CD"
 
     - name: Determine Status
       id: determine-status
@@ -188,14 +153,12 @@ runs:
           echo "notification_sent=false" >> "$GITHUB_OUTPUT"
           echo "notification_status=skipped" >> "$GITHUB_OUTPUT"
           echo "::notice::No notification needed - no updates found"
-        elif [[ "${{ steps.send-updates-no-modules.outcome }}" == "success" ]] || \
-             [[ "${{ steps.send-updates-with-modules.outcome }}" == "success" ]] || \
+        elif [[ "${{ steps.send-updates.outcome }}" == "success" ]] || \
              [[ "${{ steps.send-failure.outcome }}" == "success" ]]; then
           echo "notification_sent=true" >> "$GITHUB_OUTPUT"
           echo "notification_status=success" >> "$GITHUB_OUTPUT"
           echo "::notice::Successfully sent notification to ${{ inputs.slack_channel }}"
-        elif [[ "${{ steps.send-updates-no-modules.outcome }}" == "failure" ]] || \
-             [[ "${{ steps.send-updates-with-modules.outcome }}" == "failure" ]] || \
+        elif [[ "${{ steps.send-updates.outcome }}" == "failure" ]] || \
              [[ "${{ steps.send-failure.outcome }}" == "failure" ]]; then
           echo "notification_sent=false" >> "$GITHUB_OUTPUT"
           echo "notification_status=failure" >> "$GITHUB_OUTPUT"
