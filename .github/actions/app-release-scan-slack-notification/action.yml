@@ -84,6 +84,24 @@ runs:
         echo "::notice::Building updated modules info string"
         echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
 
+    - name: Build Reviewers List
+      id: reviewers-list-info
+      if: inputs.successful_reviewers != '' || inputs.failed_reviewers != ''
+      shell: bash
+      env:
+        SUCCESSFUL_REVIEWERS: "${{ inputs.successful_reviewers }}"
+        FAILED_REVIEWERS: "${{ inputs.failed_reviewers }}"
+      run: |
+        echo "::notice::Building reviewers list"
+
+        if [ -n "$FAILED_REVIEWERS" ]; then
+          REVIEWERS=$(echo "$FAILED_REVIEWERS" | tr ' ' '\n')
+        elif [ -n "$SUCCESSFUL_REVIEWERS" ]; then
+          REVIEWERS=$(echo "$SUCCESSFUL_REVIEWERS" | tr ' ' '\n')
+        fi
+
+        echo "reviewers<<EOF"$'\n'"$REVIEWERS"$'\n'EOF >> "$GITHUB_OUTPUT"
+
     - name: Send PR Created Notification
       id: send-pr-created
       if: inputs.workflow_result == 'success' && inputs.updated == 'true' && inputs.pr_created == 'true'
@@ -120,10 +138,9 @@ runs:
               mrkdwn_in: ["text"]
               text: ${{ toJSON(steps.updated-modules-info.outputs.updated_modules || inputs.updated_modules) }}
             - color: "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}"
-              fields:
-                - title: "Reviewers"
-                  value: "${{ inputs.failed_reviewers != '' && format('Failed: {0}', inputs.failed_reviewers) || (inputs.successful_reviewers != '' && format('Added: {0}', inputs.successful_reviewers) || 'No reviewers configured') }}"
-                  short: false
+              mrkdwn_in: ["text"]
+              title: "${{ inputs.failed_reviewers != '' && 'Reviewers (Failed)' || (inputs.successful_reviewers != '' && 'Reviewers (Added)' || 'Reviewers') }}"
+              text: ${{ toJSON(steps.reviewers-list-info.outputs.reviewers || 'No reviewers configured') }}
               footer: "Eureka CI/CD"
 
     - name: Send Branch Updated Notification
