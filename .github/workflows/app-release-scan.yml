@@ -32,13 +32,19 @@ on:
     outputs:
       pr_created:
         description: 'Whether a PR was created or updated'
-        value: ${{ jobs.create-pr.outputs.pr_created }}
+        value: ${{ jobs.create-pr.outputs.created }}
       pr_number:
         description: 'PR number if created or updated'
-        value: ${{ jobs.create-pr.outputs.pr_number }}
+        value: ${{ jobs.create-pr.outputs.number }}
       pr_url:
         description: 'PR URL if created or updated'
-        value: ${{ jobs.create-pr.outputs.pr_url }}
+        value: ${{ jobs.create-pr.outputs.url }}
+      successful_reviewers:
+        description: 'Successfully added reviewers'
+        value: ${{ jobs.create-pr.outputs.successful_reviewers }}
+      failed_reviewers:
+        description: 'Failed to add reviewers'
+        value: ${{ jobs.create-pr.outputs.failed_reviewers }}
       updated:
         description: 'Whether the application was updated'
         value: ${{ jobs.update-application.outputs.updated }}
