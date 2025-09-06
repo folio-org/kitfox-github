@@ -1,0 +1,229 @@
+name: Application Release Scan Slack Notification
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository name (org/repo format)'
+        required: true
+        type: string
+      release_branch:
+        description: 'Release branch scanned'
+        required: true
+        type: string
+      pr_created:
+        description: 'Whether a PR was created'
+        required: true
+        type: boolean
+      pr_number:
+        description: 'PR number if created or found'
+        required: false
+        type: string
+        default: ''
+      pr_url:
+        description: 'PR URL if created or found'
+        required: false
+        type: string
+        default: ''
+      updated:
+        description: 'Whether the application was updated'
+        required: true
+        type: boolean
+      new_version:
+        description: 'New version of the application'
+        required: false
+        type: string
+        default: ''
+      updates_cnt:
+        description: 'Number of module updates'
+        required: false
+        type: string
+        default: '0'
+      updated_modules:
+        description: 'List of updated modules'
+        required: false
+        type: string
+        default: ''
+      workflow_result:
+        description: 'Result of the scan workflow (success/failure/skipped)'
+        required: true
+        type: string
+      workflow_run_id:
+        description: 'GitHub run ID for linking'
+        required: true
+        type: string
+      workflow_run_number:
+        description: 'GitHub run number for display'
+        required: true
+        type: string
+      error_message:
+        description: 'Error message from the failed workflow'
+        required: false
+        type: string
+        default: ''
+      slack_notif_channel:
+        description: 'Slack notification channel'
+        required: true
+        type: string
+    outputs:
+      notification_sent:
+        description: 'Whether a notification was sent'
+        value: ${{ jobs.send-notification.outputs.notification_sent }}
+      notification_status:
+        description: 'Status of the notification (success/failure/skipped)'
+        value: ${{ jobs.send-notification.outputs.notification_status }}
+
+jobs:
+  send-notification:
+    name: Send Slack Notification
+    runs-on: ubuntu-latest
+    # Only run if there are updates or if the workflow failed
+    if: inputs.updated == true || inputs.workflow_result == 'failure'
+    outputs:
+      notification_sent: ${{ steps.set-outputs.outputs.notification_sent }}
+      notification_status: ${{ steps.set-outputs.outputs.notification_status }}
+    env:
+      SLACK_BOT_TOKEN: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+      SLACK_NOTIF_CHANNEL: ${{ inputs.slack_notif_channel }}
+    steps:
+      - name: Build Updated Modules Info String
+        id: updated-modules-info
+        if: inputs.workflow_result == 'success' && inputs.updated == true && inputs.updated_modules != ''
+        env:
+          MODULES: "${{ inputs.updated_modules }}"
+        run: |
+          set -eo pipefail
+          
+          echo "::notice::Building updated modules info string"
+          echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
+
+      - name: Send Updates Found Notification (Without Modules)
+        id: send-updates-no-modules
+        if: inputs.workflow_result == 'success' && inputs.updated == true && (inputs.updated_modules == '' || steps.updated-modules-info.outputs.updated_modules == '')
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ env.SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            text: "Release Scan: Updates Found"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ inputs.app_name }} Release Scan: Updates Found <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+            attachments:
+              - color: "warning"
+                fields:
+                  - title: "Release Branch"
+                    value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
+                    short: true
+                  - title: "New Version"
+                    value: "${{ inputs.new_version }}"
+                    short: true
+                  - title: "Updates Found"
+                    value: "${{ inputs.updates_cnt }}"
+                    short: true
+                  - title: "Pull Request"
+                    value: "${{ inputs.pr_created == true && format('<{0}|Created PR #{1}>', inputs.pr_url, inputs.pr_number) || (inputs.pr_url != '' && format('<{0}|Updated PR #{1}>', inputs.pr_url, inputs.pr_number)) || 'No PR created' }}"
+                    short: true
+                footer: "Eureka CI/CD Release Scanner"
+
+      - name: Send Updates Found Notification (With Modules)
+        id: send-updates-with-modules
+        if: inputs.workflow_result == 'success' && inputs.updated == true && inputs.updated_modules != '' && steps.updated-modules-info.outputs.updated_modules != ''
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ env.SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            text: "Release Scan: Updates Found"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ inputs.app_name }} Release Scan: Updates Found <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+            attachments:
+              - color: "warning"
+                fields:
+                  - title: "Release Branch"
+                    value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
+                    short: true
+                  - title: "New Version"
+                    value: "${{ inputs.new_version }}"
+                    short: true
+                  - title: "Updates Found"
+                    value: "${{ inputs.updates_cnt }}"
+                    short: true
+                  - title: "Pull Request"
+                    value: "${{ inputs.pr_created == true && format('<{0}|Created PR #{1}>', inputs.pr_url, inputs.pr_number) || (inputs.pr_url != '' && format('<{0}|Updated PR #{1}>', inputs.pr_url, inputs.pr_number)) || 'No PR created' }}"
+                    short: true
+                footer: "Eureka CI/CD Release Scanner"
+              - color: "warning"
+                mrkdwn_in: ["text"]
+                text: ${{ toJSON(steps.updated-modules-info.outputs.updated_modules) }}
+                footer: "Updated Modules"
+
+      - name: Send Failure Notification
+        id: send-failure
+        if: inputs.workflow_result == 'failure'
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ env.SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            text: "Release Scan: Failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ inputs.app_name }} Release Scan: Failed <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+            attachments:
+              - color: "danger"
+                fields:
+                  - title: "Release Branch"
+                    value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
+                    short: true
+                  - title: "Status"
+                    value: "Workflow Failed"
+                    short: true
+                  - title: "Error"
+                    value: "${{ inputs.error_message != '' && inputs.error_message || 'Check workflow logs for details' }}"
+                    short: false
+                footer: "Eureka CI/CD Release Scanner"
+
+      - name: Set Outputs
+        id: set-outputs
+        if: always()
+        run: |
+          # Determine if notification was sent and its status
+          if [[ "${{ inputs.updated }}" == "false" && "${{ inputs.workflow_result }}" == "success" ]]; then
+            echo "notification_sent=false" >> "$GITHUB_OUTPUT"
+            echo "notification_status=skipped" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ steps.send-updates-no-modules.outcome }}" == "success" ]] || \
+               [[ "${{ steps.send-updates-with-modules.outcome }}" == "success" ]] || \
+               [[ "${{ steps.send-failure.outcome }}" == "success" ]]; then
+            echo "notification_sent=true" >> "$GITHUB_OUTPUT"
+            echo "notification_status=success" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ steps.send-updates-no-modules.outcome }}" == "failure" ]] || \
+               [[ "${{ steps.send-updates-with-modules.outcome }}" == "failure" ]] || \
+               [[ "${{ steps.send-failure.outcome }}" == "failure" ]]; then
+            echo "notification_sent=false" >> "$GITHUB_OUTPUT"
+            echo "notification_status=failure" >> "$GITHUB_OUTPUT"
+            echo "::warning::Slack notification failed but workflow continues"
+          else
+            echo "notification_sent=false" >> "$GITHUB_OUTPUT"
+            echo "notification_status=skipped" >> "$GITHUB_OUTPUT"
+          fi
