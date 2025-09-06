@@ -139,7 +139,7 @@ runs:
               text: ${{ toJSON(steps.updated-modules-info.outputs.updated_modules || inputs.updated_modules) }}
             - color: "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}"
               mrkdwn_in: ["text"]
-              title: "${{ inputs.failed_reviewers != '' && 'Reviewers (Failed)' || (inputs.successful_reviewers != '' && 'Reviewers (Added)' || 'Reviewers') }}"
+              title: "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}"
               text: ${{ toJSON(steps.reviewers-list-info.outputs.reviewers || 'No reviewers configured') }}
               footer: "Eureka CI/CD"
 
