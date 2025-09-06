@@ -1,0 +1,240 @@
+name: 'Update Pull Request'
+description: 'Update an existing pull request title, body, labels, and reviewers'
+inputs:
+  repo:
+    description: 'Repository (org/repo format)'
+    required: true
+  pr_number:
+    description: 'Pull request number to update'
+    required: true
+  pr_title:
+    description: 'New pull request title (optional, keeps existing if not provided)'
+    required: false
+    default: ''
+  pr_body:
+    description: 'New pull request body (optional, keeps existing if not provided)'
+    required: false
+    default: ''
+  pr_labels:
+    description: 'Comma-separated list of labels to add'
+    required: false
+    default: ''
+  pr_reviewers:
+    description: 'Comma-separated list of reviewers to add (users or teams with org/ prefix)'
+    required: false
+    default: ''
+  github_token:
+    description: 'GitHub token for authentication'
+    required: true
+outputs:
+  pr_exists:
+    description: 'Whether the PR exists'
+    value: ${{ steps.get-pr-info.outputs.pr_exists }}
+  pr_updated:
+    description: 'Whether the PR was successfully updated'
+    value: ${{ steps.update-pr.outputs.pr_updated }}
+  pr_url:
+    description: 'Pull request URL'
+    value: ${{ steps.get-pr-info.outputs.pr_url }}
+  successful_reviewers:
+    description: 'Space-separated list of successfully added reviewers'
+    value: ${{ steps.add-reviewers.outputs.successful_reviewers }}
+  failed_reviewers:
+    description: 'Space-separated list of reviewers that failed to be added'
+    value: ${{ steps.add-reviewers.outputs.failed_reviewers }}
+  labels_added:
+    description: 'Labels that were added to the PR'
+    value: ${{ steps.add-labels.outputs.labels_added }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get current PR information
+      id: get-pr-info
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Getting current PR #$PR_NUMBER information"
+        
+        pr_info=$(gh pr view "$PR_NUMBER" \
+          --repo "$REPO" \
+          --json body,title,url,labels \
+          2>/dev/null || echo '{}')
+        
+        if [ "$pr_info" != "{}" ] && [ -n "$pr_info" ] && [ "$(echo "$pr_info" | jq -r '.url // ""')" != "" ]; then
+          current_body=$(echo "$pr_info" | jq -r '.body // ""')
+          current_title=$(echo "$pr_info" | jq -r '.title // ""')
+          pr_url=$(echo "$pr_info" | jq -r '.url // ""')
+          
+          # Get existing labels
+          existing_labels=$(echo "$pr_info" | jq -r '.labels[].name' 2>/dev/null | tr '\n' ' ' || echo "")
+          
+          echo "pr_exists=true" >> "$GITHUB_OUTPUT"
+          echo "current_body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$current_body" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          
+          echo "current_title=$current_title" >> "$GITHUB_OUTPUT"
+          echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+          echo "existing_labels=$existing_labels" >> "$GITHUB_OUTPUT"
+          
+          echo "::notice::Retrieved PR information from $pr_url"
+        else
+          echo "::notice::PR #$PR_NUMBER does not exist"
+          echo "pr_exists=false" >> "$GITHUB_OUTPUT"
+          echo "current_body=" >> "$GITHUB_OUTPUT"
+          echo "current_title=" >> "$GITHUB_OUTPUT"
+          echo "pr_url=" >> "$GITHUB_OUTPUT"
+          echo "existing_labels=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Update PR title and body
+      id: update-pr
+      if: steps.get-pr-info.outputs.pr_exists == 'true'
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        NEW_TITLE: ${{ inputs.pr_title }}
+        NEW_BODY: ${{ inputs.pr_body }}
+        CURRENT_TITLE: ${{ steps.get-pr-info.outputs.current_title }}
+        CURRENT_BODY: ${{ steps.get-pr-info.outputs.current_body }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -eo pipefail
+        
+        update_needed=false
+        update_args=""
+        
+        if [ -n "$NEW_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ]; then
+          echo "::notice::Updating PR title"
+          update_args="$update_args --title \"$NEW_TITLE\""
+          update_needed=true
+        fi
+        
+        if [ -n "$NEW_BODY" ]; then
+          echo "::notice::Updating PR body"
+          pr_body_file=$(mktemp)
+          echo "$NEW_BODY" > "$pr_body_file"
+          update_args="$update_args --body-file \"$pr_body_file\""
+          update_needed=true
+        fi
+        
+        if [ "$update_needed" = true ]; then
+          echo "::notice::Updating PR #$PR_NUMBER"
+          eval "gh pr edit \"$PR_NUMBER\" --repo \"$REPO\" $update_args"
+          
+          if [ -n "$NEW_BODY" ]; then
+            rm -f "$pr_body_file"
+          fi
+          
+          echo "pr_updated=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Successfully updated PR #$PR_NUMBER"
+        else
+          echo "::notice::No updates needed for PR #$PR_NUMBER"
+          echo "pr_updated=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Add labels to PR
+      id: add-labels
+      if: steps.get-pr-info.outputs.pr_exists == 'true' && inputs.pr_labels != ''
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        PR_LABELS: ${{ inputs.pr_labels }}
+        EXISTING_LABELS: ${{ steps.get-pr-info.outputs.existing_labels }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Adding labels to PR #$PR_NUMBER"
+        
+        labels_added=""
+        IFS=',' read -ra LABELS <<< "$PR_LABELS"
+        for label in "${LABELS[@]}"; do
+          label=$(echo "$label" | xargs)
+          [ -z "$label" ] && continue
+          
+          if echo "$EXISTING_LABELS" | grep -q "\b$label\b"; then
+            echo "::notice::Label '$label' already exists on PR"
+            continue
+          fi
+          
+          if ! gh label list --repo "$REPO" --json name --jq '.[] | select(.name == "'"$label"'") | .name' | grep -q "^${label}$"; then
+            echo "::notice::Creating label '$label' in repository"
+            gh label create "$label" --repo "$REPO" --description "Automated label" --color "0366d6" || {
+              echo "::warning::Failed to create label '$label'"
+              continue
+            }
+          fi
+          
+          echo "::notice::Adding label '$label' to PR"
+          if gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "$label"; then
+            labels_added="$labels_added $label"
+          else
+            echo "::warning::Failed to add label '$label' to PR"
+          fi
+        done
+        
+        echo "labels_added=$(echo $labels_added | xargs)" >> "$GITHUB_OUTPUT"
+
+    - name: Add reviewers to PR
+      id: add-reviewers
+      if: steps.get-pr-info.outputs.pr_exists == 'true' && inputs.pr_reviewers != ''
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        PR_REVIEWERS: ${{ inputs.pr_reviewers }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Adding reviewers to PR #$PR_NUMBER"
+        
+        existing_reviewers=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json reviewRequests --jq '.reviewRequests[].login' 2>/dev/null | tr '\n' ' ' || echo "")
+        
+        successful_reviewers=()
+        failed_reviewers=()
+        
+        IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
+        for reviewer in "${REVIEWERS[@]}"; do
+          reviewer=$(echo "$reviewer" | xargs)
+          [ -z "$reviewer" ] && continue
+          
+          if echo "$existing_reviewers" | grep -q "\b$reviewer\b"; then
+            echo "::notice::Reviewer '$reviewer' already assigned to PR"
+            continue
+          fi
+          
+          echo "::notice::Adding reviewer: $reviewer"
+          
+          if [[ "$reviewer" == *"/"* ]]; then
+            team_name="${reviewer#*/}"
+            api_params="-f team_reviewers[]=$team_name"
+            reviewer_type="team"
+          else
+            api_params="-f reviewers[]=$reviewer"
+            reviewer_type="user"
+          fi
+          
+          if gh api "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            $api_params 2>/dev/null; then
+            echo "::notice::Successfully added $reviewer_type: $reviewer"
+            successful_reviewers+=("$reviewer")
+          else
+            echo "::warning::Failed to add $reviewer_type: $reviewer"
+            failed_reviewers+=("$reviewer")
+          fi
+        done
+        
+        echo "successful_reviewers=${successful_reviewers[*]}" >> "$GITHUB_OUTPUT"
+        echo "failed_reviewers=${failed_reviewers[*]}" >> "$GITHUB_OUTPUT"
