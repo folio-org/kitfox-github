@@ -153,8 +153,6 @@ runs:
           pr_cmd="$pr_cmd $LABEL_ARGS"
         fi
         
-        exit 1
-        
         pr_url=$(eval "$pr_cmd")
         
         rm -f "$pr_body_file"
