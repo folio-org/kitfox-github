@@ -49,6 +49,14 @@ inputs:
     description: 'Error message from the failed workflow'
     required: false
     default: ''
+  successful_reviewers:
+    description: 'Space-separated list of successfully added reviewers'
+    required: false
+    default: ''
+  failed_reviewers:
+    description: 'Space-separated list of reviewers that failed to be added'
+    required: false
+    default: ''
   slack_channel:
     description: 'Slack channel for notification'
     required: true
@@ -76,9 +84,9 @@ runs:
         echo "::notice::Building updated modules info string"
         echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
 
-    - name: Send Updates Found Notification
-      id: send-updates
-      if: inputs.workflow_result == 'success' && inputs.updated == 'true'
+    - name: Send PR Created Notification
+      id: send-pr-created
+      if: inputs.workflow_result == 'success' && inputs.updated == 'true' && inputs.pr_created == 'true'
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
       with:
@@ -87,12 +95,12 @@ runs:
         errors: false
         payload: |
           channel: "${{ inputs.slack_channel }}"
-          text: "Release Scan: Updates Found"
+          text: "Release Scan: PR Created"
           blocks:
             - type: section
               text:
                 type: mrkdwn
-                text: "*${{ inputs.app_name }} Release Scan: Updates Found <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+                text: "*${{ inputs.app_name }} Release Scan: PR Created <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
           attachments:
             - color: "good"
               fields:
@@ -106,7 +114,49 @@ runs:
                   value: "${{ inputs.updates_cnt }}"
                   short: true
                 - title: "Pull Request"
-                  value: "${{ inputs.pr_url != '' && format('<{0}|{1} PR #{2}>', inputs.pr_url, inputs.pr_created == 'true' && 'Created' || 'Updated', inputs.pr_number) || 'No PR created' }}"
+                  value: "${{ inputs.pr_url != '' && format('<{0}|Created PR #{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}"
+                  short: true
+            - color: "good"
+              mrkdwn_in: ["text"]
+              text: ${{ toJSON(steps.updated-modules-info.outputs.updated_modules || inputs.updated_modules) }}
+            - color: "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}"
+              fields:
+                - title: "Reviewers"
+                  value: "${{ inputs.failed_reviewers != '' && format('⚠️ Failed: {0}', inputs.failed_reviewers) || (inputs.successful_reviewers != '' && format('✅ Added: {0}', inputs.successful_reviewers) || 'No reviewers configured') }}"
+                  short: false
+              footer: "Eureka CI/CD"
+
+    - name: Send Branch Updated Notification
+      id: send-branch-updated
+      if: inputs.workflow_result == 'success' && inputs.updated == 'true' && inputs.pr_created != 'true'
+      continue-on-error: true
+      uses: slackapi/slack-github-action@v2.1.1
+      with:
+        method: chat.postMessage
+        token: ${{ inputs.slack_bot_token }}
+        errors: false
+        payload: |
+          channel: "${{ inputs.slack_channel }}"
+          text: "Release Scan: Branch Updated"
+          blocks:
+            - type: section
+              text:
+                type: mrkdwn
+                text: "*${{ inputs.app_name }} Release Scan: Branch Updated <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+          attachments:
+            - color: "good"
+              fields:
+                - title: "Release Branch"
+                  value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
+                  short: true
+                - title: "New Version"
+                  value: "${{ inputs.new_version }}"
+                  short: true
+                - title: "Updates Found"
+                  value: "${{ inputs.updates_cnt }}"
+                  short: true
+                - title: "Pull Request"
+                  value: "${{ inputs.pr_url != '' && format('<{0}|Updated PR #{1}>', inputs.pr_url, inputs.pr_number) || 'Branch updated' }}"
                   short: true
             - color: "good"
               mrkdwn_in: ["text"]
@@ -153,12 +203,14 @@ runs:
           echo "notification_sent=false" >> "$GITHUB_OUTPUT"
           echo "notification_status=skipped" >> "$GITHUB_OUTPUT"
           echo "::notice::No notification needed - no updates found"
-        elif [[ "${{ steps.send-updates.outcome }}" == "success" ]] || \
+        elif [[ "${{ steps.send-pr-created.outcome }}" == "success" ]] || \
+             [[ "${{ steps.send-branch-updated.outcome }}" == "success" ]] || \
              [[ "${{ steps.send-failure.outcome }}" == "success" ]]; then
           echo "notification_sent=true" >> "$GITHUB_OUTPUT"
           echo "notification_status=success" >> "$GITHUB_OUTPUT"
           echo "::notice::Successfully sent notification to ${{ inputs.slack_channel }}"
-        elif [[ "${{ steps.send-updates.outcome }}" == "failure" ]] || \
+        elif [[ "${{ steps.send-pr-created.outcome }}" == "failure" ]] || \
+             [[ "${{ steps.send-branch-updated.outcome }}" == "failure" ]] || \
              [[ "${{ steps.send-failure.outcome }}" == "failure" ]]; then
           echo "notification_sent=false" >> "$GITHUB_OUTPUT"
           echo "notification_status=failure" >> "$GITHUB_OUTPUT"
