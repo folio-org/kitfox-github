@@ -204,9 +204,9 @@ runs:
                   value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
                   short: true
                 - title: "Status"
-                  value: "Workflow Failed"
+                  value: "Failed"
                   short: true
-                - title: "Error"
+                - title: "Failure Reason"
                   value: "${{ inputs.error_message != '' && inputs.error_message || 'Check workflow logs for details' }}"
                   short: false
               footer: "Eureka CI/CD"
