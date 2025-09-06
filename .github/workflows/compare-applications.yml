@@ -112,23 +112,23 @@ jobs:
         run: |
           echo "::notice::Comparing application versions"
           
-          # Get versions
           base_version=$(jq -r '.version // "unknown"' base_state.json)
           head_version=$(jq -r '.version // "unknown"' head_state.json)
           
           echo "Base version: $base_version"
           echo "Head version: $head_version"
           
-          # Compare dependencies
           updated_modules=""
           updates_cnt=0
           
-          # Get all unique module names from both states
-          all_modules=$(jq -r '.dependencies | keys[]' base_state.json head_state.json 2>/dev/null | sort -u)
+          all_modules=$(jq -r '(.modules[]?.name, .uiModules[]?.name) // empty' base_state.json head_state.json 2>/dev/null | sort -u)
           
           for module in $all_modules; do
-            base_ver=$(jq -r ".dependencies[\"$module\"] // \"not present\"" base_state.json)
-            head_ver=$(jq -r ".dependencies[\"$module\"] // \"not present\"" head_state.json)
+            base_ver=$(jq -r "(.modules[]? | select(.name == \"$module\") | .version) // (.uiModules[]? | select(.name == \"$module\") | .version) // \"not present\"" base_state.json | head -1)
+            head_ver=$(jq -r "(.modules[]? | select(.name == \"$module\") | .version) // (.uiModules[]? | select(.name == \"$module\") | .version) // \"not present\"" head_state.json | head -1)
+            
+            [ -z "$base_ver" ] && base_ver="not present"
+            [ -z "$head_ver" ] && head_ver="not present"
             
             if [ "$base_ver" != "$head_ver" ]; then
               if [ "$base_ver" = "not present" ]; then
@@ -148,14 +148,12 @@ jobs:
             fi
           done
           
-          # Check if there are changes
           if [ "$updates_cnt" -gt 0 ] || [ "$base_version" != "$head_version" ]; then
             has_changes=true
           else
             has_changes=false
           fi
           
-          # Output results
           echo "updated_modules<<EOF" >> "$GITHUB_OUTPUT"
           echo "$updated_modules" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
@@ -164,7 +162,6 @@ jobs:
           echo "new_version=$head_version" >> "$GITHUB_OUTPUT"
           echo "has_changes=$has_changes" >> "$GITHUB_OUTPUT"
           
-          # Display summary
           echo "::notice::Found $updates_cnt module updates"
           if [ -n "$updated_modules" ]; then
             echo "::notice::Updated modules:"
