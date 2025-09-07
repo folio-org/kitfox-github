@@ -71,6 +71,8 @@ runs:
     - name: Parse Configuration
       id: parse-config
       shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
       run: |
         set -eo pipefail
         
@@ -126,11 +128,14 @@ runs:
           existing=()
           
           for branch in "${branches_array[@]}"; do
-            if gh api "repos/${{ inputs.repo }}/branches/$branch" >/dev/null 2>&1; then
+            echo "::notice::Checking branch: $branch"
+            
+            if response=$(gh api "repos/${{ inputs.repo }}/branches/$branch" 2>&1); then
               existing+=("$branch")
               echo "::notice::  ✓ Branch exists: $branch"
             else
               echo "::warning::  ✗ Branch not found: $branch"
+              echo "::warning::    API response: $response"
             fi
           done
           
