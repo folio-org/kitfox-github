@@ -170,5 +170,5 @@ runs:
           echo "::notice::  Update Branches Map: $COMPACT_MAP"
         fi
         
-        [[ "$ENABLED" != "true" ]] && echo "::warning::Release scanning is disabled in configuration"
-        [[ "$EXISTING_COUNT" == "0" ]] && echo "::warning::No existing release branches found to scan"
+        [[ "$ENABLED" != "true" ]] && echo "::warning::Release scanning is disabled in configuration" || true
+        [[ "$EXISTING_COUNT" == "0" ]] && echo "::warning::No existing release branches found to scan" || true
