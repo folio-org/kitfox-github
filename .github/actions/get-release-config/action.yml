@@ -155,7 +155,7 @@ runs:
         echo "branch_count=$EXISTING_COUNT" >> "$GITHUB_OUTPUT"
         echo "pr_reviewers=$PR_REVIEWERS" >> "$GITHUB_OUTPUT"
         echo "pr_labels=$PR_LABELS" >> "$GITHUB_OUTPUT"
-        echo "update_branches_map=$EXISTING_UPDATE_MAP" >> "$GITHUB_OUTPUT"
+        echo "update_branches_map=$(echo "$EXISTING_UPDATE_MAP" | jq -c .)" >> "$GITHUB_OUTPUT"
         
         echo "::notice::Configuration parsed:"
         echo "::notice::  Enabled: $ENABLED"
