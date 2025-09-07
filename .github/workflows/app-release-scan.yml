@@ -195,7 +195,7 @@ jobs:
   manage-pr:
     name: Manage Pull Request
     needs: [determine-source-branch, update-application, compare-applications, commit-changes]
-    if: always() && !inputs.dry_run && !cancelled()
+    if: success() && !inputs.dry_run && !cancelled()
     runs-on: ubuntu-latest
     outputs:
       pr_created: ${{ steps.create-pr.outputs.pr_created == 'true' }}
