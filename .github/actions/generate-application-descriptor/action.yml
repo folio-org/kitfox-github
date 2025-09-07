@@ -1,0 +1,122 @@
+name: 'Generate Application Descriptor'
+description: 'Generate application descriptor from application.yaml state file'
+
+inputs:
+  app_name:
+    description: 'Application name'
+    required: true
+  state_file:
+    description: 'Path to application state file (JSON)'
+    required: false
+    default: 'application-descriptor.json'
+  upload_artifact:
+    description: 'Whether to upload the generated descriptor as an artifact'
+    required: false
+    default: 'true'
+  artifact_retention_days:
+    description: 'Number of days to retain the artifact'
+    required: false
+    default: '1'
+
+outputs:
+  generated:
+    description: 'Whether descriptor was generated successfully'
+    value: ${{ steps.generate.outputs.generated }}
+  descriptor_file:
+    description: 'Name of generated descriptor file'
+    value: ${{ steps.generate.outputs.descriptor_file }}
+  descriptor_file_name:
+    description: 'Name of descriptor file without extension'
+    value: ${{ steps.generate.outputs.descriptor_file_name }}
+  has_placeholders:
+    description: 'Whether the state file contains placeholder values'
+    value: ${{ steps.check-placeholders.outputs.has_placeholders }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check for Placeholder Versions
+      id: check-placeholders
+      shell: bash
+      env:
+        STATE_FILE: ${{ inputs.state_file }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Checking for placeholder versions in state file"
+        
+        if [[ ! -f "$STATE_FILE" ]]; then
+          echo "::error::State file not found: $STATE_FILE"
+          echo "has_placeholders=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+        
+        has_placeholders=$(jq -r '
+          [(.modules[]?.version), (.uiModules[]?.version)] 
+          | map(select(. == "<CHANGE_ME>")) 
+          | length > 0
+        ' "$STATE_FILE")
+        
+        if [[ "$has_placeholders" == "true" ]]; then
+          echo "::warning::Found <CHANGE_ME> placeholders in module versions. Skipping descriptor generation."
+          echo "has_placeholders=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::No placeholders found, descriptor can be generated"
+          echo "has_placeholders=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Generate Application Descriptor
+      id: generate
+      if: steps.check-placeholders.outputs.has_placeholders != 'true'
+      shell: bash
+      env:
+        APP_NAME: ${{ inputs.app_name }}
+        STATE_FILE: ${{ inputs.state_file }}
+        SUPRESS_LOGS: "-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
+        COMMAND: "org.folio:folio-application-generator:generateFromJson"
+      run: |
+        set -eo pipefail
+        
+        if [[ ! -f "pom.xml" ]]; then
+          echo "::error::pom.xml not found"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+        
+        if [[ ! -f "$STATE_FILE" ]]; then
+          echo "::error::State file not found: $STATE_FILE"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+        
+        echo "::notice::Generating application descriptor from $STATE_FILE"
+        echo "::notice::Full Maven command: mvn $SUPRESS_LOGS clean $COMMAND -U -e -DtemplatePath=$STATE_FILE"
+        echo "::group::Generate application artifact"
+        mvn "$SUPRESS_LOGS" clean "$COMMAND" -U -e "-DtemplatePath=$STATE_FILE"
+        echo "::endgroup::"
+        
+        echo "::group::Debug - Check target directory contents"
+        ls -la target/ || echo "Target directory does not exist"
+        echo "::endgroup::"
+        
+        APP_DESCRIPTOR_FILE=$(compgen -G "target/${APP_NAME}*.json" | head -n 1)
+        if [[ -z "$APP_DESCRIPTOR_FILE" ]]; then
+          echo "::error::Generated application descriptor not found"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+        
+        APP_DESCRIPTOR_FILENAME=$(basename "$APP_DESCRIPTOR_FILE")
+        echo "generated=true" >> "$GITHUB_OUTPUT"
+        echo "descriptor_file=$APP_DESCRIPTOR_FILENAME" >> "$GITHUB_OUTPUT"
+        echo "descriptor_file_name=${APP_DESCRIPTOR_FILENAME%.json}" >> "$GITHUB_OUTPUT"
+        
+        echo "::notice::Application descriptor generated successfully: $APP_DESCRIPTOR_FILENAME"
+
+    - name: Upload Descriptor Artifact
+      if: steps.generate.outputs.generated == 'true' && inputs.upload_artifact == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ inputs.app_name }}-descriptor"
+        path: "target/${{ inputs.app_name }}*.json"
+        retention-days: ${{ inputs.artifact_retention_days }}
