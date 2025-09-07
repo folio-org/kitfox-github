@@ -115,7 +115,6 @@ runs:
           done | jq -s 'add // {}')
         fi
         
-        # Check which branches actually exist
         EXISTING_BRANCHES="[]"
         EXISTING_COUNT=0
         EXISTING_UPDATE_MAP="{}"
@@ -123,7 +122,6 @@ runs:
         if [[ "$ENABLED" == "true" ]] && [[ "$BRANCHES" != "[]" ]]; then
           echo "::notice::Checking which branches exist in repository"
           
-          # Filter branches to only include existing ones
           mapfile -t branches_array < <(echo "$BRANCHES" | jq -r '.[]')
           existing=()
           
@@ -136,12 +134,10 @@ runs:
             fi
           done
           
-          # Create JSON array of existing branches
           if [ ${#existing[@]} -gt 0 ]; then
             EXISTING_BRANCHES=$(printf '%s\n' "${existing[@]}" | jq -R . | jq -cs .)
             EXISTING_COUNT=${#existing[@]}
             
-            # Build update map only for existing branches
             EXISTING_UPDATE_MAP=$(printf '%s\n' "${existing[@]}" | while read -r branch; do
               update_branch=$(echo "$UPDATE_BRANCH_FORMAT" | sed "s/{0}/$branch/g")
               jq -n --arg key "$branch" --arg val "$update_branch" '{($key): $val}'
