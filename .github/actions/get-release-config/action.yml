@@ -165,7 +165,7 @@ runs:
         [[ -n "$PR_REVIEWERS" ]] && echo "::notice::  PR Reviewers: $PR_REVIEWERS"
         [[ -n "$PR_LABELS" ]] && echo "::notice::  PR Labels: $PR_LABELS"
         [[ -n "$UPDATE_BRANCH_FORMAT" ]] && echo "::notice::  Update Branch Format: $UPDATE_BRANCH_FORMAT"
-        [[ "$EXISTING_UPDATE_MAP" != "{}" ]] && echo "::notice::  Update Branches Map: $EXISTING_UPDATE_MAP"
+        [[ "$EXISTING_UPDATE_MAP" != "{}" ]] && echo "::notice::  Update Branches Map: $(echo "$EXISTING_UPDATE_MAP" | jq -c .)"
         
         [[ "$ENABLED" != "true" ]] && echo "::warning::Release scanning is disabled in configuration"
         [[ "$EXISTING_COUNT" == "0" ]] && echo "::warning::No existing release branches found to scan"
