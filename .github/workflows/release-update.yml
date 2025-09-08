@@ -60,7 +60,7 @@ concurrency:
 jobs:
   scan:
     name: Scan Branch
-    uses: folio-org/kitfox-github/.github/workflows/release-update-flow.yml@RANCHER-2323-test #TODO: Change to master when ready
+    uses: ./.github/workflows/release-update-flow.yml
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
