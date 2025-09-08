@@ -1,5 +1,5 @@
-name: 'Slack Release Scan Notification'
-description: 'Send Slack notification for release scan results'
+name: 'Slack Release Update Notification'
+description: 'Send Slack notification for release update results'
 inputs:
   app_name:
     description: 'Application name'
