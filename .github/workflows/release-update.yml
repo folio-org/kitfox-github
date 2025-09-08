@@ -60,7 +60,7 @@ concurrency:
 jobs:
   scan:
     name: Scan Branch
-    uses: folio-org/kitfox-github/.github/workflows/release-update-flow.yml@master
+    uses: ./.github/workflows/release-update-flow.yml
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
