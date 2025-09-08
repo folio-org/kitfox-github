@@ -1,4 +1,4 @@
-name: Application Release Branch Preparation (reusable)
+name: Release preparation (reusable)
 
 on:
   workflow_call:
