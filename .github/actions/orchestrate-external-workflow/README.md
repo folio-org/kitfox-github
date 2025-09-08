@@ -20,7 +20,7 @@ A universal GitHub Action for triggering, tracking, and waiting for completion o
   uses: folio-org/kitfox-github/.github/actions/orchestrate-external-workflow@main
   with:
     repository: folio-org/app-platform-minimal
-    workflow_file: app-release-preparation.yml
+    workflow_file: release-preparation.yml
     workflow_branch: main
     workflow_parameters: |
       previous_release_branch: R2-2024

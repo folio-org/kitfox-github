@@ -1,6 +1,6 @@
 # Application Release Preparation Workflow
 
-**Workflow**: `app-release-preparation.yml`  
+**Workflow**: `release-preparation.yml`  
 **Purpose**: Orchestrates release branch preparation for FOLIO applications  
 **Type**: Reusable workflow (`workflow_call`)
 
@@ -78,7 +78,7 @@ jobs:
   prepare:
     needs: authorize
     if: needs.authorize.outputs.authorized == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
 ```
 
 ### Token Requirements
@@ -94,7 +94,7 @@ jobs:
 ```yaml
 jobs:
   prepare-release:
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
     with:
       app_name: 'app-acquisitions'
       previous_release_branch: 'R1-2024'
@@ -106,7 +106,7 @@ jobs:
 ```yaml
 jobs:
   prepare-release:
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
     with:
       app_name: 'app-acquisitions'
       previous_release_branch: 'R1-2024'
@@ -120,7 +120,7 @@ jobs:
 ```yaml
 jobs:
   test-preparation:
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
     with:
       app_name: 'app-acquisitions'
       previous_release_branch: 'R1-2024'
@@ -200,7 +200,7 @@ steps:
     uses: folio-org/kitfox-github/.github/actions/orchestrate-external-workflow@main
     with:
       repository: 'folio-org/${{ matrix.application }}'
-      workflow_file: 'app-release-preparation.yml'
+      workflow_file: 'release-preparation.yml'
       workflow_parameters: |
         previous_release_branch: ${{ inputs.previous_release_branch }}
         new_release_branch: ${{ inputs.new_release_branch }}

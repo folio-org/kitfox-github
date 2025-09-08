@@ -306,7 +306,7 @@ collect-and-notify:
 
 ## 📚 Related Documentation
 
-- **[App Release Preparation](app-release-preparation.md)**: Main workflow that uses this notification
+- **[App Release Preparation](release-preparation.md)**: Main workflow that uses this notification
 - **[Distributed Orchestration](distributed-orchestration.md)**: Cross-repository coordination patterns
 - **[Slack API Documentation](https://api.slack.com/messaging/composing)**: Official Slack formatting guide
 - **[FOLIO Communication Guidelines](https://folio-org.atlassian.net/)**: Team communication standards
