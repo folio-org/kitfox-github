@@ -1,5 +1,5 @@
-name: 'Application Release PR Update Slack Notification'
-description: 'Send Slack notification for application release PR update check'
+name: 'Release PR Check Slack Notification'
+description: 'Send Slack notification for application release PR check'
 
 inputs:
   app_name:
