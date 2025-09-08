@@ -1,4 +1,4 @@
-name: Application Release Scan
+name: Application Release Scan (Reusable)
 
 on:
   workflow_call:
