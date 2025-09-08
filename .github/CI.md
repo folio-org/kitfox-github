@@ -57,9 +57,9 @@ All workflows in this repository follow the `workflow_call` pattern, enabling:
 - Integration with Eureka CI Slack channels
 
 ### Application Release Preparation
-**File**: [`app-release-preparation.yml`](workflows/app-release-preparation.yml)  
+**File**: [`release-preparation.yml`](workflows/release-preparation.yml)  
 **Purpose**: Standardized release branch preparation for FOLIO applications  
-**Documentation**: [App Release Preparation Guide](docs/app-release-preparation.md)
+**Documentation**: [App Release Preparation Guide](docs/release-preparation.md)
 
 **Key Features**:
 - Maven version extraction and validation
@@ -69,7 +69,7 @@ All workflows in this repository follow the `workflow_call` pattern, enabling:
 - Dry-run support for safe testing
 
 ### Application Release Notification
-**File**: [`app-release-preparation-notification.yml`](workflows/app-release-preparation-notification.yml)  
+**File**: [`release-preparation-notification.yml`](workflows/release-preparation-notification.yml)  
 **Purpose**: Standardized Slack notifications for application operations  
 **Documentation**: [App Notification Guide](docs/app-notification.md)
 
@@ -117,7 +117,7 @@ jobs:
   execute-operation:
     needs: validate-authorization
     if: needs.validate-authorization.outputs.authorized == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
 ```
 
 ### Security Boundaries
@@ -158,7 +158,7 @@ jobs:
   execute-workflow:
     needs: validate-actor
     if: needs.validate-actor.outputs.authorized == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
     with:
       app_name: ${{ inputs.app_name }}
       previous_release_branch: ${{ inputs.previous_release_branch }}
@@ -168,7 +168,7 @@ jobs:
   send-notification:
     needs: [validate-actor, execute-workflow]
     if: always() && needs.validate-actor.outputs.authorized == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
     with:
       app_name: ${{ inputs.app_name }}
       operation_status: ${{ needs.execute-workflow.result }}
@@ -232,7 +232,7 @@ steps:
     uses: folio-org/kitfox-github/.github/actions/orchestrate-external-workflow@main
     with:
       repository: 'folio-org/${{ matrix.application }}'
-      workflow_file: 'app-release-preparation.yml'
+      workflow_file: 'release-preparation.yml'
       workflow_branch: 'master'
       workflow_parameters: |
         previous_release_branch: ${{ inputs.previous_release_branch }}
@@ -274,7 +274,7 @@ inputs:
 
 - **[App Update](docs/app-update.md)**: Automated module updates and descriptor management
 - **[App Update Notification](docs/app-update-notification.md)**: Rich Slack notifications for update operations
-- **[App Release Preparation](docs/app-release-preparation.md)**: Complete guide to release preparation workflow
+- **[App Release Preparation](docs/release-preparation.md)**: Complete guide to release preparation workflow
 - **[App Notification](docs/app-notification.md)**: Slack notification patterns and customization
 - **[Distributed Orchestration](docs/distributed-orchestration.md)**: Cross-repository coordination patterns
 - **[Security Implementation](docs/security-implementation.md)**: Authorization and access control patterns
