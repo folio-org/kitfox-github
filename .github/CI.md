@@ -69,7 +69,7 @@ All workflows in this repository follow the `workflow_call` pattern, enabling:
 - Dry-run support for safe testing
 
 ### Application Release Notification
-**File**: [`app-release-preparation-notification.yml`](workflows/app-release-preparation-notification.yml)  
+**File**: [`release-preparation-notification.yml`](workflows/release-preparation-notification.yml)  
 **Purpose**: Standardized Slack notifications for application operations  
 **Documentation**: [App Notification Guide](docs/app-notification.md)
 
@@ -168,7 +168,7 @@ jobs:
   send-notification:
     needs: [validate-actor, execute-workflow]
     if: always() && needs.validate-actor.outputs.authorized == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
     with:
       app_name: ${{ inputs.app_name }}
       operation_status: ${{ needs.execute-workflow.result }}

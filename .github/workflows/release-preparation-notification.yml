@@ -1,4 +1,4 @@
-name: Application Release Preparation Slack Notification
+name: Release Preparation Slack Notification
 
 on:
   workflow_call:
