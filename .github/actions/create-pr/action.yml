@@ -1,0 +1,214 @@
+name: 'Create Pull Request'
+description: 'Create a new pull request if it does not exist'
+inputs:
+  repo:
+    description: 'Repository (org/repo format)'
+    required: true
+  base_branch:
+    description: 'Base branch for PR'
+    required: true
+  head_branch:
+    description: 'Head branch for PR'
+    required: true
+  pr_title:
+    description: 'Pull request title'
+    required: true
+  pr_body:
+    description: 'Pull request body (supports multiline)'
+    required: true
+  pr_labels:
+    description: 'Comma-separated list of labels'
+    required: false
+    default: ''
+  pr_reviewers:
+    description: 'Comma-separated list of reviewers (users or teams with org/ prefix)'
+    required: false
+    default: ''
+  github_token:
+    description: 'GitHub token for authentication'
+    required: true
+outputs:
+  pr_created:
+    description: 'Whether a new PR was created'
+    value: ${{ steps.create-pr.outputs.pr_created }}
+  pr_number:
+    description: 'Pull request number'
+    value: ${{ steps.create-pr.outputs.pr_number }}
+  pr_url:
+    description: 'Pull request URL'
+    value: ${{ steps.create-pr.outputs.pr_url }}
+  pr_exists:
+    description: 'Whether PR already exists'
+    value: ${{ steps.check-existing.outputs.pr_exists }}
+  existing_pr_number:
+    description: 'Existing PR number if found'
+    value: ${{ steps.check-existing.outputs.pr_number }}
+  existing_pr_url:
+    description: 'Existing PR URL if found'
+    value: ${{ steps.check-existing.outputs.pr_url }}
+  successful_reviewers:
+    description: 'Space-separated list of successfully added reviewers'
+    value: ${{ steps.add-reviewers.outputs.successful_reviewers }}
+  failed_reviewers:
+    description: 'Space-separated list of reviewers that failed to be added'
+    value: ${{ steps.add-reviewers.outputs.failed_reviewers }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check for existing PR
+      id: check-existing
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        BASE_BRANCH: ${{ inputs.base_branch }}
+        HEAD_BRANCH: ${{ inputs.head_branch }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Checking for existing PR from $HEAD_BRANCH to $BASE_BRANCH"
+        
+        pr_json=$(gh pr list \
+          --repo "$REPO" \
+          --base "$BASE_BRANCH" \
+          --head "$HEAD_BRANCH" \
+          --json number,url \
+          --jq '.[0]' || echo '{}')
+        
+        if [ "$pr_json" != "{}" ] && [ -n "$pr_json" ]; then
+          pr_number=$(echo "$pr_json" | jq -r '.number // ""')
+          pr_url=$(echo "$pr_json" | jq -r '.url // ""')
+          echo "::notice::Found existing PR #$pr_number: $pr_url"
+          echo "pr_exists=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::No existing PR found"
+          echo "pr_exists=false" >> "$GITHUB_OUTPUT"
+          echo "pr_number=" >> "$GITHUB_OUTPUT"
+          echo "pr_url=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Ensure labels exist
+      id: ensure-labels
+      if: steps.check-existing.outputs.pr_exists == 'false' && inputs.pr_labels != ''
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        PR_LABELS: ${{ inputs.pr_labels }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Ensuring labels exist in repository"
+        
+        label_args=""
+        IFS=',' read -ra LABELS <<< "$PR_LABELS"
+        for label in "${LABELS[@]}"; do
+          label=$(echo "$label" | xargs)
+          
+          if ! gh label list --repo "$REPO" --json name --jq '.[] | select(.name == "'"$label"'") | .name' | grep -q "^${label}$"; then
+            echo "::notice::Creating label '$label' in repository"
+            gh label create "$label" --repo "$REPO" --description "Automated label" --color "0366d6" || {
+              echo "::warning::Failed to create label '$label'"
+            }
+          else
+            echo "::notice::Label '$label' already exists"
+          fi
+          
+          label_args="$label_args --label \"$label\""
+        done
+        
+        echo "label_args=$label_args" >> "$GITHUB_OUTPUT"
+
+    - name: Create pull request
+      id: create-pr
+      if: steps.check-existing.outputs.pr_exists == 'false'
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        BASE_BRANCH: ${{ inputs.base_branch }}
+        HEAD_BRANCH: ${{ inputs.head_branch }}
+        TITLE: ${{ inputs.pr_title }}
+        BODY: ${{ inputs.pr_body }}
+        LABEL_ARGS: ${{ steps.ensure-labels.outputs.label_args }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Creating new PR from $HEAD_BRANCH to $BASE_BRANCH"
+        
+        pr_body_file=$(mktemp)
+        echo "$BODY" > "$pr_body_file"
+        
+        pr_cmd="gh pr create \
+          --repo \"$REPO\" \
+          --base \"$BASE_BRANCH\" \
+          --head \"$HEAD_BRANCH\" \
+          --title \"$TITLE\" \
+          --body-file \"$pr_body_file\""
+        
+        if [ -n "$LABEL_ARGS" ]; then
+          pr_cmd="$pr_cmd $LABEL_ARGS"
+        fi
+        
+        pr_url=$(eval "$pr_cmd")
+        
+        rm -f "$pr_body_file"
+        
+        pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+        
+        echo "pr_created=true" >> "$GITHUB_OUTPUT"
+        echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+        echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+        
+        echo "::notice::Successfully created PR #$pr_number: $pr_url"
+
+    - name: Add reviewers to PR
+      id: add-reviewers
+      if: steps.create-pr.outputs.pr_created == 'true' && inputs.pr_reviewers != ''
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        PR_NUMBER: ${{ steps.create-pr.outputs.pr_number }}
+        PR_REVIEWERS: ${{ inputs.pr_reviewers }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Adding reviewers to PR #$PR_NUMBER"
+        
+        successful_reviewers=()
+        failed_reviewers=()
+        
+        IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
+        for reviewer in "${REVIEWERS[@]}"; do
+          reviewer=$(echo "$reviewer" | xargs)
+          [ -z "$reviewer" ] && continue
+          
+          echo "::notice::Adding reviewer: $reviewer"
+          
+          if [[ "$reviewer" == *"/"* ]]; then
+            team_name="${reviewer#*/}"
+            api_params="-f team_reviewers[]=$team_name"
+            reviewer_type="team"
+          else
+            api_params="-f reviewers[]=$reviewer"
+            reviewer_type="user"
+          fi
+          
+          if gh api "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            $api_params 2>/dev/null; then
+            echo "::notice::Successfully added $reviewer_type: $reviewer"
+            successful_reviewers+=("$reviewer")
+          else
+            echo "::warning::Failed to add $reviewer_type: $reviewer"
+            failed_reviewers+=("$reviewer")
+          fi
+        done
+        
+        echo "successful_reviewers=${successful_reviewers[*]}" >> "$GITHUB_OUTPUT"
+        echo "failed_reviewers=${failed_reviewers[*]}" >> "$GITHUB_OUTPUT"
