@@ -132,7 +132,7 @@ runs:
                   value: "${{ inputs.updates_cnt }}"
                   short: true
                 - title: "Pull Request"
-                  value: "${{ inputs.pr_url != '' && format('<{0}|Created PR #{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}"
+                  value: "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}"
                   short: true
             - color: "good"
               mrkdwn_in: ["text"]
@@ -173,7 +173,7 @@ runs:
                   value: "${{ inputs.updates_cnt }}"
                   short: true
                 - title: "Pull Request"
-                  value: "${{ inputs.pr_url != '' && format('<{0}|Updated PR #{1}>', inputs.pr_url, inputs.pr_number) || 'Branch updated' }}"
+                  value: "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'Branch updated' }}"
                   short: true
             - color: "good"
               mrkdwn_in: ["text"]
