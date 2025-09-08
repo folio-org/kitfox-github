@@ -314,5 +314,5 @@ collect-and-notify:
 ---
 
 **Last Updated**: August 2025  
-**Workflow Version**: 1.0  
+**Workflow Version**: 1.2  
 **Slack API Version**: v2.1.1
