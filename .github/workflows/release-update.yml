@@ -104,7 +104,7 @@ jobs:
           workflow_run_id: ${{ github.run_id }}
           workflow_run_number: ${{ github.run_number }}
           error_message: ${{ needs.scan.outputs.failure_reason || (needs.scan.result == 'failure' && format('Scan failed for branch {0}', inputs.release_branch) || '') }}
-          slack_channel: # ${{ vars.SLACK_NOTIF_CHANNEL }} uncomment when ready to send to project channel
+          slack_channel: ${{ vars.SLACK_NOTIF_CHANNEL }}
           slack_bot_token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
 
       - name: Send to General Channel
