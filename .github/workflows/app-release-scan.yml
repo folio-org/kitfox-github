@@ -188,7 +188,7 @@ jobs:
         Updated modules:
         ${{ needs.update-application.outputs.updated_modules }}
       dry_run: ${{ inputs.dry_run }}
-      use_github_app: false
+      use_github_app: true
       source_branch: ${{ needs.determine-source-branch.outputs.source_branch }}
     secrets: inherit
 
