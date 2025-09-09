@@ -107,12 +107,12 @@ runs:
         errors: false
         payload: |
           channel: "${{ inputs.slack_channel }}"
-          text: "Release Scan: PR Created"
+          text: "${{ inputs.app_name }} ${{ inputs.release_branch }} release update #${{ inputs.workflow_run_number }}"
           blocks:
             - type: section
               text:
                 type: mrkdwn
-                text: "*${{ inputs.app_name }} Release Scan: PR Created <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+                text: "*${{ inputs.app_name }} ${{ inputs.release_branch }} release update <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
           attachments:
             - color: "good"
               fields:
@@ -130,7 +130,7 @@ runs:
                   short: true
             - color: "good"
               mrkdwn_in: ["text"]
-              text: ${{ toJSON(steps.info.outputs.updated_modules || inputs.updated_modules) }}
+              text: ${{ toJSON(inputs.updated_modules) }}
             - color: "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}"
               mrkdwn_in: ["text"]
               title: "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}"
