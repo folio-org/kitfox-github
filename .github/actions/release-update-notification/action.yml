@@ -157,8 +157,8 @@ runs:
                 "mrkdwn_in": ["text"],
                 "text": ${{ toJSON(inputs.updated_modules) }}
               },
-              ${{ env.SHOW_REVIEWERS && env.REVIEWERS_BLOCK || '' }}
-              "footer": "Eureka CI/CD"
+              ${{ env.SHOW_REVIEWERS == 'true' && env.REVIEWERS_BLOCK || '' }}
+              { "color": "good", "footer": "Eureka CI/CD" }
             ],
           }
 
@@ -182,7 +182,7 @@ runs:
           attachments:
             - color: "danger"
               fields:
-                - title: "Release Branch"
+                - title: "Release Bra nch"
                   value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
                   short: false
                 - title: "Failure Reason"
