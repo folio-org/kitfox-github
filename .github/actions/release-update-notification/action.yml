@@ -105,38 +105,58 @@ runs:
         token: ${{ inputs.slack_bot_token }}
         errors: false
         payload: |
-          channel: "${{ inputs.slack_channel }}"
-          text: "${{ inputs.app_name }} ${{ inputs.release_branch }} release updated #${{ inputs.workflow_run_number }}"
-          blocks:
-            - type: section
-              text:
-                type: mrkdwn
-                text: "*${{ inputs.app_name }} ${{ inputs.release_branch }} release update <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
-          attachments:
-            - color: "good"
-              fields:
-                - title: "Release Branch"
-                  value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
-                  short: true
-                - title: "New Version"
-                  value: "${{ inputs.new_version }}"
-                  short: true
-                - title: "Updates Found"
-                  value: "${{ inputs.updates_cnt }}"
-                  short: true
-                - title: "Pull Request"
-                  value: "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}"
-                  short: true
-            - color: "good"
-              mrkdwn_in: ["text"]
-              text: ${{ toJSON(inputs.updated_modules) }}
-            - color: "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}"
-              mrkdwn_in: ["text"]
-              title: "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}"
-              text: ${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }}
-              footer: "Eureka CI/CD"
-            - ${{ toJSON('color: "good"') }}
-              text: "Test"
+          {
+            "channel": "${{ inputs.slack_channel }}",
+            "text": "${{ inputs.app_name }} ${{ inputs.release_branch }} release updated #${{ inputs.workflow_run_number }}",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*${{ inputs.app_name }} ${{ inputs.release_branch }} release update <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+                }
+              }
+            ],
+            "attachments": [
+              {
+                "color": "good",
+                "fields": [
+                  {
+                    "title": "Release Branch",
+                    "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
+                    "short": true
+                  },
+                  {
+                    "title": "New Version",
+                    "value": "${{ inputs.new_version }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Updates Found",
+                    "value": "${{ inputs.updates_cnt }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Pull Request",
+                    "value": "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}",
+                    "short": true
+                  }
+                ]
+              },
+              {
+                "color": "good",
+                "mrkdwn_in": ["text"],
+                "text": ${{ toJSON(inputs.updated_modules) }}
+              },
+              {
+                "color": "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}",
+                "mrkdwn_in": ["text"],
+                "title": "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}",
+                "text": ${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }},
+                "footer": "Eureka CI/CD"
+              }
+            ]
+          }
 
     - name: Send Branch Updated Notification
       id: send-branch-updated
