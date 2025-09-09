@@ -142,17 +142,16 @@ runs:
                     "title": "Pull Request",
                     "value": "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}",
                     "short": true
-                  }
+                  },
+                  "footer": "Eureka CI/CD"
                 ]
               },
               { 
                 "color": "good",
                 "mrkdwn_in": ["text"],
                 "text": ${{ toJSON(inputs.updated_modules) }}
-              },
-              ${{ env.SHOW_REVIEWERS == 'true' && env.REVIEWERS_BLOCK || '' }}
-            ],
-            "footer": "Eureka CI/CD"
+              }
+            ]
           }
 
     - name: Send Failure Notification
