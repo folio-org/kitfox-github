@@ -157,7 +157,7 @@ runs:
           attachments:
             - color: "danger"
               fields:
-                - title: "Release Bra nch"
+                - title: "Release Branch"
                   value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
                   short: false
                 - title: "Failure Reason"
