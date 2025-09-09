@@ -210,5 +210,5 @@ runs:
           fi
         done
         
-        echo "successful_reviewers=${successful_reviewers[*]}" >> "$GITHUB_OUTPUT"
-        echo "failed_reviewers=${failed_reviewers[*]}" >> "$GITHUB_OUTPUT"
+        printf "successful_reviewers<<EOF\n%s\nEOF\n" "${successful_reviewers[@]}" >> "$GITHUB_OUTPUT"
+        printf "failed_reviewers<<EOF\n%s\nEOF\n" "${failed_reviewers[@]}" >> "$GITHUB_OUTPUT"
