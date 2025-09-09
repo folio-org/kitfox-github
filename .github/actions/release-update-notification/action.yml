@@ -149,7 +149,7 @@ runs:
                 "color": "good",
                 "mrkdwn_in": ["text"],
                 "text": ${{ toJSON(inputs.updated_modules) }},
-                ${{ env.SHOW_REVIEWERS == 'true' && format('"footer": "Eureka CI/CD"') || '' }}          
+                ${{ env.SHOW_REVIEWERS == 'false' && format('"footer": "Eureka CI/CD"') || '' }}          
               },
               ${{ env.SHOW_REVIEWERS == 'true' && env.REVIEWERS_BLOCK || '' }}
             ]
