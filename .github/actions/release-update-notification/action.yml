@@ -92,8 +92,7 @@ runs:
         elif [ -n "$SUCCESSFUL_REVIEWERS" ]; then
           REVIEWERS=$(echo "$SUCCESSFUL_REVIEWERS" | tr ' ' '\n')
         fi
-        
-        echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
+
         echo "reviewers<<EOF"$'\n'"$REVIEWERS"$'\n'EOF >> "$GITHUB_OUTPUT"
 
     - name: Send PR Created Notification
@@ -136,6 +135,8 @@ runs:
               title: "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}"
               text: ${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }}
               footer: "Eureka CI/CD"
+            - ${{ toJSON('color: "good"') }}
+              text: "Test"
 
     - name: Send Branch Updated Notification
       id: send-branch-updated
@@ -171,7 +172,7 @@ runs:
                   short: true
             - color: "good"
               mrkdwn_in: ["text"]
-              text: ${{ toJSON(steps.info.outputs.updated_modules || inputs.updated_modules) }}
+              text: ${{ toJSON(inputs.updated_modules) }}
               footer: "Eureka CI/CD"
 
     - name: Send Failure Notification
