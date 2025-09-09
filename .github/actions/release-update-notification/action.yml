@@ -148,11 +148,11 @@ runs:
               { 
                 "color": "good",
                 "mrkdwn_in": ["text"],
-                "footer": "Eureka CI/CD",
                 "text": "Test"
               },
               ${{ env.SHOW_REVIEWERS == 'true' && env.REVIEWERS_BLOCK || '' }}
             ],
+            "footer": "Eureka CI/CD"
           }
 
     - name: Send Failure Notification
