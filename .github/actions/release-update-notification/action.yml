@@ -101,7 +101,7 @@ runs:
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
       env:
-        SHOW_REVIEWERS: ${{ (inputs.failed_reviewers != '' || inputs.successful_reviewers != '') && 'true' || 'false' }}
+        SHOW_REVIEWERS: ${{ inputs.pr_created == 'true' && 'true' || 'false' }}
         REVIEWERS_BLOCK: |
           {
             "color": "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}",
