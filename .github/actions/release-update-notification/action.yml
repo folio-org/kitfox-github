@@ -148,13 +148,15 @@ runs:
                 "mrkdwn_in": ["text"],
                 "text": ${{ toJSON(inputs.updated_modules) }}
               },
-              ${{ toJSON('{
-                "color": "'${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}'",
-                "mrkdwn_in": ["text"],
-                "title": "'${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}'",
-                "text": '${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }}',
-                "footer": "Eureka CI/CD"
-              },')
+              ${{ 
+                toJSON('{
+                  "color": "'${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}'",
+                  "mrkdwn_in": ["text"],
+                  "title": "'${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}'",
+                  "text": '${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }}',
+                  "footer": "Eureka CI/CD"
+                },') 
+              }}
             ]
           }
 
