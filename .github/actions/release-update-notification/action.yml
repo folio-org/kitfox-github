@@ -21,9 +21,6 @@ inputs:
     description: 'PR URL if created or found'
     required: false
     default: ''
-  updated:
-    description: 'Whether the application was updated'
-    required: true
   new_version:
     description: 'New version of the application'
     required: false
@@ -64,47 +61,44 @@ inputs:
     description: 'Slack bot token'
     required: true
 outputs:
-  notification_sent:
-    description: 'Whether the notification was sent'
-    value: ${{ steps.determine-status.outputs.notification_sent }}
-  notification_status:
-    description: 'Status of the notification'
-    value: ${{ steps.determine-status.outputs.notification_status }}
+  result:
+    description: 'Notification sent result'
+    value: >-
+      ${{ 
+          (steps.send-pr-created.outcome == 'success'
+            || steps.send-branch-updated.outcome == 'success'
+            || steps.send-failure.outcome == 'success') && 'success'
+          || (steps.send-pr-created.outcome == 'failure'
+            || steps.send-branch-updated.outcome == 'failure'
+            || steps.send-failure.outcome == 'failure') && 'failure'
+          || 'skipped'
+      }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Build Updated Modules Info
-      id: updated-modules-info
-      if: inputs.workflow_result == 'success' && inputs.updated == 'true' && inputs.updated_modules != ''
+    - name: Build Info
+      id: info
       shell: bash
       env:
         MODULES: "${{ inputs.updated_modules }}"
-      run: |
-        echo "::notice::Building updated modules info string"
-        echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
-
-    - name: Build Reviewers List
-      id: reviewers-list-info
-      if: inputs.successful_reviewers != '' || inputs.failed_reviewers != ''
-      shell: bash
-      env:
         SUCCESSFUL_REVIEWERS: "${{ inputs.successful_reviewers }}"
         FAILED_REVIEWERS: "${{ inputs.failed_reviewers }}"
       run: |
-        echo "::notice::Building reviewers list"
-
+        echo "::notice::Building info strings"
+        
         if [ -n "$FAILED_REVIEWERS" ]; then
           REVIEWERS=$(echo "$FAILED_REVIEWERS" | tr ' ' '\n')
         elif [ -n "$SUCCESSFUL_REVIEWERS" ]; then
           REVIEWERS=$(echo "$SUCCESSFUL_REVIEWERS" | tr ' ' '\n')
         fi
-
+        
+        echo "updated_modules<<EOF"$'\n'"$MODULES"$'\n'EOF >> "$GITHUB_OUTPUT"
         echo "reviewers<<EOF"$'\n'"$REVIEWERS"$'\n'EOF >> "$GITHUB_OUTPUT"
 
     - name: Send PR Created Notification
       id: send-pr-created
-      if: inputs.workflow_result == 'success' && inputs.updated == 'true' && inputs.pr_created == 'true'
+      if: inputs.workflow_result == 'success' && inputs.pr_created == 'true'
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
       with:
@@ -136,16 +130,16 @@ runs:
                   short: true
             - color: "good"
               mrkdwn_in: ["text"]
-              text: ${{ toJSON(steps.updated-modules-info.outputs.updated_modules || inputs.updated_modules) }}
+              text: ${{ toJSON(steps.info.outputs.updated_modules || inputs.updated_modules) }}
             - color: "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}"
               mrkdwn_in: ["text"]
               title: "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}"
-              text: ${{ toJSON(steps.reviewers-list-info.outputs.reviewers || 'No reviewers configured') }}
+              text: ${{ toJSON(steps.info.outputs.reviewers || 'No reviewers configured') }}
               footer: "Eureka CI/CD"
 
     - name: Send Branch Updated Notification
       id: send-branch-updated
-      if: inputs.workflow_result == 'success' && inputs.updated == 'true' && inputs.pr_created != 'true'
+      if: inputs.workflow_result == 'success' && inputs.pr_created != 'true'
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
       with:
@@ -177,7 +171,7 @@ runs:
                   short: true
             - color: "good"
               mrkdwn_in: ["text"]
-              text: ${{ toJSON(steps.updated-modules-info.outputs.updated_modules || inputs.updated_modules) }}
+              text: ${{ toJSON(steps.info.outputs.updated_modules || inputs.updated_modules) }}
               footer: "Eureka CI/CD"
 
     - name: Send Failure Notification
@@ -207,29 +201,3 @@ runs:
                   value: "${{ inputs.error_message != '' && inputs.error_message || 'Check workflow logs for details' }}"
                   short: false
               footer: "Eureka CI/CD"
-
-    - name: Determine Status
-      id: determine-status
-      if: always()
-      shell: bash
-      run: |
-        if [[ "${{ inputs.workflow_result }}" == "success" && "${{ inputs.updated }}" == "false" ]]; then
-          echo "notification_sent=false" >> "$GITHUB_OUTPUT"
-          echo "notification_status=skipped" >> "$GITHUB_OUTPUT"
-          echo "::notice::No notification needed - no updates found"
-        elif [[ "${{ steps.send-pr-created.outcome }}" == "success" ]] || \
-             [[ "${{ steps.send-branch-updated.outcome }}" == "success" ]] || \
-             [[ "${{ steps.send-failure.outcome }}" == "success" ]]; then
-          echo "notification_sent=true" >> "$GITHUB_OUTPUT"
-          echo "notification_status=success" >> "$GITHUB_OUTPUT"
-          echo "::notice::Successfully sent notification to ${{ inputs.slack_channel }}"
-        elif [[ "${{ steps.send-pr-created.outcome }}" == "failure" ]] || \
-             [[ "${{ steps.send-branch-updated.outcome }}" == "failure" ]] || \
-             [[ "${{ steps.send-failure.outcome }}" == "failure" ]]; then
-          echo "notification_sent=false" >> "$GITHUB_OUTPUT"
-          echo "notification_status=failure" >> "$GITHUB_OUTPUT"
-          echo "::warning::Failed to send notification to ${{ inputs.slack_channel }}"
-        else
-          echo "notification_sent=false" >> "$GITHUB_OUTPUT"
-          echo "notification_status=skipped" >> "$GITHUB_OUTPUT"
-        fi
