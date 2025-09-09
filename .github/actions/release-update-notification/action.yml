@@ -154,7 +154,7 @@ runs:
                 "title": "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}",
                 "text": ${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }},
                 "footer": "Eureka CI/CD"
-              }
+              },
             ]
           }
 
