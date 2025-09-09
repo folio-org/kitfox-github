@@ -151,15 +151,15 @@ jobs:
           TEAM_NOTIF_STATUS: ${{ needs.notify.outputs.team_notif_status || 'skipped' }}
           TEAM_NOTIF_STATUS_ICON: >-
             ${{ 
-              steps.notify.outputs.team_notif_status == 'success' && '✅'
-              || steps.notify.outputs.team_notif_status == 'failure' && '⚠️'
+              needs.notify.outputs.team_notif_status == 'success' && '✅'
+              || needs.notify.outputs.team_notif_status == 'failure' && '⚠️'
               || 'ℹ️' 
             }}
           GENERAL_NOTIF_STATUS: ${{ needs.notify.outputs.general_notification_status || 'skipped' }}
           GENERAL_NOTIF_STATUS_ICON: >-
             ${{ 
-              steps.notify.outputs.general_notification_status == 'success' && '✅'
-              || steps.notify.outputs.general_notification_status == 'failure' && '⚠️'
+              needs.notify.outputs.general_notification_status == 'success' && '✅'
+              || needs.notify.outputs.general_notification_status == 'failure' && '⚠️'
               || 'ℹ️' 
             }}
         run: |
