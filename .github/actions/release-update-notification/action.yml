@@ -100,6 +100,15 @@ runs:
       if: inputs.workflow_result == 'success' && inputs.pr_created == 'true'
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
+      env:
+        REVIEWERS_BLOCK: |
+          {
+            "color": "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}",
+            "mrkdwn_in": ["text"],
+            "title": "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}",
+            "text": ${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }},
+            "footer": "Eureka CI/CD"
+          },
       with:
         method: chat.postMessage
         token: ${{ inputs.slack_bot_token }}
@@ -148,15 +157,7 @@ runs:
                 "mrkdwn_in": ["text"],
                 "text": ${{ toJSON(inputs.updated_modules) }}
               },
-              ${{ 
-                toJSON('{
-                  "color": "'${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}'",
-                  "mrkdwn_in": ["text"],
-                  "title": "'${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}'",
-                  "text": '${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }}',
-                  "footer": "Eureka CI/CD"
-                },') 
-              }}
+              ${{ toJSON(env.REVIEWERS_BLOCK) }}
             ]
           }
 
