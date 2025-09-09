@@ -101,13 +101,13 @@ runs:
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
       env:
+        SHOW_REVIEWERS: ${{ (inputs.failed_reviewers != '' || inputs.successful_reviewers != '') && 'true' || 'false' }}
         REVIEWERS_BLOCK: |
           {
             "color": "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}",
             "mrkdwn_in": ["text"],
             "title": "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}",
             "text": ${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }},
-            "footer": "Eureka CI/CD"
           },
       with:
         method: chat.postMessage
@@ -157,8 +157,9 @@ runs:
                 "mrkdwn_in": ["text"],
                 "text": ${{ toJSON(inputs.updated_modules) }}
               },
-              ${{ toJSON(env.REVIEWERS_BLOCK) }}
-            ]
+              ${{ env.SHOW_REVIEWERS && env.REVIEWERS_BLOCK || '' }}
+            ],
+            "footer": "Eureka CI/CD"
           }
 
     - name: Send Branch Updated Notification
