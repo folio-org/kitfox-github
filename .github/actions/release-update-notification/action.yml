@@ -108,6 +108,7 @@ runs:
             "mrkdwn_in": ["text"],
             "title": "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}",
             "text": ${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }},
+            "footer": "Eureka CI/CD"
           },
       with:
         method: chat.postMessage
@@ -123,8 +124,7 @@ runs:
                 "text": {
                   "type": "mrkdwn",
                   "text": "*${{ inputs.app_name }} ${{ inputs.release_branch }} release update <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
-                },
-                "footer": "Eureka CI/CD"
+                }
               }
             ],
             "attachments": [
@@ -142,14 +142,14 @@ runs:
                     "title": "Pull Request",
                     "value": "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}",
                     "short": true
-                  },
-                  "footer": "Eureka CI/CD"
+                  }
                 ]
               },
               { 
                 "color": "good",
                 "mrkdwn_in": ["text"],
-                "text": ${{ toJSON(inputs.updated_modules) }}
+                "text": ${{ toJSON(inputs.updated_modules) }},
+                "footer": "Eureka CI/CD"          
               }
             ]
           }
