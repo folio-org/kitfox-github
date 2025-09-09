@@ -77,24 +77,6 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Build Info
-      id: info
-      shell: bash
-      env:
-        MODULES: "${{ inputs.updated_modules }}"
-        SUCCESSFUL_REVIEWERS: "${{ inputs.successful_reviewers }}"
-        FAILED_REVIEWERS: "${{ inputs.failed_reviewers }}"
-      run: |
-        echo "::notice::Building info strings"
-        
-        if [ -n "$FAILED_REVIEWERS" ]; then
-          REVIEWERS=$(echo "$FAILED_REVIEWERS" | tr ' ' '\n')
-        elif [ -n "$SUCCESSFUL_REVIEWERS" ]; then
-          REVIEWERS=$(echo "$SUCCESSFUL_REVIEWERS" | tr ' ' '\n')
-        fi
-
-        echo "reviewers<<EOF"$'\n'"$REVIEWERS"$'\n'EOF >> "$GITHUB_OUTPUT"
-
     - name: Send PR Created Notification
       id: send-pr-created
       if: inputs.workflow_result == 'success'
