@@ -148,7 +148,7 @@ runs:
               { 
                 "color": "good",
                 "mrkdwn_in": ["text"],
-                "text": "Test"
+                "text": ${{ toJSON(inputs.updated_modules) }}
               },
               ${{ env.SHOW_REVIEWERS == 'true' && env.REVIEWERS_BLOCK || '' }}
             ],
