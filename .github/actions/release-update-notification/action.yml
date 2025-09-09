@@ -97,7 +97,7 @@ runs:
 
     - name: Send PR Created Notification
       id: send-pr-created
-      if: inputs.workflow_result == 'success' && inputs.pr_created == 'true'
+      if: inputs.workflow_result == 'success'
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
       env:
@@ -161,43 +161,6 @@ runs:
             ],
             "footer": "Eureka CI/CD"
           }
-
-    - name: Send Branch Updated Notification
-      id: send-branch-updated
-      if: inputs.workflow_result == 'success' && inputs.pr_created != 'true'
-      continue-on-error: true
-      uses: slackapi/slack-github-action@v2.1.1
-      with:
-        method: chat.postMessage
-        token: ${{ inputs.slack_bot_token }}
-        errors: false
-        payload: |
-          channel: "${{ inputs.slack_channel }}"
-          text: "Release Scan: Branch Updated"
-          blocks:
-            - type: section
-              text:
-                type: mrkdwn
-                text: "*${{ inputs.app_name }} Release Scan: Branch Updated <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
-          attachments:
-            - color: "good"
-              fields:
-                - title: "Release Branch"
-                  value: "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>"
-                  short: true
-                - title: "New Version"
-                  value: "${{ inputs.new_version }}"
-                  short: true
-                - title: "Updates Found"
-                  value: "${{ inputs.updates_cnt }}"
-                  short: true
-                - title: "Pull Request"
-                  value: "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'Branch updated' }}"
-                  short: true
-            - color: "good"
-              mrkdwn_in: ["text"]
-              text: ${{ toJSON(inputs.updated_modules) }}
-              footer: "Eureka CI/CD"
 
     - name: Send Failure Notification
       id: send-failure
