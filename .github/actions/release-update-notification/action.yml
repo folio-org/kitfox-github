@@ -123,7 +123,8 @@ runs:
                 "text": {
                   "type": "mrkdwn",
                   "text": "*${{ inputs.app_name }} ${{ inputs.release_branch }} release update <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
-                }
+                },
+                "footer": "Eureka CI/CD"
               }
             ],
             "attachments": [
@@ -135,16 +136,8 @@ runs:
                     "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
                     "short": true
                   },
-                  {
-                    "title": "New Version",
-                    "value": "${{ inputs.new_version }}",
-                    "short": true
-                  },
-                  {
-                    "title": "Updates Found",
-                    "value": "${{ inputs.updates_cnt }}",
-                    "short": true
-                  },
+                  { "title": "New Version", "value": "${{ inputs.new_version }}", "short": true },
+                  { "title": "Updates Found", "value": "${{ inputs.updates_cnt }}", "short": true },
                   {
                     "title": "Pull Request",
                     "value": "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}",
@@ -152,13 +145,13 @@ runs:
                   }
                 ]
               },
-              {
+              { 
                 "color": "good",
                 "mrkdwn_in": ["text"],
-                "text": ${{ toJSON(inputs.updated_modules) }}
+                "text": ${{ toJSON(inputs.updated_modules) }},
+                ${{ env.SHOW_REVIEWERS == 'true' && '"footer": "Eureka CI/CD"' || '' }}
               },
               ${{ env.SHOW_REVIEWERS == 'true' && env.REVIEWERS_BLOCK || '' }}
-              { "color": "good", "footer": "Eureka CI/CD" }
             ],
           }
 
