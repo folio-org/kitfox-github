@@ -152,7 +152,7 @@ jobs:
           payload: |
             {
               "channel": "${{ env.CHANNEL }}",
-              "text": ${{ env.TITLE_TEXT }},
+              "text": "${{ env.TITLE_TEXT }}",
               "blocks": [
                 ${{ env.TITLE_BLOCK }}
               ],
@@ -175,7 +175,7 @@ jobs:
           payload: |
             {
               "channel": "${{ env.CHANNEL }}",
-              "text": ${{ env.TITLE_TEXT }},
+              "text": "${{ env.TITLE_TEXT }}",
               "blocks": [
                 ${{ env.TITLE_BLOCK }}
               ],
