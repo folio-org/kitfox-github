@@ -111,7 +111,7 @@ jobs:
         {
           "color": "good",
           "mrkdwn_in": ["text"],
-          "text": ${{ toJSON(inputs.updated_modules) }}
+          "text": ${{ toJSON(needs.scan.outputs.updated_modules) }}
         },
         {
           "color": "${{ needs.scan.outputs.failed_reviewers != '' && 'warning' || 'good' }}",
