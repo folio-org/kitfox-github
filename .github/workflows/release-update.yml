@@ -96,7 +96,7 @@ jobs:
           "fields": [
             {
               "title": "Release Branch",
-              "value": "<${{ github.server_url }}/${{ ${{ github.repository }} }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
+              "value": "<${{ github.server_url }}/${{ github.repository }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
               "short": true
             },
             { "title": "New Version", "value": "${{ needs.scan.outputs.new_version }}", "short": true },
@@ -126,7 +126,7 @@ jobs:
           "fields": [
             {
               "title": "Release Branch",
-              "value": "<${{ github.server_url }}/${{ ${{ github.repository }} }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
+              "value": "<${{ github.server_url }}/${{ github.repository }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
               "short": true
             },
             {
