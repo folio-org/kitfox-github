@@ -65,13 +65,11 @@ outputs:
     description: 'Notification sent result'
     value: >-
       ${{ 
-          (steps.send-pr-created.outcome == 'success'
-            || steps.send-branch-updated.outcome == 'success'
-            || steps.send-failure.outcome == 'success') && 'success'
-          || (steps.send-pr-created.outcome == 'failure'
-            || steps.send-branch-updated.outcome == 'failure'
-            || steps.send-failure.outcome == 'failure') && 'failure'
-          || 'skipped'
+        (steps.send-pr-created.outcome == 'success'
+          || steps.send-failure.outcome == 'success') && 'success'
+        || (steps.send-pr-created.outcome == 'failure'
+          || steps.send-failure.outcome == 'failure') && 'failure'
+        || 'skipped'
       }}
 
 runs:
@@ -83,7 +81,26 @@ runs:
       continue-on-error: true
       uses: slackapi/slack-github-action@v2.1.1
       env:
-        SHOW_REVIEWERS: ${{ inputs.pr_created == 'true' && 'true' || 'false' }}
+        RESULT: ${{ inputs.workflow_result == 'success' && 'updated' || 'failed' }}
+        COLOR: ${{ inputs.workflow_result == 'success' && 'good' || 'danger' }}
+        BRANCH_FIELD: |
+          {
+            "title": "Release Branch",
+            "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
+            "short": true
+          }
+        PR_FIELD: |
+          {
+            "title": "Pull Request",
+            "value": "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}",
+            "short": true
+          }
+        UPDATE_MODULES_BLOCK: |
+          {
+            "color": "good",
+            "mrkdwn_in": ["text"],
+            "text": ${{ toJSON(inputs.updated_modules) }}
+          }
         REVIEWERS_BLOCK: |
           {
             "color": "${{ inputs.failed_reviewers != '' && 'warning' || 'good' }}",
@@ -91,7 +108,13 @@ runs:
             "title": "${{ inputs.failed_reviewers != '' && 'Reviewers (failed)' || (inputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}",
             "text": ${{ toJSON(inputs.failed_reviewers || inputs.successful_reviewers || 'No reviewers configured') }},
             "footer": "Eureka CI/CD"
-          },
+          }
+        FAIL_REASON: |
+          {
+            "title": "Failure Reason"
+            "value": "${{ inputs.error_message != '' && inputs.error_message || 'Check workflow logs for details' }}"
+            "short": false
+          }
       with:
         method: chat.postMessage
         token: ${{ inputs.slack_bot_token }}
@@ -99,41 +122,28 @@ runs:
         payload: |
           {
             "channel": "${{ inputs.slack_channel }}",
-            "text": "${{ inputs.app_name }} ${{ inputs.release_branch }} release updated #${{ inputs.workflow_run_number }}",
+            "text": "${{ inputs.app_name }} ${{ inputs.release_branch }} release ${{ env.RESULT }} #${{ inputs.workflow_run_number }}",
             "blocks": [
               {
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "*${{ inputs.app_name }} ${{ inputs.release_branch }} release update <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
+                  "text": "*${{ inputs.app_name }} ${{ inputs.release_branch }} release ${{ env.RESULT }} <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ inputs.workflow_run_id }}|#${{ inputs.workflow_run_number }}>*"
                 }
               }
             ],
             "attachments": [
               {
-                "color": "good",
+                "color": ${{ env.COLOR }},
                 "fields": [
-                  {
-                    "title": "Release Branch",
-                    "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
-                    "short": true
-                  },
+                  ${{ env.BRANCH_FIELD }},
                   { "title": "New Version", "value": "${{ inputs.new_version }}", "short": true },
                   { "title": "Updates Found", "value": "${{ inputs.updates_cnt }}", "short": true },
-                  {
-                    "title": "Pull Request",
-                    "value": "${{ inputs.pr_url != '' && format('<{0}|#{1}>', inputs.pr_url, inputs.pr_number) || 'No PR created' }}",
-                    "short": true
-                  }
+                  ${{ env.PR_FIELD }}
                 ]
               },
-              { 
-                "color": "good",
-                "mrkdwn_in": ["text"],
-                "text": ${{ toJSON(inputs.updated_modules) }},
-                ${{ env.SHOW_REVIEWERS == 'false' && format('"footer": "Eureka CI/CD"') || '' }}          
-              },
-              ${{ env.SHOW_REVIEWERS == 'true' && env.REVIEWERS_BLOCK || '' }}
+              ${{ env.UPDATE_MODULES_BLOCK }},
+              ${{ env.REVIEWERS_BLOCK }},
             ]
           }
 
