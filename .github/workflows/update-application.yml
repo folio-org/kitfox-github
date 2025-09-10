@@ -256,11 +256,7 @@ jobs:
           echo "::notice::Found $updates module updates available"
           echo "updated=$([[ $updates -gt 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "updates=$updates" >> "$GITHUB_OUTPUT"
-          {
-            echo 'updated_modules<<EOF'
-            printf '%s' "$updated_modules"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          echo "updated_modules<<EOF"$'\n'"$updated_modules"$'\n'EOF >> "$GITHUB_OUTPUT"
 
       - name: Calculate New Version
         id: calculate-new-version
