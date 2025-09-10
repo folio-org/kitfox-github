@@ -150,7 +150,6 @@ jobs:
           set -eo pipefail
 
           echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
-          exit 1
           if ! output=$(git push -u origin "$BRANCH_NAME" 2>&1); then
             echo "::error::Failed to push changes to '$BRANCH_NAME'"
             echo "::error::$output"
@@ -158,5 +157,5 @@ jobs:
             exit 1
           fi
           echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
-          
-          
+
+
