@@ -1,6 +1,6 @@
 # Application Release Notification Workflow
 
-**Workflow**: `app-release-preparation-notification.yml`  
+**Workflow**: `release-preparation-notification.yml`  
 **Purpose**: Standardized Slack notifications for FOLIO application operations  
 **Type**: Reusable workflow (`workflow_call`)
 
@@ -120,7 +120,7 @@ secrets:
 ```yaml
 jobs:
   notify-completion:
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
     with:
       app_name: 'app-acquisitions'
       operation_status: 'success'
@@ -133,7 +133,7 @@ jobs:
 ```yaml
 jobs:
   notify-with-context:
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
     with:
       app_name: 'app-acquisitions'
       operation_status: 'success'
@@ -150,7 +150,7 @@ jobs:
 jobs:
   notify-failure:
     if: failure()
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
     with:
       app_name: 'app-acquisitions'
       operation_status: 'failure'
@@ -205,7 +205,7 @@ jobs:
         status: [success, failure, cancelled]
     steps:
       - name: 'Test Notification'
-        uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+        uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
         with:
           app_name: 'test-app'
           operation_status: ${{ matrix.status }}
@@ -267,7 +267,7 @@ jobs:
   notify-success:
     needs: operation
     if: success()
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
     with:
       app_name: ${{ inputs.app_name }}
       operation_status: 'success'
@@ -275,7 +275,7 @@ jobs:
   notify-failure:
     needs: operation
     if: failure()
-    uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
     with:
       app_name: ${{ inputs.app_name }}
       operation_status: 'failure'
@@ -296,7 +296,7 @@ collect-and-notify:
         echo "summary=5 successful, 2 failed" >> "$GITHUB_OUTPUT"
     
     - name: 'Send Summary Notification'
-      uses: folio-org/kitfox-github/.github/workflows/app-release-preparation-notification.yml@main
+      uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
       with:
         app_name: 'multiple-applications'
         operation_status: ${{ steps.results.outputs.overall_status }}
@@ -306,7 +306,7 @@ collect-and-notify:
 
 ## 📚 Related Documentation
 
-- **[App Release Preparation](app-release-preparation.md)**: Main workflow that uses this notification
+- **[App Release Preparation](release-preparation.md)**: Main workflow that uses this notification
 - **[Distributed Orchestration](distributed-orchestration.md)**: Cross-repository coordination patterns
 - **[Slack API Documentation](https://api.slack.com/messaging/composing)**: Official Slack formatting guide
 - **[FOLIO Communication Guidelines](https://folio-org.atlassian.net/)**: Team communication standards
@@ -314,5 +314,5 @@ collect-and-notify:
 ---
 
 **Last Updated**: August 2025  
-**Workflow Version**: 1.0  
+**Workflow Version**: 1.2  
 **Slack API Version**: v2.1.1

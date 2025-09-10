@@ -77,18 +77,15 @@ jobs:
           token: ${{ steps.app-token.outputs.token || github.token }}
           fetch-depth: 0
 
-      - name: Download Application Update Files
-        uses: actions/download-artifact@v4
-        with:
-          name: "${{ env.APP_NAME }}-update-files"
-          path: .
-
       - name: Configure Git
+        env:
+          USER_NAME: ${{ inputs.use_github_app && 'eureka-ci[bot]' || 'github-actions[bot]' }}
+          USER_EMAIL: ${{ inputs.use_github_app && '223025417+eureka-ci[bot]@users.noreply.github.com' || '41898282+github-actions[bot]@users.noreply.github.com' }}
         run: |
           set -eo pipefail
           
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "$USER_NAME"
+          git config --global user.email "$USER_EMAIL"
           echo "::notice::Git configured for automated commits"
 
       - name: Switch to Target Branch
@@ -106,6 +103,13 @@ jobs:
           git switch $TARGET_BRANCH
           
           echo "::notice::Successfully switched to branch '$TARGET_BRANCH'"
+
+
+      - name: Download Application Update Files
+        uses: actions/download-artifact@v4
+        with:
+          name: "${{ env.APP_NAME }}-update-files"
+          path: .
 
       - name: Commit Changes
         id: commit-changes
