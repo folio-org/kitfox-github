@@ -130,8 +130,8 @@ jobs:
               "short": true
             },
             {
-              "title": "Failure Reason"
-              "value": "${{ needs.scan.outputs.failure_reason || 'Check workflow logs for details' }}"
+              "title": "Failure Reason",
+              "value": "${{ needs.scan.outputs.failure_reason || 'Check workflow logs for details' }}",
               "short": false
             }
           ],
