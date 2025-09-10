@@ -78,54 +78,111 @@ jobs:
     if: always() && !cancelled() && needs.scan.outputs.updated == 'true' && !inputs.dry_run
     runs-on: ubuntu-latest
     outputs:
-      team_notif_status: ${{ steps.notify-team.outputs.result }}
-      general_notification_status: ${{ steps.notify-general.outputs.result }}
+      team_notif_status: ${{ steps.notify-team.outcome }}
+      general_notification_status: ${{ steps.notify-general.outcome }}
+    env:
+      TITLE_TEXT: "${{ github.event.repository.name }} ${{ inputs.release_branch }} release ${{ needs.scan.result == 'success' && 'updated' || 'failed' }} #${{ github.run_number }}"
+      TITLE_BLOCK: |
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*${{ github.event.repository.name }} ${{ inputs.release_branch }} release ${{ needs.scan.result == 'success' && 'updated' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+          }
+        }
+      SUCCESS_ATTACHMENT: |
+        {
+          "color": "good",
+          "fields": [
+            {
+              "title": "Release Branch",
+              "value": "<${{ github.server_url }}/${{ ${{ github.repository }} }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
+              "short": true
+            },
+            { "title": "New Version", "value": "${{ needs.scan.outputs.new_version }}", "short": true },
+            { "title": "Updates Found", "value": "${{ needs.scan.outputs.updates_cnt }}", "short": true },
+            {
+              "title": "Pull Request",
+              "value": "${{ needs.scan.outputs.pr_url != '' && format('<{0}|#{1}>', needs.scan.outputs.pr_url, needs.scan.outputs.pr_number) || 'No PR created' }}",
+              "short": true
+            }
+          ]
+        },
+        {
+          "color": "good",
+          "mrkdwn_in": ["text"],
+          "text": ${{ toJSON(inputs.updated_modules) }}
+        },
+        {
+          "color": "${{ needs.scan.outputs.failed_reviewers != '' && 'warning' || 'good' }}",
+          "mrkdwn_in": ["text"],
+          "title": "${{ needs.scan.outputs.failed_reviewers != '' && 'Reviewers (failed)' || (needs.scan.outputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}",
+          "text": ${{ toJSON(needs.scan.outputs.failed_reviewers || needs.scan.outputs.successful_reviewers || 'No reviewers configured') }},
+          "footer": "Eureka CI/CD"
+        }
+      FAILURE_ATTACHMENT: |
+        {
+          "color": "danger",
+          "fields": [
+            {
+              "title": "Release Branch",
+              "value": "<${{ github.server_url }}/${{ ${{ github.repository }} }}/tree/${{ inputs.release_branch }}|${{ inputs.release_branch }}>",
+              "short": true
+            },
+            {
+              "title": "Failure Reason"
+              "value": "${{ needs.scan.outputs.failure_reason || 'Check workflow logs for details' }}"
+              "short": false
+            }
+          ],
+          "footer": "Eureka CI/CD"
+        }
     steps:
       - name: Send to Team Channel
         id: notify-team
         if: vars.SLACK_NOTIF_CHANNEL != ''
-        uses: folio-org/kitfox-github/.github/actions/release-update-notification@RANCHER-2323-test #TODO: Change to master when ready
+        continue-on-error: true
+        env:
+          CHANNEL: # ${{ vars.SLACK_NOTIF_CHANNEL }} TODO: uncomment when ready to send to project channel
+        uses: slackapi/slack-github-action@v2.1.1
         with:
-          app_name: ${{ github.event.repository.name }}
-          repo: ${{ github.repository }}
-          release_branch: ${{ inputs.release_branch }}
-          pr_created: ${{ needs.scan.outputs.pr_created == 'true' }}
-          pr_number: ${{ needs.scan.outputs.pr_number || '' }}
-          pr_url: ${{ needs.scan.outputs.pr_url || '' }}
-          new_version: ${{ needs.scan.outputs.new_version || '' }}
-          updates_cnt: ${{ needs.scan.outputs.updates_cnt || '0' }}
-          updated_modules: ${{ needs.scan.outputs.updated_modules || '' }}
-          successful_reviewers: ${{ needs.scan.outputs.successful_reviewers || '' }}
-          failed_reviewers: ${{ needs.scan.outputs.failed_reviewers || '' }}
-          workflow_result: ${{ needs.scan.result }}
-          workflow_run_id: ${{ github.run_id }}
-          workflow_run_number: ${{ github.run_number }}
-          error_message: ${{ needs.scan.outputs.failure_reason || (needs.scan.result == 'failure' && format('Scan failed for branch {0}', inputs.release_branch) || '') }}
-          slack_channel: # ${{ vars.SLACK_NOTIF_CHANNEL }} TODO: uncomment when ready to send to project channel
-          slack_bot_token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ env.CHANNEL }}",
+              "text": ${{ env.TITLE_TEXT }},
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ needs.scan.result == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+              ]
+            }
 
       - name: Send to General Channel
         id: notify-general
         if: vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
-        uses: folio-org/kitfox-github/.github/actions/release-update-notification@RANCHER-2323-test #TODO: Change to master when ready
+        continue-on-error: true
+        env:
+          CHANNEL: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}
+        uses: slackapi/slack-github-action@v2.1.1
         with:
-          app_name: ${{ github.event.repository.name }}
-          repo: ${{ github.repository }}
-          release_branch: ${{ inputs.release_branch }}
-          pr_created: ${{ needs.scan.outputs.pr_created == 'true' }}
-          pr_number: ${{ needs.scan.outputs.pr_number || '' }}
-          pr_url: ${{ needs.scan.outputs.pr_url || '' }}
-          new_version: ${{ needs.scan.outputs.new_version || '' }}
-          updates_cnt: ${{ needs.scan.outputs.updates_cnt || '0' }}
-          updated_modules: ${{ needs.scan.outputs.updated_modules || '' }}
-          successful_reviewers: ${{ needs.scan.outputs.successful_reviewers || '' }}
-          failed_reviewers: ${{ needs.scan.outputs.failed_reviewers || '' }}
-          workflow_result: ${{ needs.scan.result }}
-          workflow_run_id: ${{ github.run_id }}
-          workflow_run_number: ${{ github.run_number }}
-          error_message: ${{ needs.scan.outputs.failure_reason || (needs.scan.result == 'failure' && format('Scan failed for branch {0}', inputs.release_branch) || '') }}
-          slack_channel: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}
-          slack_bot_token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ env.CHANNEL }}",
+              "text": ${{ env.TITLE_TEXT }},
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ needs.scan.result == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+              ]
+            }
 
   summarize:
     name: Branch Summary
