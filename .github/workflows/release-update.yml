@@ -100,7 +100,7 @@ jobs:
               "short": true
             },
             { "title": "New Version", "value": "${{ needs.scan.outputs.new_version }}", "short": true },
-            { "title": "Updates Found", "value": "${{ needs.scan.outputs.updates_cnt }}", "short": true },
+            { "title": "Updated", "value": "${{ needs.scan.outputs.updates_cnt }}", "short": true },
             {
               "title": "Pull Request",
               "value": "${{ needs.scan.outputs.pr_url != '' && format('<{0}|#{1}>', needs.scan.outputs.pr_url, needs.scan.outputs.pr_number) || 'No PR created' }}",
