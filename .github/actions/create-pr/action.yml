@@ -179,8 +179,8 @@ runs:
         
         echo "::notice::Adding reviewers to PR #$PR_NUMBER"
         
-        successful_reviewers=()
-        failed_reviewers=()
+        successful_reviewers=""
+        failed_reviewers=""
         
         IFS=',' read -ra REVIEWERS <<< "$PR_REVIEWERS"
         for reviewer in "${REVIEWERS[@]}"; do
@@ -203,12 +203,12 @@ runs:
             -H "Accept: application/vnd.github+json" \
             $api_params 2>/dev/null; then
             echo "::notice::Successfully added $reviewer_type: $reviewer"
-            successful_reviewers+=("$reviewer")
+            successful_reviewers+="$reviewer"$'\n'
           else
             echo "::warning::Failed to add $reviewer_type: $reviewer"
-            failed_reviewers+=("$reviewer")
+            failed_reviewers+="$reviewer"$'\n'
           fi
         done
         
-        echo "successful_reviewers=${successful_reviewers[*]}" >> "$GITHUB_OUTPUT"
-        echo "failed_reviewers=${failed_reviewers[*]}" >> "$GITHUB_OUTPUT"
+        echo "successful_reviewers<<EOF"$'\n'"$successful_reviewers"$'\n'EOF >> "$GITHUB_OUTPUT"
+        echo "failed_reviewers<<EOF"$'\n'"$failed_reviewers"$'\n'EOF >> "$GITHUB_OUTPUT"
