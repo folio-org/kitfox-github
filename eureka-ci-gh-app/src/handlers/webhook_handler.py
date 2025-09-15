@@ -9,18 +9,12 @@ from utils.signature_validator import validate_github_signature
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-sqs = boto3.client('sqs')
-secrets_manager = boto3.client('secretsmanager')
-
-SQS_QUEUE_URL = os.environ['SQS_QUEUE_URL']
-WEBHOOK_SECRET_ARN = os.environ['WEBHOOK_SECRET_ARN']
-ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
-
 
 def get_webhook_secret() -> str:
     """Retrieve webhook secret from AWS Secrets Manager."""
     try:
-        response = secrets_manager.get_secret_value(SecretId=WEBHOOK_SECRET_ARN)
+        secrets_manager = boto3.client('secretsmanager')
+        response = secrets_manager.get_secret_value(SecretId=os.environ['WEBHOOK_SECRET_ARN'])
         return response['SecretString']
     except Exception as e:
         logger.error(f"Failed to retrieve webhook secret: {e}")
@@ -90,11 +84,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'action': action,
                     'delivery_id': delivery_id,
                     'payload': payload,
-                    'environment': ENVIRONMENT
+                    'environment': os.environ.get('ENVIRONMENT', 'dev')
                 }
                 
+                sqs = boto3.client('sqs')
                 sqs.send_message(
-                    QueueUrl=SQS_QUEUE_URL,
+                    QueueUrl=os.environ['SQS_QUEUE_URL'],
                     MessageBody=json.dumps(message),
                     MessageAttributes={
                         'event_type': {'DataType': 'String', 'StringValue': github_event},
