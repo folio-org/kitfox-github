@@ -10,19 +10,12 @@ from services.workflow_orchestrator import WorkflowOrchestrator
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-secrets_manager = boto3.client('secretsmanager')
-s3 = boto3.client('s3')
-
-GITHUB_APP_ID = os.environ['GITHUB_APP_ID']
-GITHUB_KEY_ARN = os.environ['GITHUB_KEY_ARN']
-CONFIG_BUCKET = os.environ['CONFIG_BUCKET']
-ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
-
 
 def get_github_app_key() -> str:
     """Retrieve GitHub App private key from AWS Secrets Manager."""
     try:
-        response = secrets_manager.get_secret_value(SecretId=GITHUB_KEY_ARN)
+        secrets_manager = boto3.client('secretsmanager')
+        response = secrets_manager.get_secret_value(SecretId=os.environ['GITHUB_KEY_ARN'])
         return response['SecretString']
     except Exception as e:
         logger.error(f"Failed to retrieve GitHub App private key: {e}")
@@ -32,8 +25,9 @@ def get_github_app_key() -> str:
 def get_workflow_config() -> Dict[str, Any]:
     """Load workflow configuration from S3."""
     try:
+        s3 = boto3.client('s3')
         response = s3.get_object(
-            Bucket=CONFIG_BUCKET,
+            Bucket=os.environ['CONFIG_BUCKET'],
             Key='config/workflows.json'
         )
         content = response['Body'].read().decode('utf-8')
@@ -61,7 +55,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # Initialize services
         app_key = get_github_app_key()
-        github = GitHubAPI(app_id=GITHUB_APP_ID, private_key=app_key)
+        github = GitHubAPI(app_id=os.environ['GITHUB_APP_ID'], private_key=app_key)
         workflow_config = get_workflow_config()
         orchestrator = WorkflowOrchestrator(github, workflow_config)
         
