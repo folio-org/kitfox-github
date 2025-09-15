@@ -1,0 +1,293 @@
+name: Eureka CI Check Suite Handler
+
+# This workflow is triggered by the Eureka CI GitHub App when a check_suite is requested
+# It handles the actual validation logic and updates the check run status
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Target repository (e.g., folio-org/app-acquisitions)'
+        required: true
+        type: string
+      pr_number:
+        description: 'Pull request number'
+        required: true
+        type: string
+      check_suite_id:
+        description: 'Check suite ID'
+        required: true
+        type: string
+      check_run_id:
+        description: 'Check run ID to update'
+        required: true
+        type: string
+      head_sha:
+        description: 'Head commit SHA'
+        required: true
+        type: string
+      head_branch:
+        description: 'Head branch name'
+        required: true
+        type: string
+
+jobs:
+  # Step 1: Determine if we should process this PR
+  evaluate-pr:
+    name: Evaluate PR
+    runs-on: ubuntu-latest
+    outputs:
+      should_process: ${{ steps.evaluate.outputs.should_process }}
+      skip_reason: ${{ steps.evaluate.outputs.skip_reason }}
+      validation_status: ${{ steps.evaluate.outputs.validation_status }}
+      validation_message: ${{ steps.evaluate.outputs.validation_message }}
+      target_branch: ${{ steps.pr-info.outputs.base_ref }}
+      pr_labels: ${{ steps.pr-info.outputs.labels }}
+      pr_title: ${{ steps.pr-info.outputs.title }}
+      pr_author: ${{ steps.pr-info.outputs.author }}
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.inputs.target_repo }}
+
+      - name: Get PR Information
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR_DATA=$(gh api repos/${{ inputs.target_repo }}/pulls/${{ inputs.pr_number }})
+          
+          echo "base_ref=$(echo "$PR_DATA" | jq -r '.base.ref')" >> "$GITHUB_OUTPUT"
+          echo "head_ref=$(echo "$PR_DATA" | jq -r '.head.ref')" >> "$GITHUB_OUTPUT"
+          echo "title=$(echo "$PR_DATA" | jq -r '.title')" >> "$GITHUB_OUTPUT"
+          echo "author=$(echo "$PR_DATA" | jq -r '.user.login')" >> "$GITHUB_OUTPUT"
+          echo "labels=$(echo "$PR_DATA" | jq -c '[.labels[].name]')" >> "$GITHUB_OUTPUT"
+          echo "html_url=$(echo "$PR_DATA" | jq -r '.html_url')" >> "$GITHUB_OUTPUT"
+
+      - name: Update Check Run - In Progress
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api \
+            --method PATCH \
+            repos/${{ inputs.target_repo }}/check-runs/${{ inputs.check_run_id }} \
+            -f status='in_progress' \
+            -f started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            -f output='{"title":"Evaluating PR","summary":"Checking release configuration..."}'
+
+      - name: Get Release Configuration
+        id: get-config
+        uses: folio-org/kitfox-github/.github/actions/get-release-config@master
+        with:
+          repo: ${{ inputs.target_repo }}
+          branch: ${{ steps.pr-info.outputs.base_ref }}
+          github_token: ${{ steps.app-token.outputs.token }}
+
+      - name: Evaluate PR
+        id: evaluate
+        env:
+          TARGET_BRANCH: ${{ steps.pr-info.outputs.base_ref }}
+          SOURCE_BRANCH: ${{ steps.pr-info.outputs.head_ref }}
+          PR_LABELS: ${{ steps.pr-info.outputs.labels }}
+          CONFIG_EXISTS: ${{ steps.get-config.outputs.config_exists }}
+          ENABLED: ${{ steps.get-config.outputs.enabled }}
+          RELEASE_BRANCHES: ${{ steps.get-config.outputs.release_branches }}
+          REQUIRED_LABELS: ${{ steps.get-config.outputs.pr_labels }}
+        run: |
+          echo "::notice::Evaluating PR for branch $TARGET_BRANCH"
+          
+          # Check if config exists
+          if [[ "$CONFIG_EXISTS" != "true" ]]; then
+            echo "should_process=false" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=no_config" >> "$GITHUB_OUTPUT"
+            echo "validation_status=failed" >> "$GITHUB_OUTPUT"
+            echo "validation_message=Release configuration file not found" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          
+          # Check if scanning is enabled
+          if [[ "$ENABLED" != "true" ]]; then
+            echo "should_process=false" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=disabled" >> "$GITHUB_OUTPUT"
+            echo "validation_status=skipped" >> "$GITHUB_OUTPUT"
+            echo "validation_message=Release scanning is disabled in configuration" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          
+          # Check if target branch is configured
+          BRANCH_EXISTS=$(echo "$RELEASE_BRANCHES" | jq -r ".[] | select(. == \"$TARGET_BRANCH\")" 2>/dev/null)
+          if [ -z "$BRANCH_EXISTS" ]; then
+            echo "should_process=false" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=branch_not_configured" >> "$GITHUB_OUTPUT"
+            echo "validation_status=skipped" >> "$GITHUB_OUTPUT"
+            echo "validation_message=Target branch $TARGET_BRANCH is not configured for release scanning" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          
+          # Check required labels
+          if [ -n "$REQUIRED_LABELS" ]; then
+            PR_LABELS_ARRAY=$(echo "$PR_LABELS" | jq -r '.[]' 2>/dev/null || echo "")
+            MISSING_LABELS=""
+            
+            IFS=',' read -ra LABEL_ARRAY <<< "$REQUIRED_LABELS"
+            for label in "${LABEL_ARRAY[@]}"; do
+              label=$(echo "$label" | xargs)
+              if ! echo "$PR_LABELS_ARRAY" | grep -q "^$label$"; then
+                MISSING_LABELS="${MISSING_LABELS}${MISSING_LABELS:+, }$label"
+              fi
+            done
+            
+            if [ -n "$MISSING_LABELS" ]; then
+              echo "should_process=false" >> "$GITHUB_OUTPUT"
+              echo "skip_reason=missing_labels" >> "$GITHUB_OUTPUT"
+              echo "validation_status=skipped" >> "$GITHUB_OUTPUT"
+              echo "validation_message=PR is missing required labels: $MISSING_LABELS" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          
+          # All checks passed
+          echo "should_process=true" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=" >> "$GITHUB_OUTPUT"
+          echo "validation_status=success" >> "$GITHUB_OUTPUT"
+          echo "validation_message=PR validation passed" >> "$GITHUB_OUTPUT"
+
+  # Step 2: Process the PR if evaluation passed
+  process-pr:
+    name: Process PR Check
+    needs: evaluate-pr
+    if: needs.evaluate-pr.outputs.should_process == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      descriptor_generated: ${{ steps.generate.outputs.generated }}
+      verification_result: ${{ steps.verify.outputs.result }}
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.target_repo }}
+
+      - name: Checkout Target Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.target_repo }}
+          ref: ${{ inputs.head_sha }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Update Check Run - Generating Descriptor
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api \
+            --method PATCH \
+            repos/${{ inputs.target_repo }}/check-runs/${{ inputs.check_run_id }} \
+            -f output='{"title":"Processing","summary":"Generating application descriptor..."}'
+
+      - name: Generate Application Descriptor
+        id: generate
+        uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
+        with:
+          app_name: ${{ inputs.target_repo }}
+          state_file: 'application-descriptor.json'
+          upload_artifact: 'true'
+
+      - name: Update Check Run - Verifying Application
+        if: steps.generate.outputs.generated == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api \
+            --method PATCH \
+            repos/${{ inputs.target_repo }}/check-runs/${{ inputs.check_run_id }} \
+            -f output='{"title":"Processing","summary":"Verifying application compatibility..."}'
+
+      - name: Verify Application
+        id: verify
+        if: steps.generate.outputs.generated == 'true'
+        uses: folio-org/kitfox-github/.github/workflows/verify-application.yml@master
+        with:
+          app_name: ${{ inputs.target_repo }}
+          app_descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
+          app_descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
+          rely_on_FAR: false
+          skip_upload: true
+
+  # Step 3: Update final check run status
+  finalize:
+    name: Finalize Check Run
+    needs: [evaluate-pr, process-pr]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.target_repo }}
+
+      - name: Determine Final Status
+        id: status
+        run: |
+          if [[ "${{ needs.evaluate-pr.outputs.should_process }}" != "true" ]]; then
+            if [[ "${{ needs.evaluate-pr.outputs.validation_status }}" == "skipped" ]]; then
+              echo "conclusion=skipped" >> "$GITHUB_OUTPUT"
+              echo "title=Check Skipped" >> "$GITHUB_OUTPUT"
+              echo "summary=${{ needs.evaluate-pr.outputs.validation_message }}" >> "$GITHUB_OUTPUT"
+            else
+              echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+              echo "title=Validation Failed" >> "$GITHUB_OUTPUT"
+              echo "summary=${{ needs.evaluate-pr.outputs.validation_message }}" >> "$GITHUB_OUTPUT"
+            fi
+          elif [[ "${{ needs.process-pr.outputs.descriptor_generated }}" != "true" ]]; then
+            echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+            echo "title=Descriptor Generation Failed" >> "$GITHUB_OUTPUT"
+            echo "summary=Failed to generate application descriptor" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ needs.process-pr.outputs.verification_result }}" == "success" ]]; then
+            echo "conclusion=success" >> "$GITHUB_OUTPUT"
+            echo "title=All Checks Passed" >> "$GITHUB_OUTPUT"
+            echo "summary=✅ PR validation passed\n✅ Application descriptor generated\n✅ Application verification passed" >> "$GITHUB_OUTPUT"
+          else
+            echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+            echo "title=Verification Failed" >> "$GITHUB_OUTPUT"
+            echo "summary=Application verification failed. Check the details for more information." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update Check Run - Final Status
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          DETAILS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          gh api \
+            --method PATCH \
+            repos/${{ inputs.target_repo }}/check-runs/${{ inputs.check_run_id }} \
+            -f status='completed' \
+            -f conclusion='${{ steps.status.outputs.conclusion }}' \
+            -f completed_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            -f details_url="$DETAILS_URL" \
+            -f output="{
+              \"title\":\"${{ steps.status.outputs.title }}\",
+              \"summary\":\"${{ steps.status.outputs.summary }}\",
+              \"text\":\"View full details at: $DETAILS_URL\"
+            }"
+
+      - name: Trigger Notification Workflow
+        if: needs.evaluate-pr.outputs.validation_status != 'skipped'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # Trigger a separate workflow for Slack notifications
+          # This could be based on check_run.completed events
+          echo "Notification would be triggered by check_run.completed webhook"
