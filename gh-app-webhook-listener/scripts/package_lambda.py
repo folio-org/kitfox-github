@@ -37,13 +37,21 @@ def package_lambda(function_name):
     else:
         print(f"WARNING: requirements.txt not found at {requirements_file}")
 
-    # Create zip file
+    # Create zip file, excluding Windows-specific files
     zip_path = build_dir / f"{function_name}.zip"
     print(f"Creating {zip_path}...")
 
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(function_build_dir):
+            # Skip __pycache__ directories
+            dirs[:] = [d for d in dirs if d != '__pycache__']
+
             for file in files:
+                # Skip Windows-specific and compiled files
+                if any(file.endswith(ext) for ext in ['.pyd', '.dll', '.so', '.dylib', '.pyc']):
+                    print(f"  Skipping {file} (binary/compiled file)")
+                    continue
+
                 file_path = Path(root) / file
                 arcname = file_path.relative_to(function_build_dir)
                 zipf.write(file_path, arcname)
