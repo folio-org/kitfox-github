@@ -3,6 +3,9 @@ import os
 import boto3
 import logging
 from typing import Dict, Any
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common.signature_validator import validate_github_signature
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -19,23 +22,6 @@ def get_webhook_secret() -> str:
         raise
 
 
-def validate_github_signature(payload: str, signature: str, secret: str) -> bool:
-    """Validate GitHub webhook signature."""
-    import hmac
-    import hashlib
-
-    if not signature.startswith('sha256='):
-        return False
-
-    expected_signature = 'sha256=' + hmac.new(
-        secret.encode('utf-8'),
-        payload.encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
-
-    return hmac.compare_digest(expected_signature, signature)
-
-
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Handle incoming GitHub webhooks.
@@ -49,20 +35,25 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     try:
         # Log incoming event
-        logger.info(f"Received webhook event: {json.dumps(event.get('headers', {}))}")
+        logger.info(f"Received webhook event: {json.dumps(event)}")
+
+        logger.info(f"Received webhook event headers: {json.dumps(event.get('headers', {}))}")
 
         # Extract request details
         body = event.get('body', '')
         headers = event.get('headers', {})
 
+        # Convert headers to lowercase for consistent access (API Gateway sometimes sends mixed case)
+        headers_lower = {k.lower(): v for k, v in headers.items()}
+
         # Get GitHub event type
-        github_event = headers.get('x-github-event', '')
-        delivery_id = headers.get('x-github-delivery', '')
+        github_event = headers_lower.get('x-github-event', '')
+        delivery_id = headers_lower.get('x-github-delivery', '')
 
         logger.info(f"GitHub event: {github_event}, Delivery ID: {delivery_id}")
 
         # Validate webhook signature
-        signature = headers.get('x-hub-signature-256', '')
+        signature = headers_lower.get('x-hub-signature-256', '')
         if not signature:
             logger.error("Missing GitHub signature header")
             return {
