@@ -75,3 +75,22 @@ variable "tags" {
     Application = "github-app"
   }
 }
+
+# Route 53 DNS Configuration
+variable "enable_route53" {
+  description = "Enable Route 53 DNS record creation"
+  type        = bool
+  default     = false
+}
+
+variable "route53_zone_name" {
+  description = "Existing Route 53 hosted zone domain name (e.g., ci.folio.org)"
+  type        = string
+  default     = ""
+}
+
+variable "route53_record_name" {
+  description = "DNS record name to create in the zone (e.g., ci-eureka will create ci-eureka.ci.folio.org)"
+  type        = string
+  default     = ""
+}
