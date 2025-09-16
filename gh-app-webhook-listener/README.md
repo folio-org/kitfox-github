@@ -99,12 +99,25 @@ terraform apply -var-file=environments/your-app.tfvars \
 
 ### Terraform Variables
 
+#### Core Variables
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `app_name` | Your application instance name | `my-app`, `folio-app` |
 | `github_app_id` | GitHub App ID | `123456` |
 | `github_private_key_path` | Path to GitHub App private key | `../keys/github-app.pem` |
 | `github_webhook_secret` | Webhook secret (pass via CLI) | `your-secret-here` |
+
+#### Route 53 DNS Configuration (Optional)
+| Variable | Description | Example | Default |
+|----------|-------------|---------|---------|
+| `enable_route53` | Enable Route 53 DNS record creation | `true` or `false` | `false` |
+| `route53_zone_name` | Existing Route 53 hosted zone domain | `example.com` | `""` |
+| `route53_record_name` | DNS record name to create | `webhooks` | `""` |
+
+When Route 53 is enabled, it will create a CNAME record in your existing hosted zone. For example:
+- Zone: `ci.folio.org`
+- Record: `eureka-webhooks`
+- Result: `eureka-webhooks.ci.folio.org` → Your API Gateway endpoint
 
 ### Workflow Configuration
 
@@ -195,6 +208,27 @@ tags = {
 terraform apply -var-file=environments/my-app.tfvars \
                 -var="github_webhook_secret=$SECRET"
 ```
+
+### Deploy with Custom Domain (Route 53)
+
+To use a custom domain for your webhook endpoint:
+
+1. Update your tfvars file:
+```hcl
+# Enable Route 53 DNS
+enable_route53      = true
+route53_zone_name   = "ci.folio.org"       # Your existing hosted zone
+route53_record_name = "eureka-webhooks"    # Creates eureka-webhooks.ci.folio.org
+```
+
+2. Deploy:
+```bash
+terraform apply -var-file=environments/your-app.tfvars \
+                -var="github_webhook_secret=$SECRET"
+```
+
+3. Use the custom domain in your GitHub App:
+   - Webhook URL: `https://eureka-webhooks.ci.folio.org/webhook`
 
 ### Multiple Environment Deployment
 
