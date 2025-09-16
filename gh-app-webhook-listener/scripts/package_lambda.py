@@ -22,19 +22,22 @@ def package_lambda(function_name):
     print(f"Copying source files for {function_name}...")
     shutil.copytree(src_dir / "handlers", function_build_dir / "handlers")
     shutil.copytree(src_dir / "services", function_build_dir / "services")
-    shutil.copytree(src_dir / "validators", function_build_dir / "validators")
+    if (src_dir / "validators").exists():
+        shutil.copytree(src_dir / "validators", function_build_dir / "validators")
     shutil.copytree(src_dir / "utils", function_build_dir / "utils")
 
     # Install dependencies
     print(f"Installing dependencies for {function_name}...")
-    requirements_file = base_dir / "requirements.txt"
+    requirements_file = src_dir / "requirements.txt"
     if requirements_file.exists():
         subprocess.run([
             sys.executable, "-m", "pip", "install",
             "-r", str(requirements_file),
             "-t", str(function_build_dir),
-            "--quiet"
+            "--upgrade"
         ], check=True)
+    else:
+        print(f"WARNING: requirements.txt not found at {requirements_file}")
 
     # Create zip file
     zip_path = build_dir / f"{function_name}.zip"
