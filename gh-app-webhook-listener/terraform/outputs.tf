@@ -44,3 +44,14 @@ output "github_private_key_arn" {
   value       = aws_secretsmanager_secret.github_private_key.arn
   sensitive   = true
 }
+
+# Route 53 DNS outputs
+output "custom_domain_url" {
+  description = "The custom domain URL for the webhook endpoint (if Route53 is enabled)"
+  value       = var.enable_route53 ? "https://${var.route53_record_name}.${var.route53_zone_name}/webhook" : "Not configured"
+}
+
+output "dns_record_fqdn" {
+  description = "The fully qualified domain name created in Route53"
+  value       = var.enable_route53 ? "${var.route53_record_name}.${var.route53_zone_name}" : "Not configured"
+}
