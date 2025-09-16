@@ -49,20 +49,24 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     try:
         # Log incoming event
-        logger.info(f"Received webhook event: {json.dumps(event.get('headers', {}))}")
+        logger.info(f"Received webhook event: {json.dumps(event)}")
+        logger.info(f"Received webhook event headers: {json.dumps(event.get('headers', {}))}")
 
         # Extract request details
         body = event.get('body', '')
         headers = event.get('headers', {})
 
+        # Convert headers to lowercase for consistent access (API Gateway sometimes sends mixed case)
+        headers_lower = {k.lower(): v for k, v in headers.items()}
+
         # Get GitHub event type
-        github_event = headers.get('x-github-event', '')
-        delivery_id = headers.get('x-github-delivery', '')
+        github_event = headers_lower.get('x-github-event', '')
+        delivery_id = headers_lower.get('x-github-delivery', '')
 
         logger.info(f"GitHub event: {github_event}, Delivery ID: {delivery_id}")
 
         # Validate webhook signature
-        signature = headers.get('x-hub-signature-256', '')
+        signature = headers_lower.get('x-hub-signature-256', '')
         if not signature:
             logger.error("Missing GitHub signature header")
             return {
