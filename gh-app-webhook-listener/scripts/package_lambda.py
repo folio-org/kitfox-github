@@ -22,8 +22,6 @@ def package_lambda(function_name):
     print(f"Copying source files for {function_name}...")
     shutil.copytree(src_dir / "handlers", function_build_dir / "handlers")
     shutil.copytree(src_dir / "services", function_build_dir / "services")
-    if (src_dir / "validators").exists():
-        shutil.copytree(src_dir / "validators", function_build_dir / "validators")
     shutil.copytree(src_dir / "utils", function_build_dir / "utils")
 
     # Install dependencies
