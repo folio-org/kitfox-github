@@ -70,18 +70,13 @@ git clone <repository>
 cd gh-app-webhook-listener
 ```
 
-2. **Install dependencies**
-```bash
-pip install -r src/requirements.txt
-```
-
-3. **Configure your deployment**
+2. **Configure your deployment**
 ```bash
 cp terraform/environments/example.tfvars terraform/environments/your-app.tfvars
 # Edit your-app.tfvars with your configuration
 ```
 
-4. **Deploy with Terraform**
+3. **Deploy with Terraform**
 ```bash
 cd terraform
 terraform init
@@ -91,7 +86,9 @@ terraform apply -var-file=environments/your-app.tfvars \
                 -var="github_webhook_secret=your-secret"
 ```
 
-5. **Configure GitHub App**
+Note: Terraform will automatically package the Lambda functions during deployment.
+
+4. **Configure GitHub App**
 - Update webhook URL with the API Gateway endpoint from Terraform output
 - Set webhook secret to match your configuration
 
@@ -144,24 +141,63 @@ Configure which workflows to trigger in `config/workflows.json`:
 python tests/test_local.py
 ```
 
-### Package Lambda Functions
+### Lambda Packaging
+
+#### Method 1: Terraform-native packaging (Recommended)
+Terraform automatically packages Lambda functions during deployment using the `archive_file` data source and `null_resource` provisioners. No manual steps required.
+
+#### Method 2: Manual packaging
 ```bash
 python scripts/package_lambda.py
 ```
+This creates optimized packages for each Lambda function in the `build/` directory:
+- `webhook_handler.zip` (~12.5 MB) - Contains only boto3 dependencies
+- `check_processor.zip` (~13 MB) - Contains boto3, requests, and PyJWT
 
 ### Project Structure
 ```
 gh-app-webhook-listener/
 ├── src/
-│   ├── handlers/         # Lambda function handlers
-│   ├── services/         # Business logic services
-│   └── utils/           # Utility functions
-├── terraform/           # Infrastructure as code
-│   ├── environments/    # Environment-specific configs
-│   └── *.tf            # Terraform resources
-├── config/             # Application configuration
-└── scripts/           # Build and deployment scripts
+│   ├── webhook_handler/   # Webhook handler Lambda
+│   │   ├── handler.py     # Main handler function
+│   │   └── requirements.txt
+│   ├── check_processor/   # Check processor Lambda
+│   │   ├── handler.py     # Main handler function
+│   │   └── requirements.txt
+│   └── common/           # Shared utilities
+│       ├── signature_validator.py
+│       ├── github_client.py
+│       └── check_runner.py
+├── terraform/            # Infrastructure as code
+│   ├── environments/     # Environment-specific configs
+│   ├── lambda.tf        # Shared Lambda resources
+│   ├── lambda_webhook_handler.tf  # Webhook handler config
+│   ├── lambda_check_processor.tf  # Check processor config
+│   └── *.tf             # Other Terraform resources
+├── config/              # Application configuration
+├── scripts/             # Build and deployment scripts
+│   └── package_lambda.py # Manual packaging script
+└── build/               # Generated Lambda packages (gitignored)
+    ├── webhook_handler.zip
+    └── check_processor.zip
 ```
+
+### Lambda Function Architecture
+
+The Lambda functions are now separated for optimal performance:
+
+1. **webhook_handler**: Lightweight function that validates incoming webhooks
+   - Dependencies: boto3 only
+   - Responsibilities: Signature validation, SQS queuing
+
+2. **check_processor**: Processes events and interacts with GitHub API
+   - Dependencies: boto3, requests, PyJWT
+   - Responsibilities: GitHub API calls, workflow triggering
+
+3. **common**: Shared utilities used by both functions
+   - signature_validator.py: HMAC-SHA256 validation
+   - github_client.py: GitHub API client
+   - check_runner.py: Check run management
 
 ## Monitoring
 
