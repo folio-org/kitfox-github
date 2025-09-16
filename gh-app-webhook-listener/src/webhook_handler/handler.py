@@ -3,6 +3,9 @@ import os
 import boto3
 import logging
 from typing import Dict, Any
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common.signature_validator import validate_github_signature
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -19,23 +22,6 @@ def get_webhook_secret() -> str:
         raise
 
 
-def validate_github_signature(payload: str, signature: str, secret: str) -> bool:
-    """Validate GitHub webhook signature."""
-    import hmac
-    import hashlib
-
-    if not signature.startswith('sha256='):
-        return False
-
-    expected_signature = 'sha256=' + hmac.new(
-        secret.encode('utf-8'),
-        payload.encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
-
-    return hmac.compare_digest(expected_signature, signature)
-
-
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Handle incoming GitHub webhooks.
@@ -50,6 +36,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # Log incoming event
         logger.info(f"Received webhook event: {json.dumps(event)}")
+
         logger.info(f"Received webhook event headers: {json.dumps(event.get('headers', {}))}")
 
         # Extract request details
