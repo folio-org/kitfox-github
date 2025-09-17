@@ -29,7 +29,7 @@ resource "null_resource" "webhook_handler_copy" {
   provisioner "local-exec" {
     command = <<-EOT
       cp -r "${local.src_dir}/webhook_handler" "${local.build_root}/webhook_handler_build/"
-      cp -r "${local.src_dir}/common" "${local.build_root}/webhook_handler_build/"
+      # cp -r "${local.src_dir}/common" "${local.build_root}/webhook_handler_build/"
     EOT
     interpreter = ["bash", "-c"]
   }
