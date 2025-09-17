@@ -24,7 +24,7 @@ class GitHubClient:
         try:
             secrets_manager = boto3.client('secretsmanager')
             response = secrets_manager.get_secret_value(
-                SecretId=os.environ['GITHUB_APP_KEY_ARN']
+                SecretId=os.environ['GITHUB_PRIVATE_KEY_ARN']
             )
             return response['SecretString']
         except Exception as e:
