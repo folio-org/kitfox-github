@@ -5,7 +5,8 @@ resource "null_resource" "check_processor_prep" {
   triggers = {
     src_hash = sha256(join("", [
       fileexists("${local.src_dir}/check_processor/handler.py") ? filesha256("${local.src_dir}/check_processor/handler.py") : "",
-      fileexists("${local.src_dir}/check_processor/requirements.txt") ? filesha256("${local.src_dir}/check_processor/requirements.txt") : ""
+      fileexists("${local.src_dir}/check_processor/requirements.txt") ? filesha256("${local.src_dir}/check_processor/requirements.txt") : "",
+      sha256(join("", [for f in fileset("${local.src_dir}/common", "*.py") : filesha256("${local.src_dir}/common/${f}")]))
     ]))
   }
 
