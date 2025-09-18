@@ -3,12 +3,60 @@ import os
 import boto3
 import logging
 from typing import Dict, Any
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common.signature_validator import validate_github_signature
+import hmac
+import hashlib
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+
+def validate_github_signature(payload: str, signature: str, secret: str) -> bool:
+    """
+    Validate signature.
+
+    Args:
+        payload: The raw payload
+        signature: The signature
+        secret: The secret
+
+    Returns:
+        True if the signature is valid, False otherwise
+    """
+    if not signature or not secret:
+        logger.warning("Missing signature or secret")
+        return False
+
+    # The signature is sent with the 'sha256=' prefix
+    if not signature.startswith('sha256='):
+        logger.warning("Invalid signature format")
+        return False
+
+    is_valid = hmac.compare_digest(generate_signature(payload, secret), signature)
+
+    if not is_valid:
+        logger.warning("Signature validation failed")
+
+    return is_valid
+
+
+def generate_signature(payload: str, secret: str) -> str:
+    """
+    Generate a signature.
+
+    Args:
+        payload: The payload to sign
+        secret: The secret
+
+    Returns:
+        The signature in format (sha256=...)
+    """
+    signature = hmac.new(
+        secret.encode('utf-8'),
+        payload.encode('utf-8') if isinstance(payload, str) else payload,
+        hashlib.sha256
+    ).hexdigest()
+
+    return f"sha256={signature}"
 
 
 def get_webhook_secret() -> str:
@@ -36,7 +84,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # Log incoming event
         logger.info(f"Received webhook event: {json.dumps(event)}")
-
         logger.info(f"Received webhook event headers: {json.dumps(event.get('headers', {}))}")
 
         # Extract request details
@@ -69,7 +116,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'Invalid signature'})
             }
 
-        # Parse webhook payload
         try:
             payload = json.loads(body) if isinstance(body, str) else body
         except json.JSONDecodeError as e:
