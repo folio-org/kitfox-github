@@ -29,7 +29,7 @@ resource "null_resource" "webhook_handler_copy" {
   provisioner "local-exec" {
     command = <<-EOT
       cp -r "${local.src_dir}/webhook_handler" "${local.build_root}/webhook_handler_build/"
-      cp -r "${local.src_dir}/common" "${local.build_root}/webhook_handler_build/"
+      # cp -r "${local.src_dir}/common" "${local.build_root}/webhook_handler_build/"
     EOT
     interpreter = ["bash", "-c"]
   }
@@ -57,35 +57,44 @@ resource "null_resource" "webhook_handler_deps" {
   }
 }
 
-# Create webhook handler ZIP
-data "archive_file" "webhook_handler" {
-  type        = "zip"
-  source_dir  = "${local.build_root}/webhook_handler_build"
-  output_path = "${local.build_root}/webhook_handler.zip"
-
-  excludes = [
-    "__pycache__/**",
-    "**/*.pyc",
-    "**/*.pyd",
-    "**/*.dll",
-    "**/*.so",
-    "**/*.dylib",
-    ".git/**",
-    ".venv/**",
-    "venv/**",
-    ".pytest_cache/**"
-  ]
-
+# Create webhook handler ZIP using null_resource
+resource "null_resource" "webhook_handler_zip" {
   depends_on = [null_resource.webhook_handler_deps]
+
+  triggers = {
+    src_hash = null_resource.webhook_handler_prep.triggers.src_hash
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      if [ ! -d "${local.build_root}/webhook_handler_build" ]; then
+        echo "Build directory missing, creating placeholder..."
+        exit 0
+      fi
+
+      cd "${local.build_root}/webhook_handler_build" && \
+      zip -r "../webhook_handler.zip" . \
+        -x "__pycache__/*" \
+        -x "*.pyc" \
+        -x "*.pyd" \
+        -x "*.dll" \
+        -x "*.dylib" \
+        -x ".git/*" \
+        -x ".venv/*" \
+        -x "venv/*" \
+        -x ".pytest_cache/*"
+    EOT
+    interpreter = ["bash", "-c"]
+  }
 }
 
 # Lambda function for webhook handler
 resource "aws_lambda_function" "webhook_handler" {
-  filename         = data.archive_file.webhook_handler.output_path
+  filename         = "${local.build_root}/webhook_handler.zip"
   function_name    = "${var.app_name}-webhook-handler"
   role            = aws_iam_role.lambda_execution_role.arn
   handler         = "webhook_handler.handler.handler"
-  source_code_hash = data.archive_file.webhook_handler.output_base64sha256
+  source_code_hash = null_resource.webhook_handler_zip.triggers.src_hash
   runtime         = "python3.11"
   timeout         = var.lambda_timeout
   memory_size     = var.lambda_memory
@@ -102,6 +111,8 @@ resource "aws_lambda_function" "webhook_handler" {
       LOG_LEVEL           = "INFO"
     }
   }
+
+  depends_on = [null_resource.webhook_handler_zip]
 
   tags = var.tags
 }

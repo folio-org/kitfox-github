@@ -1,18 +1,30 @@
 # --- Check Processor Lambda Packaging and Function ---
 
+locals {
+  lambda_runtime = "python3.12"
+  lambda_arch    = "x86_64" # change to "arm64" if using Graviton
+  pip_platform   = local.lambda_arch == "arm64" ? "manylinux_2_17_aarch64" : "manylinux_2_17_x86_64"
+  py_ver         = "312"
+  py_abi         = "cp312"
+  python_bin     = "python"
+}
+
 # Clean and prepare check processor build directory
 resource "null_resource" "check_processor_prep" {
   triggers = {
     src_hash = sha256(join("", [
       fileexists("${local.src_dir}/check_processor/handler.py") ? filesha256("${local.src_dir}/check_processor/handler.py") : "",
-      fileexists("${local.src_dir}/check_processor/requirements.txt") ? filesha256("${local.src_dir}/check_processor/requirements.txt") : ""
+      fileexists("${local.src_dir}/check_processor/requirements.txt") ? filesha256("${local.src_dir}/check_processor/requirements.txt") : "",
+      sha256(join("", [for f in fileset("${local.src_dir}/common", "*.py") : filesha256("${local.src_dir}/common/${f}")])),
+      local.lambda_runtime,
+      local.lambda_arch
     ]))
   }
 
   provisioner "local-exec" {
     command = <<-EOT
-      rm -rf "${local.build_root}/check_processor_build"
-      mkdir -p "${local.build_root}/check_processor_build"
+      rm -rf "${local.build_root}/check_processor_build" "${local.build_root}/check_processor_wheels"
+      mkdir -p "${local.build_root}/check_processor_build" "${local.build_root}/check_processor_wheels"
     EOT
     interpreter = ["bash", "-c"]
   }
@@ -45,60 +57,90 @@ resource "null_resource" "check_processor_deps" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      if [ -f "${local.src_dir}/check_processor/requirements.txt" ]; then
-        python -m pip install -r "${local.src_dir}/check_processor/requirements.txt" \
-          -t "${local.build_root}/check_processor_build" \
-          --platform manylinux2014_x86_64 \
-          --only-binary :all: \
-          --upgrade
+      set -euo pipefail
+      export MSYS2_ARG_CONV_EXCL="*"
+
+      WHEEL_DIR="${local.build_root}/check_processor_wheels"
+      BUILD_DIR="${local.build_root}/check_processor_build"
+      REQ_FILE="${local.src_dir}/check_processor/requirements.txt"
+
+      if [ -f "$REQ_FILE" ]; then
+        ${local.python_bin} -m pip download --only-binary=:all: \
+          --platform ${local.pip_platform} \
+          --python-version ${local.py_ver} \
+          --implementation cp \
+          --abi ${local.py_abi} \
+          -d "$WHEEL_DIR" -r "$REQ_FILE"
       fi
+
+      ${local.python_bin} - "$WHEEL_DIR" "$BUILD_DIR" <<'PY'
+import sys, os, glob, zipfile
+wheel_dir, build_dir = sys.argv[1], sys.argv[2]
+os.makedirs(build_dir, exist_ok=True)
+for whl in glob.glob(os.path.join(wheel_dir, '*.whl')):
+    with zipfile.ZipFile(whl) as z:
+        z.extractall(build_dir)
+PY
     EOT
     interpreter = ["bash", "-c"]
   }
 }
 
-# Create check processor ZIP
-data "archive_file" "check_processor" {
-  type        = "zip"
-  source_dir  = "${local.build_root}/check_processor_build"
-  output_path = "${local.build_root}/check_processor.zip"
-
-  excludes = [
-    "__pycache__/**",
-    "**/*.pyc",
-    "**/*.pyd",
-    "**/*.dll",
-    "**/*.so",
-    "**/*.dylib",
-    ".git/**",
-    ".venv/**",
-    "venv/**",
-    ".pytest_cache/**"
-  ]
-
+# Create check processor ZIP using null_resource
+resource "null_resource" "check_processor_zip" {
   depends_on = [null_resource.check_processor_deps]
+
+  triggers = {
+    src_hash = null_resource.check_processor_prep.triggers.src_hash
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      if [ ! -d "${local.build_root}/check_processor_build" ]; then
+        echo "Build directory missing, creating placeholder..."
+        exit 0
+      fi
+
+      cd "${local.build_root}/check_processor_build" && \
+      zip -r "../check_processor.zip" . \
+        -x "__pycache__/*" \
+        -x "*.pyc" \
+        -x "*.pyd" \
+        -x "*.dll" \
+        -x "*.dylib" \
+        -x ".git/*" \
+        -x ".venv/*" \
+        -x "venv/*" \
+        -x ".pytest_cache/*"
+    EOT
+    interpreter = ["bash", "-c"]
+  }
 }
 
 # Lambda function for check processor
 resource "aws_lambda_function" "check_processor" {
-  filename         = data.archive_file.check_processor.output_path
-  function_name    = "${var.app_name}-check-processor"
-  role            = aws_iam_role.lambda_execution_role.arn
-  handler         = "check_processor.handler.handler"
-  source_code_hash = data.archive_file.check_processor.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory
+  filename          = "${local.build_root}/check_processor.zip"
+  function_name     = "${var.app_name}-check-processor"
+  role              = aws_iam_role.lambda_execution_role.arn
+  handler           = "check_processor.handler.handler"
+  source_code_hash  = null_resource.check_processor_zip.triggers.src_hash
+  runtime           = local.lambda_runtime
+  architectures     = [local.lambda_arch]
+  timeout           = var.lambda_timeout
+  memory_size       = var.lambda_memory
 
   environment {
     variables = {
-      GITHUB_APP_ID         = var.github_app_id
-      GITHUB_PRIVATE_KEY_ARN = aws_secretsmanager_secret.github_private_key.arn
-      CONFIG_BUCKET_NAME   = aws_s3_bucket.app_config.id
-      ENVIRONMENT          = terraform.workspace
-      LOG_LEVEL           = "INFO"
+      GITHUB_APP_ID           = var.github_app_id
+      GITHUB_INSTALLATION_ID  = var.github_installation_id
+      GITHUB_PRIVATE_KEY_ARN  = aws_secretsmanager_secret.github_private_key.arn
+      CONFIG_BUCKET_NAME      = aws_s3_bucket.app_config.id
+      ENVIRONMENT             = terraform.workspace
+      LOG_LEVEL               = "INFO"
     }
   }
+
+  depends_on = [null_resource.check_processor_zip]
 
   tags = var.tags
 }
