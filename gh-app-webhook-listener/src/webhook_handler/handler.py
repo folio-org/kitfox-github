@@ -84,7 +84,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # Log incoming event
         logger.info(f"Received webhook event: {json.dumps(event)}")
-
         logger.info(f"Received webhook event headers: {json.dumps(event.get('headers', {}))}")
 
         # Extract request details
