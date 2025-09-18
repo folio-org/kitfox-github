@@ -1,5 +1,4 @@
 import os
-import json
 import time
 import logging
 import requests
@@ -24,7 +23,7 @@ class GitHubClient:
         try:
             secrets_manager = boto3.client('secretsmanager')
             response = secrets_manager.get_secret_value(
-                SecretId=os.environ['GITHUB_APP_KEY_ARN']
+                SecretId=os.environ['GITHUB_PRIVATE_KEY_ARN']
             )
             return response['SecretString']
         except Exception as e:
@@ -40,15 +39,7 @@ class GitHubClient:
             'iss': self.app_id  # GitHub App ID
         }
 
-        try:
-            # Using PyJWT without cryptography (simplified version)
-            # Note: This requires the private key to be in PEM format
-            return jwt.encode(payload, self.private_key, algorithm='RS256')
-        except Exception as e:
-            logger.error(f"Failed to create JWT: {e}")
-            # Fallback to a simplified approach if cryptography is not available
-            logger.warning("Using simplified JWT creation - may have limitations")
-            return ""
+        return jwt.encode(payload, self.private_key, algorithm='RS256')
 
     def _get_installation_token(self) -> str:
         """Get an installation access token."""
