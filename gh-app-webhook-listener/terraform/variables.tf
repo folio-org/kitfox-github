@@ -16,6 +16,12 @@ variable "github_app_id" {
   sensitive   = true
 }
 
+variable "github_installation_id" {
+  description = "GitHub App Installation ID"
+  type        = string
+  sensitive   = true
+}
+
 variable "github_webhook_secret" {
   description = "GitHub webhook secret for signature validation"
   type        = string
