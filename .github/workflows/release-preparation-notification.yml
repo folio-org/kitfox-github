@@ -56,7 +56,7 @@ jobs:
           token: ${{ env.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            channel: "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}"
             text: "Application Release Preparation SUCCESS"
             blocks:
               - type: section
@@ -88,7 +88,7 @@ jobs:
           token: ${{ env.SLACK_BOT_TOKEN }}
           errors: true
           payload: |
-            channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
+            channel: "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}"
             text: "Application Release Preparation FAILED"
             blocks:
               - type: section
