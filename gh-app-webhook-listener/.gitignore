@@ -1,0 +1,5 @@
+# Exclude all .tfvars files (contain sensitive configuration)
+*.tfvars
+
+# But keep the example file for reference
+!example.tfvars
