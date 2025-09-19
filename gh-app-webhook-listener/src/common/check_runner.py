@@ -27,7 +27,7 @@ class CheckRunner:
         """
         try:
             data = {
-                'name': 'GitHub App Check',
+                'name': 'pr-check/verify-app',
                 'head_sha': head_sha,
                 'status': 'in_progress',
                 'started_at': datetime.utcnow().isoformat() + 'Z',
