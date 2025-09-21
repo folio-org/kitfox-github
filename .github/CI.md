@@ -17,6 +17,42 @@ All workflows in this repository follow the `workflow_call` pattern, enabling:
 - **📊 Result Aggregation**: Structured outputs for orchestrator consumption
 - **🧪 Testing Support**: Built-in dry-run capabilities for safe validation
 
+### Workflow Hierarchy
+
+The workflows follow a layered architecture:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   High-Level Orchestrators                   │
+│  • snapshot-update.yml                                       │
+│  • release-update.yml                                        │
+│  • release-preparation.yml                                   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Mid-Level Orchestrators                    │
+│  • app-update.yml                                           │
+│  • release-update-flow.yml                                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      Core Utilities                          │
+│  • update-application.yml                                    │
+│  • commit-application-changes.yml                           │
+│  • verify-application.yml                                   │
+│  • compare-applications.yml                                 │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       Notifications                          │
+│  • release-preparation-notification.yml                      │
+│  • Integrated notifications in orchestrator workflows        │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ### Distributed Coordination Model
 
 ```
@@ -32,52 +68,137 @@ All workflows in this repository follow the `workflow_call` pattern, enabling:
 
 ## 📋 Available Workflows
 
-### Application Update
-**File**: [`app-update.yml`](workflows/app-update.yml)  
-**Purpose**: Automated module version updates and application descriptor management  
+### High-Level Orchestrators
+
+#### Snapshot Update
+**File**: [`snapshot-update.yml`](workflows/snapshot-update.yml)
+**Purpose**: Complete snapshot update workflow with integrated notifications
+**Documentation**: [Snapshot Update Guide](docs/snapshot-update.md)
+
+**Key Features**:
+- Orchestrates the complete snapshot update process
+- Integrates platform descriptor fetching
+- Built-in Slack notifications (team and general channels)
+- Comprehensive workflow summary generation
+- Notification status tracking and reporting
+- Support for scheduled and manual triggers
+- FAR registry support
+
+#### Release Update
+**File**: [`release-update.yml`](workflows/release-update.yml)
+**Purpose**: Release branch scanning and update orchestration
+**Documentation**: [Release Update Guide](docs/release-update.md)
+
+**Key Features**:
+- Scans release branches for required updates
+- Creates pull requests for module updates
+- Integrated Slack notifications with status tracking
+- Comprehensive summary generation
+- Support for dry-run mode
+- Reviewer and label management for PRs
+
+#### Release Preparation
+**File**: [`release-preparation.yml`](workflows/release-preparation.yml)
+**Purpose**: Release branch creation and preparation
+**Documentation**: [Release Preparation Guide](docs/release-preparation.md)
+
+**Key Features**:
+- Creates new release branches from previous releases or snapshots
+- Updates application versions for release
+- Handles both snapshot and release version sources
+- Comprehensive Git operations with error handling
+- Dry-run support for safe testing
+
+### Mid-Level Orchestrators
+
+#### Application Update
+**File**: [`app-update.yml`](workflows/app-update.yml)
+**Purpose**: Core application update orchestration
 **Documentation**: [App Update Guide](docs/app-update.md)
 
 **Key Features**:
-- Automated module version discovery from FOLIO registry
-- Application descriptor updates with latest module versions
-- Maven artifact generation and validation
-- FAR registry integration and publishing
-- Comprehensive validation and rollback handling
-- Dry-run support for safe testing
+- Coordinates update, verification, and commit operations
+- Module version discovery from FOLIO registry
+- Application descriptor generation and validation
+- FAR registry integration
+- Rollback handling on failures
+- Comprehensive output for upstream workflows
 
-### Application Update Notification
-**File**: [`app-update-notification.yml`](workflows/app-update-notification.yml)  
-**Purpose**: Rich Slack notifications for application update operations  
-**Documentation**: [App Update Notification Guide](docs/app-update-notification.md)
-
-**Key Features**:
-- Detailed update notifications with module-level changes
-- Success and failure message templates with rich formatting
-- Direct links to commits, descriptors, and workflow runs
-- Integration with Eureka CI Slack channels
-
-### Application Release Preparation
-**File**: [`release-preparation.yml`](workflows/release-preparation.yml)  
-**Purpose**: Standardized release branch preparation for FOLIO applications  
-**Documentation**: [App Release Preparation Guide](docs/release-preparation.md)
+#### Release Update Flow
+**File**: [`release-update-flow.yml`](workflows/release-update-flow.yml)
+**Purpose**: Release branch update workflow implementation
+**Documentation**: [Release Update Flow Guide](docs/release-update-flow.md)
 
 **Key Features**:
-- Maven version extraction and validation
-- Release branch creation and preparation
-- Application descriptor updates with placeholder versions
-- Git operations with proper commit messages
-- Dry-run support for safe testing
+- Manages the complete release update flow
+- Version comparison between branches
+- Pull request creation and management
+- Reviewer assignment with fallback handling
+- Label management for PRs
 
-### Application Release Notification
-**File**: [`release-preparation-notification.yml`](workflows/release-preparation-notification.yml)  
-**Purpose**: Standardized Slack notifications for application operations  
-**Documentation**: [App Notification Guide](docs/app-notification.md)
+### Core Utility Workflows
+
+#### Update Application
+**File**: [`update-application.yml`](workflows/update-application.yml)
+**Purpose**: Core application descriptor update logic
+**Documentation**: [Update Application Guide](docs/update-application.md)
 
 **Key Features**:
-- Slack notification with rich formatting
-- Success and failure message templates
-- Application context and operation details
-- Integration with FOLIO Slack channels
+- Module version resolution from registry
+- Application descriptor generation
+- Version management and validation
+- Platform descriptor integration
+- Detailed change tracking
+
+#### Commit Application Changes
+**File**: [`commit-application-changes.yml`](workflows/commit-application-changes.yml)
+**Purpose**: Git operations for application updates
+**Documentation**: [Commit Application Changes Guide](docs/commit-application-changes.md)
+
+**Key Features**:
+- Atomic Git operations with error handling
+- Standardized commit message formatting
+- Branch management and pushing
+- Dry-run support for validation
+- Rollback capabilities
+
+#### Verify Application
+**File**: [`verify-application.yml`](workflows/verify-application.yml)
+**Purpose**: Application validation and registry upload
+**Documentation**: [Verify Application Guide](docs/verify-application.md)
+
+**Key Features**:
+- Application descriptor validation
+- Maven artifact verification
+- Registry upload capabilities
+- Comprehensive error reporting
+- Integration with FAR registry
+
+#### Compare Applications
+**File**: [`compare-applications.yml`](workflows/compare-applications.yml)
+**Purpose**: Version comparison and change detection
+**Documentation**: [Compare Applications Guide](docs/compare-applications.md)
+
+**Key Features**:
+- Cross-branch version comparison
+- Module change detection
+- Detailed diff generation
+- Support for artifact comparison
+- Structured output for upstream processing
+
+### Notification Workflows
+
+#### Release Preparation Notification
+**File**: [`release-preparation-notification.yml`](workflows/release-preparation-notification.yml)
+**Purpose**: Slack notifications for release preparation
+**Documentation**: [Release Preparation Notification Guide](docs/release-preparation-notification.md)
+
+**Key Features**:
+- Rich Slack message formatting
+- Success and failure templates
+- Direct links to branches and commits
+- Error handling for notification failures
+- Output status for tracking
 
 ## 🔧 Universal Actions
 
@@ -85,199 +206,135 @@ All workflows in this repository follow the `workflow_call` pattern, enabling:
 
 Each action includes comprehensive documentation with usage examples, input/output specifications, and implementation details.
 
-#### Orchestrate External Workflow
-**Documentation**: [`actions/orchestrate-external-workflow/README.md`](actions/orchestrate-external-workflow/README.md)  
-**Purpose**: Universal workflow triggering and monitoring across repositories  
+#### Workflow Orchestration
+
+##### Orchestrate External Workflow
+**Documentation**: [`actions/orchestrate-external-workflow/README.md`](actions/orchestrate-external-workflow/README.md)
+**Purpose**: Universal workflow triggering and monitoring across repositories
 **Key Features**: UUID dispatch tracking, YAML parameters, polling with timeout, exit status monitoring
 
-#### Validate Team Membership
-**Documentation**: [`actions/validate-team-membership/README.md`](actions/validate-team-membership/README.md)  
-**Purpose**: Team-based authorization for critical operations  
-**Key Features**: Real-time team validation, multi-org support, boolean authorization output, comprehensive logging
+#### Pull Request Management
 
-#### Collect Application Version
-**Documentation**: [`actions/collect-app-version/README.md`](actions/collect-app-version/README.md)  
-**Purpose**: Maven version extraction and semantic version parsing  
-**Key Features**: Maven version extraction, semantic parsing, cross-repo collection, SNAPSHOT support
+##### Create PR
+**Documentation**: [`actions/create-pr/README.md`](actions/create-pr/README.md)
+**Purpose**: Automated pull request creation with duplicate detection
+**Key Features**: Label management, reviewer assignment, existing PR detection, graceful error handling
 
-## 🛡️ Security Implementation
+##### Update PR
+**Documentation**: [`actions/update-pr/README.md`](actions/update-pr/README.md)
+**Purpose**: Update existing pull requests with new content and metadata
+**Key Features**: Selective updates, label and reviewer management, content preservation
 
-### Authorization Pattern
+#### Application Management
 
-**Critical Principle**: Reusable workflows in kitfox-github **NEVER** contain authorization logic.
+##### Generate Application Descriptor
+**Documentation**: [`actions/generate-application-descriptor/README.md`](actions/generate-application-descriptor/README.md)
+**Purpose**: Generate FOLIO application descriptors from state files
+**Key Features**: Maven integration, placeholder validation, artifact upload, comprehensive validation
 
-```yaml
-# ✅ CORRECT: Authorization in calling repository
-jobs:
-  validate-authorization:
-    uses: folio-org/kitfox-github/.github/actions/validate-team-membership@main
-    with:
-      username: ${{ github.actor }}
+##### Collect Application Version
+**Documentation**: [`actions/collect-app-version/README.md`](actions/collect-app-version/README.md)
+**Purpose**: Maven version extraction and semantic version parsing
+**Key Features**: POM.xml parsing, semantic version handling, version state detection
 
-  execute-operation:
-    needs: validate-authorization
-    if: needs.validate-authorization.outputs.authorized == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
-```
+#### Configuration and Security
 
-### Security Boundaries
+##### Get Release Config
+**Documentation**: [`actions/get-release-config/README.md`](actions/get-release-config/README.md)
+**Purpose**: Read and validate release configuration from repository files
+**Key Features**: Branch validation, configuration parsing, dynamic workflow configuration
 
-- **Team Validation**: Always performed by calling repository
-- **Token Management**: App tokens generated in calling context
-- **Audit Trail**: Authorization decisions logged in orchestrator
-- **Fail-Closed Design**: Unauthorized access denied by default
+##### Validate Team Membership
+**Documentation**: [`actions/validate-team-membership/README.md`](actions/validate-team-membership/README.md)
+**Purpose**: Team-based authorization for critical operations
+**Key Features**: Real-time team validation, multi-org support, boolean authorization output
 
-## 📊 Usage Patterns
+## 🚀 Usage Patterns
 
-### Standard Calling Pattern
-
-```yaml
-name: 'Application Operation'
-
-on:
-  workflow_dispatch:
-    inputs:
-      app_name:
-        description: 'Application name'
-        required: true
-
-jobs:
-  validate-actor:
-    runs-on: ubuntu-latest
-    outputs:
-      authorized: ${{ steps.validate.outputs.authorized }}
-    steps:
-      - name: 'Validate Team Membership'
-        id: validate
-        uses: folio-org/kitfox-github/.github/actions/validate-team-membership@main
-        with:
-          username: ${{ github.actor }}
-          organization: 'folio-org'
-          team: 'kitfox'
-
-  execute-workflow:
-    needs: validate-actor
-    if: needs.validate-actor.outputs.authorized == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
-    with:
-      app_name: ${{ inputs.app_name }}
-      previous_release_branch: ${{ inputs.previous_release_branch }}
-      new_release_branch: ${{ inputs.new_release_branch }}
-      dry_run: ${{ inputs.dry_run }}
-
-  send-notification:
-    needs: [validate-actor, execute-workflow]
-    if: always() && needs.validate-actor.outputs.authorized == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/release-preparation-notification.yml@main
-    with:
-      app_name: ${{ inputs.app_name }}
-      operation_status: ${{ needs.execute-workflow.result }}
-    secrets:
-      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
-```
-
-### Snapshot CI Pattern
+### Calling a Reusable Workflow
 
 ```yaml
-on:
-  schedule:
-    - cron: "*/20 * * * *"  # Automated snapshot updates
-
 jobs:
-  fetch-platform-descriptor:
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: folio-org/platform-lsp
-          ref: snapshot
-      - uses: actions/upload-artifact@v4
-        with:
-          name: platform-descriptor
-          path: platform-descriptor.json
-
-  update-application:
-    needs: fetch-platform-descriptor
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+  update-snapshot:
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
-      workflow_run_number: ${{ github.run_number }}
-    secrets: inherit
-
-  notify-results:
-    needs: update-application
-    if: always() && needs.update-application.outputs.updated == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/app-update-notification.yml@master
-    with:
-      app_name: ${{ github.event.repository.name }}
-      repo: ${{ github.repository }}
-      new_version: ${{ needs.update-application.outputs.new_version }}
-      previous_version: ${{ needs.update-application.outputs.previous_version }}
-      workflow_result: ${{ needs.update-application.result }}
-      slack_notif_channel: ${{ vars.SLACK_NOTIF_CHANNEL }}
+      descriptor_build_offset: '100100000000000'
+      rely_on_FAR: false
+      dry_run: false
     secrets: inherit
 ```
 
-### Matrix Orchestration Pattern
+### Workflow Outputs
+
+All orchestrator workflows provide structured outputs:
 
 ```yaml
-strategy:
-  matrix:
-    application: ${{ fromJson(needs.setup.outputs.applications) }}
-  fail-fast: false    # Continue processing other apps if one fails
-  max-parallel: 5     # Standard concurrency limit for distributed operations
-
-steps:
-  - name: 'Process Application'
-    uses: folio-org/kitfox-github/.github/actions/orchestrate-external-workflow@main
-    with:
-      repository: 'folio-org/${{ matrix.application }}'
-      workflow_file: 'release-preparation.yml'
-      workflow_branch: 'master'
-      workflow_parameters: |
-        previous_release_branch: ${{ inputs.previous_release_branch }}
-        new_release_branch: ${{ inputs.new_release_branch }}
-        dry_run: ${{ inputs.dry_run }}
+outputs:
+  update_result:
+    description: 'Result of the update operation'
+  updated:
+    description: 'Whether changes were made'
+  new_version:
+    description: 'New application version'
+  notification_outcome:
+    description: 'Status of notifications'
 ```
 
-## 🧪 Testing and Validation
+### Error Handling
 
-### Dry-Run Support
+Workflows implement comprehensive error handling:
 
-All reusable workflows support `dry_run` parameter:
+- **Graceful Failures**: Non-blocking notification failures
+- **Rollback Support**: Automatic rollback on critical failures
+- **Dry-Run Mode**: Safe testing without making changes
+- **Status Tracking**: Complete status reporting through outputs
 
-```yaml
-inputs:
-  dry_run:
-    description: 'Perform dry run without making changes'
-    required: false
-    type: boolean
-    default: false
-```
+## 📚 Implementation Details
 
-**Dry-Run Behavior**:
-- Validation steps execute normally
-- Git operations are simulated (no actual commits/pushes)
-- Notifications include "DRY RUN" indicators
-- Results are logged but not persisted
+### Security Considerations
 
-### Testing Strategy
+- **GitHub App Authentication**: Used for cross-repository operations
+- **Secrets Management**: Inherited from calling workflows
+- **Team-Based Authorization**: Critical operations require team membership
+- **Token Scope Validation**: Minimal required permissions
 
-1. **Individual Workflow Testing**: Test each workflow in isolation with dry-run
-2. **Integration Testing**: Test calling patterns from multiple repositories
-3. **Matrix Testing**: Validate distributed operations across multiple applications
-4. **Authorization Testing**: Verify security boundaries with different user contexts
+### Performance Optimization
 
-## 📚 Detailed Documentation
+- **Parallel Execution**: Matrix strategies for bulk operations
+- **Artifact Caching**: Reuse of platform descriptors
+- **Conditional Steps**: Skip unnecessary operations
+- **Concurrency Control**: Prevent duplicate runs
 
-### Workflow-Specific Guides
+### Monitoring and Observability
 
-- **[App Update](docs/app-update.md)**: Automated module updates and descriptor management
-- **[App Update Notification](docs/app-update-notification.md)**: Rich Slack notifications for update operations
-- **[App Release Preparation](docs/release-preparation.md)**: Complete guide to release preparation workflow
-- **[App Notification](docs/app-notification.md)**: Slack notification patterns and customization
-- **[Distributed Orchestration](docs/distributed-orchestration.md)**: Cross-repository coordination patterns
-- **[Security Implementation](docs/security-implementation.md)**: Authorization and access control patterns
+- **Workflow Summaries**: Comprehensive GitHub Action summaries
+- **Slack Notifications**: Real-time status updates
+- **Structured Outputs**: Machine-readable results
+- **Detailed Logging**: Step-by-step execution logs
+
+## 📖 Documentation
+
+### Workflow Documentation
+
+#### High-Level Orchestrators
+- **[Snapshot Update](docs/snapshot-update.md)**: Complete snapshot update process with notifications
+- **[Release Update](docs/release-update.md)**: Release branch update management
+- **[Release Preparation](docs/release-preparation.md)**: Release branch creation and setup
+
+#### Mid-Level Orchestrators
+- **[App Update](docs/app-update.md)**: Core application update orchestration
+- **[Release Update Flow](docs/release-update-flow.md)**: Comprehensive release update implementation
+
+#### Core Utilities
+- **[Update Application](docs/update-application.md)**: Application descriptor update logic
+- **[Commit Application Changes](docs/commit-application-changes.md)**: Git operations management
+- **[Verify Application](docs/verify-application.md)**: Validation and registry upload
+- **[Compare Applications](docs/compare-applications.md)**: Version comparison and change detection
+
+#### Notifications
+- **[Release Preparation Notification](docs/release-preparation-notification.md)**: Slack notifications for release operations
 
 ### Implementation References
 
@@ -285,27 +342,8 @@ inputs:
 - **[Eureka CI Flow](https://folio-org.atlassian.net/wiki/spaces/FOLIJET/pages/887488514/CI+flow+release)**: FOLIO CI/CD process overview
 - **[Slack Integration](https://api.slack.com/messaging/composing)**: Slack message formatting and best practices
 
-## 🔄 Workflow Evolution
-
-### Adding New Workflows
-
-**Requirements Checklist**:
-- [ ] Evidence of reuse across 3+ repositories
-- [ ] Clear `workflow_call` interface with typed inputs
-- [ ] Comprehensive README.md with usage examples
-- [ ] Dry-run support for safe testing
-- [ ] Security review and authorization boundary analysis
-- [ ] Integration testing across multiple calling repositories
-
-### Maintenance Guidelines
-
-- **Backward Compatibility**: Maintain input/output interfaces
-- **Version Tagging**: Use semantic versioning for breaking changes
-- **Documentation Updates**: Keep workflow documentation synchronized
-- **Security Reviews**: Regular audit of authorization patterns
-
 ---
 
 **Infrastructure Team**: Kitfox DevOps  
-**Last Updated**: August 2025  
+**Last Updated**: September 2025  
 **Purpose**: Workflow Implementation and Usage Guide
