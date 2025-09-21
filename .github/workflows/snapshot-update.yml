@@ -1,0 +1,317 @@
+name: Snapshot update (Reusable)
+
+run-name: ${{ inputs.app_name }} snapshot update
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository (org/repo format)'
+        required: true
+        type: string
+      descriptor_build_offset:
+        description: 'Offset to apply to application artifact version'
+        required: false
+        type: string
+        default: '100100000000000'
+      rely_on_FAR:
+        description: 'Whether to rely on FAR for application descriptor dependencies'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Perform dry run without making changes'
+        required: false
+        type: boolean
+        default: false
+      is_scheduled:
+        description: 'Whether this is a scheduled run'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      update_result:
+        description: 'Result of the update (success/failure/skipped)'
+        value: ${{ jobs.update.result }}
+      updated:
+        description: 'Whether modules were updated'
+        value: ${{ jobs.update.outputs.updated }}
+      new_version:
+        description: 'New application version'
+        value: ${{ jobs.update.outputs.new_version }}
+      previous_version:
+        description: 'Previous application version'
+        value: ${{ jobs.update.outputs.previous_version }}
+      updated_cnt:
+        description: 'Number of updated modules'
+        value: ${{ jobs.update.outputs.updated_cnt }}
+      updated_modules:
+        description: 'List of updated modules'
+        value: ${{ jobs.update.outputs.updated_modules }}
+      commit_sha:
+        description: 'Commit SHA of the update'
+        value: ${{ jobs.update.outputs.commit_sha }}
+      failure_reason:
+        description: 'Reason for failure if any'
+        value: ${{ jobs.update.outputs.failure_reason }}
+      notification_outcome:
+        description: 'Outcome of the notification'
+        value: ${{ jobs.notify.outputs.notification_outcome }}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: snapshot-update-${{ inputs.repo }}
+  cancel-in-progress: false
+
+jobs:
+  fetch-descriptor:
+    name: Fetch Platform Descriptor
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.rely_on_FAR }}
+    steps:
+      - name: Checkout Platform Repository
+        uses: actions/checkout@v4
+        with:
+          repository: folio-org/platform-lsp
+          ref: snapshot
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Platform Descriptor
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-descriptor
+          path: platform-descriptor.json
+          retention-days: 1
+
+  update:
+    name: Update Application
+    needs: fetch-descriptor
+    if: always() && (needs.fetch-descriptor.result == 'success' || needs.fetch-descriptor.result == 'skipped')
+    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    with:
+      app_name: ${{ inputs.app_name }}
+      repo: ${{ inputs.repo }}
+      workflow_run_number: ${{ github.run_number }}
+      descriptor_build_offset: ${{ inputs.descriptor_build_offset }}
+      rely_on_FAR: ${{ inputs.rely_on_FAR }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  notify:
+    name: Send Notifications
+    needs: update
+    if: >
+      always() && !cancelled() && !inputs.dry_run &&
+      (
+        needs.update.result != 'success' ||
+        (needs.update.result == 'success' && needs.update.outputs.updated == 'true')
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      team_notif_status: ${{ steps.notify-team.outcome }}
+      general_notif_status: ${{ steps.notify-general.outcome }}
+      notification_outcome: ${{ steps.notify-team.outcome || steps.notify-general.outcome }}
+    env:
+      TITLE_TEXT: "${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && (needs.update.outputs.updated == 'true' && 'updated' || 'unchanged') || 'failed' }} #${{ github.run_number }}"
+      TITLE_BLOCK: |
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && (needs.update.outputs.updated == 'true' && 'updated' || 'unchanged') || 'failed' }} <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+          }
+        }
+      SUCCESS_ATTACHMENT: |
+        {
+          "color": "good",
+          "fields": [
+            {
+              "title": "New Version",
+              "value": "${{ needs.update.outputs.new_version }}",
+              "short": true
+            },
+            {
+              "title": "Previous Version",
+              "value": "${{ needs.update.outputs.previous_version }}",
+              "short": true
+            },
+            {
+              "title": "Updated Modules",
+              "value": "${{ needs.update.outputs.updated_cnt }}",
+              "short": true
+            },
+            {
+              "title": "Commit",
+              "value": "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ needs.update.outputs.commit_sha }}|${{ needs.update.outputs.commit_sha }}>",
+              "short": true
+            }
+          ]
+        },
+        {
+          "color": "good",
+          "mrkdwn_in": ["text"],
+          "text": ${{ toJSON(needs.update.outputs.updated_modules) }},
+          "footer": "Eureka CI/CD"
+        }
+      FAILURE_ATTACHMENT: |
+        {
+          "color": "danger",
+          "fields": [
+            {
+              "title": "Failure Reason",
+              "value": "${{ needs.update.outputs.failure_reason || 'Check workflow logs for details' }}",
+              "short": false
+            }
+          ],
+          "footer": "Eureka CI/CD"
+        }
+    steps:
+      - name: Send to Team Channel
+        id: notify-team
+        if: vars.SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        env:
+          CHANNEL: ${{ vars.SLACK_NOTIF_CHANNEL }}
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ env.CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ needs.update.result == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+              ]
+            }
+
+      - name: Send to General Channel
+        id: notify-general
+        if: vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        env:
+          CHANNEL: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ env.CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ needs.update.result == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+              ]
+            }
+
+  summarize:
+    name: Application Summary
+    needs: [update, notify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Application Summary
+        env:
+          UPDATE_RESULT: ${{ needs.update.result }}
+          UPDATED: ${{ needs.update.outputs.updated }}
+          NEW_VERSION: ${{ needs.update.outputs.new_version }}
+          PREVIOUS_VERSION: ${{ needs.update.outputs.previous_version }}
+          UPDATED_CNT: ${{ needs.update.outputs.updated_cnt }}
+          UPDATED_MODULES: ${{ needs.update.outputs.updated_modules }}
+          COMMIT_SHA: ${{ needs.update.outputs.commit_sha }}
+          FAILURE_REASON: ${{ needs.update.outputs.failure_reason }}
+          TEAM_NOTIF_STATUS: ${{ needs.notify.outputs.team_notif_status || 'skipped' }}
+          TEAM_NOTIF_STATUS_ICON: >-
+            ${{
+              needs.notify.outputs.team_notif_status == 'success' && '✅'
+              || needs.notify.outputs.team_notif_status == 'failure' && '⚠️'
+              || 'ℹ️'
+            }}
+          GENERAL_NOTIF_STATUS: ${{ needs.notify.outputs.general_notif_status || 'skipped' }}
+          GENERAL_NOTIF_STATUS_ICON: >-
+            ${{
+              needs.notify.outputs.general_notif_status == 'success' && '✅'
+              || needs.notify.outputs.general_notif_status == 'failure' && '⚠️'
+              || 'ℹ️'
+            }}
+        run: |
+          {
+            echo "### 🎯 Application: \`${{ inputs.app_name }}\`"
+            echo ""
+
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "#### 🏃 Dry Run Mode"
+              echo "This was a dry run - no actual changes were made."
+              echo "- Module updates were checked but not committed"
+              echo "- Application descriptor was generated but not pushed"
+              echo ""
+            elif [[ "$UPDATE_RESULT" == "success" ]]; then
+              if [[ "$UPDATED" == "true" ]]; then
+                echo "✅ **Update Result:** Modules updated successfully"
+                echo "- **Previous Version:** $PREVIOUS_VERSION"
+                echo "- **New Version:** $NEW_VERSION"
+                echo "- **Updated Modules:** $UPDATED_CNT"
+                echo "- **Commit SHA:** [$COMMIT_SHA](${{ github.server_url }}/${{ inputs.repo }}/commit/$COMMIT_SHA)"
+
+                if [[ -n "$UPDATED_MODULES" ]]; then
+                  echo ""
+                  echo "#### 📦 Updated Modules:"
+                  echo '```'
+                  echo "$UPDATED_MODULES"
+                  echo '```'
+                fi
+              else
+                echo "✅ **Update Result:** No updates needed"
+                echo "- All modules are up to date"
+                echo "- **Current Version:** $PREVIOUS_VERSION"
+              fi
+            elif [[ "$UPDATE_RESULT" == "failure" ]]; then
+              echo "❌ **Update Result:** Failed"
+              if [[ -n "$FAILURE_REASON" ]]; then
+                echo "- **Reason:** $FAILURE_REASON"
+              else
+                echo "- Check the update job logs for details"
+              fi
+            elif [[ "$UPDATE_RESULT" == "cancelled" ]]; then
+              echo "⚠️ **Update Result:** Cancelled"
+            else
+              echo "⏭️ **Update Result:** Skipped"
+            fi
+
+            echo ""
+
+            echo "### 📨 Notification Status"
+            echo ""
+
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "ℹ️ Notifications skipped (dry run mode)"
+            else
+              if [[ -n "${{ vars.SLACK_NOTIF_CHANNEL }}" ]]; then
+                echo "$TEAM_NOTIF_STATUS_ICON **Team Channel** (\`${{ vars.SLACK_NOTIF_CHANNEL }}\`): $TEAM_NOTIF_STATUS"
+              else
+                echo "ℹ️ **Team Channel:** Not configured"
+              fi
+
+              if [[ -n "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}" ]]; then
+                echo "$GENERAL_NOTIF_STATUS_ICON **General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): $GENERAL_NOTIF_STATUS"
+              else
+                echo "ℹ️ **General Channel:** Not configured"
+              fi
+            fi
+
+            echo ""
+          } >> $GITHUB_STEP_SUMMARY

@@ -39,22 +39,30 @@ on:
         description: 'Slack notification channel'
         required: true
         type: string
+    outputs:
+      notification_outcome:
+        description: 'Outcome of the Slack notification (success/failure/skipped)'
+        value: ${{ jobs.send-notification.outputs.notification_outcome }}
 
 jobs:
   send-notification:
     name: Send Slack Notification
     runs-on: ubuntu-latest
+    outputs:
+      notification_outcome: ${{ steps.send-success.outcome || steps.send-failure.outcome }}
     env:
       SLACK_BOT_TOKEN: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
       SLACK_NOTIF_CHANNEL: ${{ inputs.slack_notif_channel }}
     steps:
       - name: Send SUCCESS Slack Notification
+        id: send-success
         if: inputs.workflow_result == 'success'
+        continue-on-error: true
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
           token: ${{ env.SLACK_BOT_TOKEN }}
-          errors: true
+          errors: false
           payload: |
             channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
             text: "Application Release Preparation SUCCESS"
@@ -81,12 +89,14 @@ jobs:
                 footer: "Eureka CI/CD"
 
       - name: Send FAILED Slack Notification
+        id: send-failure
         if: inputs.workflow_result == 'failure'
+        continue-on-error: true
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
           token: ${{ env.SLACK_BOT_TOKEN }}
-          errors: true
+          errors: false
           payload: |
             channel: "${{ env.SLACK_NOTIF_CHANNEL }}"
             text: "Application Release Preparation FAILED"

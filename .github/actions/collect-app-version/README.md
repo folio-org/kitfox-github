@@ -38,7 +38,7 @@ A GitHub Action for collecting and parsing Maven application versions from FOLIO
   id: current-version
   uses: folio-org/kitfox-github/.github/actions/collect-app-version@main
   with:
-    app_name: ${{ matrix.application }}
+    app_name: folio-org/${{ matrix.application }}
     branch: ${{ inputs.previous_release_branch }}
 
 - name: Calculate Next Version
@@ -87,11 +87,11 @@ jobs:
 
 ## Inputs
 
-| Input      | Description                                                 | Required | Default                        |
-|------------|-------------------------------------------------------------|----------|--------------------------------|
-| `app_name` | Application repository name \(without `folio-org/` prefix\) | ✅        | \-                             |
-| `branch`   | Branch name to collect version from                         | ✅        | \-                             |
-| `token`    | GitHub token with repository read permissions               | ❌        | `${{ secrets.GITHUB_TOKEN }}`  |
+| Input      | Description                                               | Required  | Default                          |
+|------------|-----------------------------------------------------------|-----------|----------------------------------|
+| `app_name` | Full repository path (e.g., `folio-org/app-platform`)     | ✅         | \-                               |
+| `branch`   | Branch name to collect version from                       | ✅         | \-                               |
+| `token`    | GitHub token with repository read permissions             | ❌         | `${{ github.token }}` if not set |
 
 ## Outputs
 
@@ -101,7 +101,7 @@ jobs:
 | `major`        | Major version number                 | `1`                 |
 | `minor`        | Minor version number                 | `2`                 |
 | `patch`        | Patch version number                 | `3`                 |
-| `is_snapshot`  | Whether this is a SNAPSHOT version   | `SNAPSHOT` or empty |
+| `is_snapshot`  | Whether this is a SNAPSHOT version   | `true` or `false`   |
 | `build_number` | Build number (for SNAPSHOT versions) | `45`                |
 
 ## Version Format Support
@@ -161,7 +161,7 @@ Collect current versions before calculating next release versions:
   id: versions
   uses: folio-org/kitfox-github/.github/actions/collect-app-version@main
   with:
-    app_name: ${{ matrix.application }}
+    app_name: folio-org/${{ matrix.application }}
     branch: ${{ inputs.current_release_branch }}
 
 - name: Increment Major Version
@@ -175,9 +175,10 @@ Ensure version compatibility across applications:
 
 ```yaml
 - name: Check Platform Compatibility
+  id: platform
   uses: folio-org/kitfox-github/.github/actions/collect-app-version@main
   with:
-    app_name: platform-complete
+    app_name: folio-org/app-platform-complete
     branch: main
 
 - name: Validate Compatibility
@@ -197,7 +198,7 @@ Track SNAPSHOT build progression:
   id: snapshot
   uses: folio-org/kitfox-github/.github/actions/collect-app-version@main
   with:
-    app_name: ${{ matrix.app }}
+    app_name: folio-org/${{ matrix.app }}
     branch: snapshot
 
 - name: Report SNAPSHOT Status
