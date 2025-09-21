@@ -56,7 +56,7 @@ runs:
         set -eo pipefail
         
         echo "::notice::Checking for configuration file: $CONFIG_FILE in $REPO on branch $BRANCH"
-        
+        gh api "repos/$REPO/contents/$CONFIG_FILE?ref=$BRANCH"
         if gh api "repos/$REPO/contents/$CONFIG_FILE?ref=$BRANCH" >/dev/null 2>&1; then
           echo "::notice::Configuration file exists"
           echo "exists=true" >> "$GITHUB_OUTPUT"
