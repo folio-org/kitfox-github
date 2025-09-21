@@ -125,61 +125,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'Invalid JSON payload'})
             }
 
-        # Process check_suite events
-        if github_event == 'check_suite':
-            action = payload.get('action', '')
-            logger.info(f"Processing check_suite action: {action}")
+        action = payload.get('action', '')
+        logger.info(f"Processing action: {action}")
 
-            if action in ['requested', 'rerequested']:
-                # Send to SQS for async processing
-                message = {
-                    'event_type': github_event,
-                    'action': action,
-                    'delivery_id': delivery_id,
-                    'payload': payload,
-                    'environment': os.environ.get('ENVIRONMENT', 'dev')
-                }
+        # Send to SQS for async processing
+        message = {
+            'event_type': github_event,
+            'action': action,
+            'delivery_id': delivery_id,
+            'payload': payload,
+        }
 
-                sqs = boto3.client('sqs')
-                sqs.send_message(
-                    QueueUrl=os.environ['SQS_QUEUE_URL'],
-                    MessageBody=json.dumps(message),
-                    MessageAttributes={
-                        'event_type': {'DataType': 'String', 'StringValue': github_event},
-                        'action': {'DataType': 'String', 'StringValue': action},
-                        'delivery_id': {'DataType': 'String', 'StringValue': delivery_id or ''}
-                    }
-                )
+        sqs = boto3.client('sqs')
+        sqs.send_message(
+            QueueUrl=os.environ['SQS_QUEUE_URL'],
+            MessageBody=json.dumps(message),
+            MessageAttributes={
+                'event_type': {'DataType': 'String', 'StringValue': github_event},
+                'action': {'DataType': 'String', 'StringValue': action},
+                'delivery_id': {'DataType': 'String', 'StringValue': delivery_id or ''}
+            }
+        )
 
-                logger.info(f"Queued check_suite event for processing: {delivery_id}")
-
-        # Process pull_request events
-        elif github_event == 'pull_request':
-            action = payload.get('action', '')
-            logger.info(f"Processing pull_request action: {action}")
-
-            if action in ['opened', 'synchronize', 'reopened']:
-                # Send to SQS for async processing
-                message = {
-                    'event_type': github_event,
-                    'action': action,
-                    'delivery_id': delivery_id,
-                    'payload': payload,
-                    'environment': os.environ.get('ENVIRONMENT', 'dev')
-                }
-
-                sqs = boto3.client('sqs')
-                sqs.send_message(
-                    QueueUrl=os.environ['SQS_QUEUE_URL'],
-                    MessageBody=json.dumps(message),
-                    MessageAttributes={
-                        'event_type': {'DataType': 'String', 'StringValue': github_event},
-                        'action': {'DataType': 'String', 'StringValue': action},
-                        'delivery_id': {'DataType': 'String', 'StringValue': delivery_id or ''}
-                    }
-                )
-
-                logger.info(f"Queued pull_request event for processing: {delivery_id}")
+        logger.info(f"Queued {github_event} event for processing: {delivery_id}")
 
         # Return success immediately
         return {
