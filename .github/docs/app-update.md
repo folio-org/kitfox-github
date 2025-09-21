@@ -310,25 +310,6 @@ jobs:
     uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
 ```
 
-### Notification Integration
-
-```yaml
-jobs:
-  update-application:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
-    # ... configuration ...
-
-  notify-results:
-    needs: update-application
-    if: always() && needs.update-application.outputs.updated == 'true'
-    uses: folio-org/kitfox-github/.github/workflows/app-update-notification.yml@master
-    with:
-      app_name: ${{ github.event.repository.name }}
-      repo: ${{ github.repository }}
-      new_version: ${{ needs.update-application.outputs.new_version }}
-      previous_version: ${{ needs.update-application.outputs.previous_version }}
-      workflow_result: ${{ needs.update-application.result }}
-```
 
 ## 📈 Performance Considerations
 
@@ -347,7 +328,8 @@ jobs:
 
 ## 📚 Related Documentation
 
-- **[App Update Notification](app-update-notification.md)**: Slack notification workflow
+- **[Snapshot Update](snapshot-update.md)**: Complete snapshot update workflow with integrated notifications
+- **[Release Update](release-update.md)**: Release branch update orchestration with notifications
 - **[Platform LSP Integration](../../../platform-lsp/.github/docs/snapshot-flow.md)**: Platform-level coordination
 - **[FAR Registry Documentation](https://folio-org.atlassian.net/wiki/spaces/FOLIJET/pages/1115029566/Application+registry+hosting+approach)**: Application registry details
 - **[FOLIO Module Registry](https://folio-registry.dev.folio.org)**: Module version discovery
@@ -355,5 +337,5 @@ jobs:
 ---
 
 **Last Updated**: September 2025  
-**Workflow Version**: 2.5  
+**Workflow Version**: 3.0  
 **Compatibility**: All FOLIO application repositories
