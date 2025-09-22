@@ -1,0 +1,31 @@
+{
+  "version": "1.0.0",
+  "description": "GitHub events to workflow mapping configuration",
+  "event_mappings": [
+    {
+      "event_type": "check_suite",
+      "actions": ["requested", "rerequested"],
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "app-*",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "{owner}",
+              "repository": "{repository}",
+              "workflow_file": ".github/workflows/pr-checks.yml",
+              "ref": "main",
+              "inputs": {
+                "check_type": "full",
+                "repository": "{repository}",
+                "head_sha": "{head_sha}",
+                "check_suite_id": "{check_suite_id}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
