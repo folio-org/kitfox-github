@@ -143,6 +143,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             MessageAttributes={
                 'event_type': {'DataType': 'String', 'StringValue': github_event},
                 'action': {'DataType': 'String', 'StringValue': action},
+
                 'delivery_id': {'DataType': 'String', 'StringValue': delivery_id or ''}
             }
         )
