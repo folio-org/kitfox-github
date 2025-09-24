@@ -47,6 +47,25 @@ resource "null_resource" "check_processor_copy" {
   }
 }
 
+# Copy configuration file if not using S3
+resource "null_resource" "check_processor_config_copy" {
+  count = var.github_events_config_s3_enabled ? 0 : 1
+  depends_on = [null_resource.check_processor_copy]
+
+  triggers = {
+    src_hash = null_resource.check_processor_prep.triggers.src_hash
+    config_hash = filesha256(var.github_events_config_file)
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      mkdir -p "${local.build_root}/check_processor_build/config"
+      cp "${var.github_events_config_file}" "${local.build_root}/check_processor_build/config/github_events_config.json"
+    EOT
+    interpreter = ["bash", "-c"]
+  }
+}
+
 # Install check processor dependencies
 resource "null_resource" "check_processor_deps" {
   depends_on = [null_resource.check_processor_copy]
@@ -88,7 +107,10 @@ PY
 
 # Create check processor ZIP using null_resource
 resource "null_resource" "check_processor_zip" {
-  depends_on = [null_resource.check_processor_deps]
+  depends_on = [
+    null_resource.check_processor_deps,
+    null_resource.check_processor_config_copy
+  ]
 
   triggers = {
     src_hash = null_resource.check_processor_prep.triggers.src_hash
@@ -134,7 +156,9 @@ resource "aws_lambda_function" "check_processor" {
       GITHUB_APP_ID           = var.github_app_id
       GITHUB_INSTALLATION_ID  = var.github_installation_id
       GITHUB_PRIVATE_KEY_ARN  = aws_secretsmanager_secret.github_private_key.arn
-      CONFIG_BUCKET_NAME      = aws_s3_bucket.app_config.id
+      CONFIG_BUCKET_NAME      = var.github_events_config_s3_enabled ? aws_s3_bucket.app_config.id : ""
+      CONFIG_FILE_KEY         = var.github_events_config_s3_enabled ? "github_events_config.json" : ""
+      LOCAL_CONFIG_PATH       = var.github_events_config_s3_enabled ? "" : "/var/task/config/github_events_config.json"
       ENVIRONMENT             = terraform.workspace
       LOG_LEVEL               = "INFO"
     }
