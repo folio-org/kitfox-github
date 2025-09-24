@@ -2,20 +2,124 @@ import json
 import os
 import boto3
 import logging
-import requests
-from typing import Dict, Any, Optional
+import fnmatch
+from typing import Dict, Any, Optional, List
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.github_client import GitHubClient
-from common.check_runner import CheckRunner
+from common.workflow_trigger import WorkflowTrigger
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+s3 = boto3.client('s3')
+
+def load_config(bucket_name: str, config_key: str) -> Dict[str, Any]:
+    """Load configuration from S3 bucket or local file"""
+    try:
+        if bucket_name and config_key:
+            response = s3.get_object(Bucket=bucket_name, Key=config_key)
+            config_content = response['Body'].read().decode('utf-8')
+            return json.loads(config_content)
+    except Exception as e:
+        logger.warning(f"Failed to load config from S3: {e}")
+
+    # Fallback to local config file
+    local_config_path = os.environ.get('LOCAL_CONFIG_PATH', '/var/task/config/github_events_config.json')
+    if os.path.exists(local_config_path):
+        with open(local_config_path, 'r') as f:
+            return json.load(f)
+
+    logger.error("No configuration file found")
+    return {}
+
+def matches_pattern(value: str, pattern: str) -> bool:
+    """Check if value matches the given pattern (supports wildcards)"""
+    return fnmatch.fnmatch(value, pattern)
+
+def matches_branch(branch: str, branch_patterns: Any) -> bool:
+    """Check if branch matches the configured patterns"""
+    if branch_patterns == "*":
+        return True
+
+    if isinstance(branch_patterns, list):
+        return any(matches_pattern(branch, pattern) for pattern in branch_patterns)
+
+    if isinstance(branch_patterns, dict):
+        # Handle base/head branch patterns for PRs
+        return True  # Will be handled by specific event processors
+
+    return matches_pattern(branch, str(branch_patterns))
+
+def find_matching_workflows(event_type: str, action: str, repository: Dict[str, str],
+                           branch_info: Dict[str, str], config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Find workflows that match the event criteria"""
+    matching_workflows = []
+
+    for mapping in config.get('event_mappings', []):
+        # Check event type
+        if mapping.get('event_type') != event_type:
+            continue
+
+        # Check action (if specified)
+        if 'actions' in mapping and action not in mapping.get('actions', []):
+            continue
+
+        # Check repository patterns
+        for repo_pattern in mapping.get('repository_patterns', []):
+            owner_pattern = repo_pattern.get('owner', '*')
+            repo_name_pattern = repo_pattern.get('repository', '*')
+
+            if not matches_pattern(repository.get('owner'), owner_pattern):
+                continue
+
+            if not matches_pattern(repository.get('name'), repo_name_pattern):
+                continue
+
+            # Check branch patterns
+            branch_patterns = repo_pattern.get('branches', '*')
+            branch_matched = False
+
+            if event_type == 'check_suite':
+                # For check_suite, we check against head branch
+                head_branch = branch_info.get('head_branch', '')
+                branch_matched = matches_branch(head_branch, branch_patterns)
+            elif event_type == 'pull_request':
+                # For PRs, check both base and head branches
+                if isinstance(branch_patterns, dict):
+                    base_patterns = branch_patterns.get('base', ['*'])
+                    head_patterns = branch_patterns.get('head', ['*'])
+                    base_branch = branch_info.get('base_branch', '')
+                    head_branch = branch_info.get('head_branch', '')
+                    branch_matched = (
+                        any(matches_pattern(base_branch, p) for p in base_patterns) and
+                        any(matches_pattern(head_branch, p) for p in head_patterns)
+                    )
+                else:
+                    branch_matched = True
+            else:
+                branch_matched = True
+
+            if branch_matched:
+                matching_workflows.extend(repo_pattern.get('workflows', []))
+
+    return matching_workflows
+
+def substitute_template_variables(value: Any, variables: Dict[str, str]) -> Any:
+    """Substitute template variables in configuration values"""
+    if isinstance(value, str):
+        for var_name, var_value in variables.items():
+            value = value.replace(f"{{{var_name}}}", var_value)
+        return value
+    elif isinstance(value, dict):
+        return {k: substitute_template_variables(v, variables) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [substitute_template_variables(item, variables) for item in value]
+    return value
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Process check suite requests from SQS queue.
+    Process check suite requests from SQS queue and trigger workflows.
 
     Args:
         event: SQS event containing GitHub webhook data
@@ -25,6 +129,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         Response indicating processing status
     """
     logger.info(f"Processing SQS event: {json.dumps(event)}")
+
+    # Load configuration
+    config_bucket = os.environ.get('CONFIG_BUCKET_NAME')
+    config_key = os.environ.get('CONFIG_FILE_KEY', 'github_events_config.json')
+    config = load_config(config_bucket, config_key)
+
+    if not config:
+        logger.error("No configuration loaded, skipping processing")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': 'Configuration not found'})
+        }
 
     processed_count = 0
     error_count = 0
@@ -42,57 +158,72 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             # Initialize GitHub client
             github_client = GitHubClient()
+            workflow_trigger = WorkflowTrigger(github_client)
 
-            # Process check_suite events
-            if event_type == 'check_suite':
-                check_suite = payload.get('check_suite', {})
-                repository = payload.get('repository', {})
+            # Extract repository information
+            repository = payload.get('repository', {})
+            repo_info = {
+                'owner': repository.get('owner', {}).get('login'),
+                'name': repository.get('name')
+            }
 
-                # Create check run
-                check_runner = CheckRunner(github_client)
-                check_run = check_runner.create_check_run(
-                    owner=repository.get('owner', {}).get('login'),
-                    repo=repository.get('name'),
-                    check_suite_id=check_suite.get('id'),
-                    head_sha=check_suite.get('head_sha')
-                )
+            # Process events generically using event_type as key
+            event_object = payload.get(event_type, {})
 
-                if check_run:
-                    logger.info(f"Created check run: {check_run.get('id')}")
+            branch_info = {
+                'head_branch': event_object.get('head_branch', '')
+            }
 
-                    # Run checks (placeholder for actual check logic)
-                    result = check_runner.run_checks(
-                        owner=repository.get('owner', {}).get('login'),
-                        repo=repository.get('name'),
-                        check_run_id=check_run.get('id')
+            # Find matching workflows
+            workflows = find_matching_workflows(
+                event_type, action, repo_info, branch_info, config
+            )
+
+            if not workflows:
+                logger.info(f"No matching workflows found for {repo_info['owner']}/{repo_info['name']}")
+                processed_count += 1
+                continue
+
+            # Prepare template variables
+            # Extract PR number if available
+            pull_requests = event_object.get('pull_requests', [])
+            pr_number = str(pull_requests[0].get('number', '')) if pull_requests else '0'
+
+            # Build template variables from event object
+            template_vars = {
+                'owner': repo_info['owner'],
+                'repository': repo_info['name'],
+                'head_sha': event_object.get('head_sha', ''),
+                'head_branch': event_object.get('head_branch', ''),
+                'check_suite_id': str(event_object.get('id', '')),
+                'head_ref': event_object.get('head_branch', ''),
+                'pr_number': pr_number,
+                # 'check_run_id': '0'  # Use "0" as placeholder for events without check_run_id
+            }
+
+            # Trigger each matching workflow
+            for workflow_config in workflows:
+                try:
+                    # Substitute template variables
+                    workflow_config = substitute_template_variables(workflow_config, template_vars)
+
+                    logger.info(f"Triggering workflow: {workflow_config}")
+
+                    result = workflow_trigger.trigger_workflow(
+                        owner=workflow_config.get('owner'),
+                        repo=workflow_config.get('repository'),
+                        workflow_file=workflow_config.get('workflow_file'),
+                        ref=workflow_config.get('ref', 'main'),
+                        inputs=workflow_config.get('inputs', {})
                     )
 
-                    logger.info(f"Check run completed with result: {result}")
+                    if result:
+                        logger.info(f"Successfully triggered workflow: {workflow_config.get('workflow_file')}")
+                    else:
+                        logger.error(f"Failed to trigger workflow: {workflow_config.get('workflow_file')}")
 
-            # Process pull_request events
-            elif event_type == 'pull_request':
-                pull_request = payload.get('pull_request', {})
-                repository = payload.get('repository', {})
-
-                # Create check run for PR
-                check_runner = CheckRunner(github_client)
-                check_run = check_runner.create_check_run(
-                    owner=repository.get('owner', {}).get('login'),
-                    repo=repository.get('name'),
-                    head_sha=pull_request.get('head', {}).get('sha')
-                )
-
-                if check_run:
-                    logger.info(f"Created check run for PR: {check_run.get('id')}")
-
-                    # Run checks
-                    result = check_runner.run_checks(
-                        owner=repository.get('owner', {}).get('login'),
-                        repo=repository.get('name'),
-                        check_run_id=check_run.get('id')
-                    )
-
-                    logger.info(f"PR check run completed with result: {result}")
+                except Exception as e:
+                    logger.error(f"Error triggering workflow: {e}", exc_info=True)
 
             processed_count += 1
 
