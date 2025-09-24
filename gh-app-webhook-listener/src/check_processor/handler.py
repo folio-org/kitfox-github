@@ -170,8 +170,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Process events generically using event_type as key
             event_object = payload.get(event_type, {})
 
+            # Extract branch information - try multiple sources
+            head_branch = (
+                event_object.get('head_branch', '') or  # check_suite events
+                event_object.get('head', {}).get('ref', '')  # pull_request events
+            )
+
+            base_branch = (
+                event_object.get('base_branch', '') or  # if it exists in some events
+                event_object.get('base', {}).get('ref', '')  # pull_request events
+            )
+
             branch_info = {
-                'head_branch': event_object.get('head_branch', '')
+                'head_branch': head_branch,
+                'base_branch': base_branch
             }
 
             # Find matching workflows
@@ -185,18 +197,45 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 continue
 
             # Prepare template variables
-            # Extract PR number if available
-            pull_requests = event_object.get('pull_requests', [])
-            pr_number = str(pull_requests[0].get('number', '')) if pull_requests else '0'
+            # Extract PR number based on event type
+            pr_number = '0'
+            base_branch = ''
+            base_sha = ''
+
+            if event_type == 'pull_request':
+                # For pull_request events, the number is directly in the event object
+                pr_number = str(event_object.get('number', '0'))
+                # Extract base branch info from pull_request event
+                base_branch = event_object.get('base', {}).get('ref', '')
+                base_sha = event_object.get('base', {}).get('sha', '')
+            elif event_type == 'check_suite':
+                # For check_suite events, look in the pull_requests array
+                pull_requests = event_object.get('pull_requests', [])
+                if pull_requests:
+                    pr_number = str(pull_requests[0].get('number', ''))
+                    # Extract base branch info from the first pull request
+                    base_branch = pull_requests[0].get('base', {}).get('ref', '')
+                    base_sha = pull_requests[0].get('base', {}).get('sha', '')
+                else:
+                    pr_number = '0'
 
             # Build template variables from event object
+            # Different events have different structures for SHA and branch info
+            if event_type == 'pull_request':
+                head_sha = event_object.get('head', {}).get('sha', '')
+                head_branch = event_object.get('head', {}).get('ref', '')
+            else:
+                head_sha = event_object.get('head_sha', '')
+                head_branch = event_object.get('head_branch', '')
+
             template_vars = {
                 'owner': repo_info['owner'],
                 'repository': repo_info['name'],
-                'head_sha': event_object.get('head_sha', ''),
-                'head_branch': event_object.get('head_branch', ''),
+                'head_sha': head_sha,
+                'head_branch': head_branch,
+                'base_branch': base_branch,
+                'base_sha': base_sha,
                 'check_suite_id': str(event_object.get('id', '')),
-                'head_ref': event_object.get('head_branch', ''),
                 'pr_number': pr_number,
                 # 'check_run_id': '0'  # Use "0" as placeholder for events without check_run_id
             }
