@@ -203,7 +203,7 @@ jobs:
           --arg new_version             "${{ needs.update-application.outputs.new_version }}" \
           --rawfile updated_modules     /tmp/updated_modules.txt \
           --arg updated_cnt             "${{ needs.update-application.outputs.updates_cnt }}" \
-          --argjson updated             ${{ needs.update-application.outputs.updated }} \
+          --argjson updated             "${{ needs.update-application.outputs.updated }}" \
           --rawfile failure_reason      /tmp/failure_reason.txt \
           --arg commit_sha              "${{ needs.commit-changes.outputs.commit_sha }}" \
           --arg app_descriptor_file_name "${{ needs.update-application.outputs.app_descriptor_file_name }}" \
