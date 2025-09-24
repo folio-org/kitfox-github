@@ -163,9 +163,9 @@ The workflows follow a layered architecture:
 - Rollback capabilities
 
 #### Verify Application
-**File**: [`verify-application.yml`](workflows/verify-application.yml)
+**Action**: [`verify-application`](actions/verify-application/)
 **Purpose**: Application validation and registry upload
-**Documentation**: [Verify Application Guide](docs/verify-application.md)
+**Documentation**: [Verify Application Action README](actions/verify-application/README.md)
 
 **Key Features**:
 - Application descriptor validation
@@ -330,7 +330,7 @@ Workflows implement comprehensive error handling:
 #### Core Utilities
 - **[Update Application](docs/update-application.md)**: Application descriptor update logic
 - **[Commit Application Changes](docs/commit-application-changes.md)**: Git operations management
-- **[Verify Application](docs/verify-application.md)**: Validation and registry upload
+- **[Verify Application Action](actions/verify-application/README.md)**: Validation and registry upload
 - **[Compare Applications](docs/compare-applications.md)**: Version comparison and change detection
 
 #### Notifications
