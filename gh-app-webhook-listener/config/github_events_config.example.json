@@ -14,13 +14,11 @@
             {
               "owner": "{owner}",
               "repository": "{repository}",
-              "workflow_file": ".github/workflows/pr-checks.yml",
+              "workflow_file": "pr-check.yml",
               "ref": "main",
               "inputs": {
-                "check_type": "full",
-                "repository": "{repository}",
-                "head_sha": "{head_sha}",
-                "check_suite_id": "{check_suite_id}"
+                "pr_number": "{pr_number}",
+                "head_sha": "{head_sha}"
               }
             }
           ]
