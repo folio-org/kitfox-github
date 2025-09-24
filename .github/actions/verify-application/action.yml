@@ -7,12 +7,13 @@ inputs:
   app_descriptor_file:
     description: 'Application descriptor file name'
     required: true
-  app_descriptor_file_name:
+  app_descriptor_artifact_name:
     description: 'Application descriptor file name without extension'
-    required: true
+    required: false
   platform_descriptor_artifact_name:
     description: 'Name of the platform descriptor artifact to download'
     required: false
+    default: 'platform-descriptor'
   rely_on_FAR:
     description: 'Whether to rely on FAR for application descriptor dependencies'
     required: false
@@ -23,7 +24,7 @@ inputs:
     default: 'false'
   far_url:
     description: 'FAR API URL base'
-    required: false
+    required: true
 outputs:
   validation_passed:
     description: 'Whether all validations passed'
@@ -37,13 +38,11 @@ outputs:
 
 runs:
   using: 'composite'
-  env:
-    FAR_BASE_URL: ${{ inputs.far_url || vars.FAR_URL }}
   steps:
     - name: Download Descriptor Artifact
       uses: actions/download-artifact@v4
       with:
-        name: ${{ inputs.app_descriptor_file_name || format('{0}-descriptor', inputs.app_name) }}
+        name: ${{ inputs.app_descriptor_artifact_name || format('{0}-descriptor', inputs.app_name) }}
         path: /tmp/app-descriptors
 
     - name: Download Platform Descriptor
@@ -51,7 +50,7 @@ runs:
       if: ${{ inputs.rely_on_FAR != 'true' }}
       uses: actions/download-artifact@v4
       with:
-        name: ${{ inputs.platform_descriptor_artifact_name || 'platform-descriptor' }}
+        name: ${{ inputs.platform_descriptor_artifact_name }}
         path: /tmp/platform-descriptor
       continue-on-error: true
 
@@ -61,7 +60,7 @@ runs:
       shell: bash
       env:
         APP_NAME: ${{ inputs.app_name }}
-        FAR_API_URL: "${{ env.FAR_BASE_URL }}/applications"
+        FAR_API_URL: "${{ inputs.far_url }}/applications"
         PLATFORM_DESCRIPTOR: "platform-descriptor"
       run: |
         set -eo pipefail
@@ -112,7 +111,7 @@ runs:
       shell: bash
       env:
         APP_DESCRIPTOR_FILE: "/tmp/app-descriptors/${{ inputs.app_descriptor_file }}"
-        FAR_API_URL: "${{ env.FAR_BASE_URL }}/applications"
+        FAR_API_URL: "${{ inputs.far_url }}/applications"
       run: |
         set -eo pipefail
         echo "::notice::Validate application module interface integrity"
@@ -146,7 +145,7 @@ runs:
       shell: bash
       env:
         RELY_ON_FAR: ${{ inputs.rely_on_FAR }}
-        FAR_API_URL: "${{ env.FAR_BASE_URL }}/applications"
+        FAR_API_URL: "${{ inputs.far_url }}/applications"
       run: |
         set -eo pipefail
         echo "::notice::Validate application dependencies integrity"
@@ -183,7 +182,7 @@ runs:
       shell: bash
       env:
         APP_DESCRIPTOR_FILE: "/tmp/app-descriptors/${{ inputs.app_descriptor_file }}"
-        FAR_API_URL: "${{ env.FAR_BASE_URL }}/applications"
+        FAR_API_URL: "${{ inputs.far_url }}/applications"
       run: |
         set -eo pipefail
         echo "::notice::Upload application to registry"

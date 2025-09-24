@@ -16,11 +16,11 @@ This action performs comprehensive validation of application descriptors includi
 |-------------------------------------|----------------------------------------------------------------------------|-----------|-----------------------|
 | `app_name`                          | Application name                                                           | **Yes**   | -                     |
 | `app_descriptor_file`               | Application descriptor file name                                           | **Yes**   | -                     |
-| `app_descriptor_file_name`          | Application descriptor file name without extension (used as artifact name) | **Yes**   | -                     |
+| `app_descriptor_artifact_name`      | Application descriptor artifact name (defaults to `{app_name}-descriptor`) | No        | -                     |
 | `platform_descriptor_artifact_name` | Name of the platform descriptor artifact to download                       | No        | `platform-descriptor` |
 | `rely_on_FAR`                       | Whether to rely on FAR for application descriptor dependencies             | No        | `false`               |
 | `skip_upload`                       | Skip uploading to registry (for PR validation flows)                       | No        | `false`               |
-| `far_url`                           | FAR API URL base                                                           | No        | `${{ vars.FAR_URL }}` |
+| `far_url`                           | FAR API URL base (falls back to `vars.FAR_URL` if not provided)            | **Yes**   | -                     |
 
 ## Outputs
 
@@ -41,7 +41,8 @@ steps:
     with:
       app_name: ${{ github.event.repository.name }}
       app_descriptor_file: ${{ needs.generate.outputs.descriptor_file }}
-      app_descriptor_file_name: ${{ needs.generate.outputs.descriptor_file_name }}
+      app_descriptor_artifact_name: ${{ needs.generate.outputs.descriptor_artifact_name }}
+      far_url: ${{ vars.FAR_URL }}
 ```
 
 ### Validation Only (Skip Upload)
@@ -53,8 +54,9 @@ steps:
     with:
       app_name: my-application
       app_descriptor_file: app-descriptor.json
-      app_descriptor_file_name: my-app-descriptor
+      app_descriptor_artifact_name: my-app-descriptor
       skip_upload: 'true'
+      far_url: ${{ vars.FAR_URL }}
 ```
 
 ### With Custom Platform Descriptor
@@ -66,8 +68,9 @@ steps:
     with:
       app_name: my-application
       app_descriptor_file: app-descriptor.json
-      app_descriptor_file_name: my-app-descriptor
+      app_descriptor_artifact_name: my-app-descriptor
       platform_descriptor_artifact_name: custom-platform-descriptor
+      far_url: ${{ vars.FAR_URL }}
 ```
 
 ### Using FAR for Dependencies
@@ -79,14 +82,15 @@ steps:
     with:
       app_name: my-application
       app_descriptor_file: app-descriptor.json
-      app_descriptor_file_name: my-app-descriptor
+      app_descriptor_artifact_name: my-app-descriptor
       rely_on_FAR: 'true'
+      far_url: ${{ vars.FAR_URL }}
 ```
 
 ## Prerequisites
 
 This action expects the following artifacts to be available:
-1. **Application descriptor artifact** - Named according to `app_descriptor_file_name` (or `{app_name}-descriptor` if not specified)
+1. **Application descriptor artifact** - Named according to `app_descriptor_artifact_name` (or `{app_name}-descriptor` if not specified)
 2. **Platform descriptor artifact** (optional) - Named according to `platform_descriptor_artifact_name` (or `platform-descriptor` if not specified)
 
 These artifacts should be uploaded in previous workflow steps using `actions/upload-artifact`.
@@ -144,7 +148,8 @@ jobs:
         with:
           app_name: ${{ github.event.repository.name }}
           app_descriptor_file: ${{ needs.generate.outputs.descriptor_file }}
-          app_descriptor_file_name: ${{ needs.generate.outputs.descriptor_file_name }}
+          app_descriptor_artifact_name: ${{ needs.generate.outputs.descriptor_artifact_name }}
+          far_url: ${{ vars.FAR_URL }}
 
       - name: Check Results
         if: always()
