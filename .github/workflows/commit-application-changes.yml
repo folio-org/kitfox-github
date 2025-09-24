@@ -35,6 +35,11 @@ on:
         required: false
         type: string
         default: ''
+      artifact_name:
+        description: 'Optional artifact name containing update files (defaults to <app_name>-update-files)'
+        required: false
+        type: string
+        default: ''
 
     outputs:
       commit_sha:
@@ -108,7 +113,7 @@ jobs:
       - name: Download Application Update Files
         uses: actions/download-artifact@v4
         with:
-          name: "${{ env.APP_NAME }}-update-files"
+          name: ${{ inputs.artifact_name != '' && inputs.artifact_name || format('{0}-update-files', env.APP_NAME) }}
           path: .
 
       - name: Commit Changes
@@ -157,5 +162,3 @@ jobs:
             exit 1
           fi
           echo "::notice::Successfully pushed changes to '$BRANCH_NAME'"
-
-
