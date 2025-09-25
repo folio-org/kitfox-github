@@ -177,7 +177,7 @@ jobs:
         if: vars.SLACK_NOTIF_CHANNEL != ''
         continue-on-error: true
         env:
-          CHANNEL: "" #${{ vars.SLACK_NOTIF_CHANNEL }} TODO: Uncomment later
+          CHANNEL: ${{ vars.SLACK_NOTIF_CHANNEL }}
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
