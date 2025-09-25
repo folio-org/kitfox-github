@@ -52,7 +52,6 @@ runs:
       with:
         name: ${{ inputs.platform_descriptor_artifact_name }}
         path: /tmp/platform-descriptor
-      continue-on-error: true
 
     - name: Fetch Application Descriptors from FAR
       id: fetch-app-descriptors
