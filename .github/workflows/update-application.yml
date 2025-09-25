@@ -226,8 +226,8 @@ jobs:
             done
           
             if [[ -z "$latest_version" ]]; then
-              echo "::error::Failed to fetch module artifacts from repository for $module_name"
-              echo "failure_reason=Failed to fetch module artifacts from repository for $module_name" >> "$GITHUB_OUTPUT"
+              echo "::error::Failed to fetch module artifacts from the Docker/NPM repository for $module_name"
+              echo "failure_reason=Failed to fetch module artifacts from the Docker/NPM repository for $module_name" >> "$GITHUB_OUTPUT"
               exit 1
             fi
             
