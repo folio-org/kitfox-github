@@ -13,6 +13,9 @@ inputs:
     description: 'Whether to upload the generated descriptor as an artifact'
     required: false
     default: 'true'
+  artifact_name:
+    description: 'Name for the uploaded artifact (defaults to app_name-descriptor)'
+    required: false
   artifact_retention_days:
     description: 'Number of days to retain the artifact'
     required: false
@@ -28,6 +31,9 @@ outputs:
   descriptor_file_name:
     description: 'Name of descriptor file without extension'
     value: ${{ steps.generate.outputs.descriptor_file_name }}
+  artifact_name:
+    description: 'Name of the uploaded artifact'
+    value: ${{ inputs.artifact_name || format('{0}-descriptor', inputs.app_name) }}
   has_placeholders:
     description: 'Whether the state file contains placeholder values'
     value: ${{ steps.check-placeholders.outputs.has_placeholders }}
@@ -117,6 +123,6 @@ runs:
       if: steps.generate.outputs.generated == 'true' && inputs.upload_artifact == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.app_name }}-descriptor"
+        name: "${{ inputs.artifact_name || format('{0}-descriptor', inputs.app_name) }}"
         path: "target/${{ inputs.app_name }}*.json"
         retention-days: ${{ inputs.artifact_retention_days }}
