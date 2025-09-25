@@ -213,13 +213,14 @@ jobs:
       branch: ${{ inputs.new_release_branch }}
       commit_message: |
         Prepare ${{ inputs.app_name }} for release. Initial commit.
-        
+
         Previous release: ${{ inputs.previous_release_branch }}
         New release: ${{ inputs.new_release_branch }}
         Source branch: ${{ needs.prepare-branch.outputs.source_branch }}
         Version: ${{ needs.prepare-branch.outputs.app_version }}
-        
+
         All module versions set to placeholder <CHANGE_ME> for team updates.
       dry_run: ${{ inputs.dry_run }}
       source_branch: ${{ needs.prepare-branch.outputs.source_branch }}
+      update_files_artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
     secrets: inherit

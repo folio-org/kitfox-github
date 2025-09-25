@@ -117,7 +117,7 @@ jobs:
         with:
           app_name: ${{ inputs.app_name }}
           app_descriptor_file: ${{ needs.update-application.outputs.app_descriptor_file }}
-          app_descriptor_artifact_name: ${{ needs.update-application.outputs.app_descriptor_file_name }}
+          app_descriptor_artifact_name: ${{ needs.update-application.outputs.artifact_name }}
           rely_on_FAR: ${{ inputs.rely_on_FAR }}
           skip_upload: ${{ inputs.dry_run }}
           far_url: ${{ vars.FAR_URL }}
@@ -133,12 +133,13 @@ jobs:
       branch: ${{ inputs.branch }}
       commit_message: |
         Update application state file to ${{ needs.update-application.outputs.new_version }}.
-        
+
         Previous version: ${{ needs.update-application.outputs.previous_version }}
         Total modules updated: ${{ needs.update-application.outputs.updates_cnt }}
         Modules: ${{ needs.update-application.outputs.updated_modules }}
       dry_run: ${{ inputs.dry_run }}
       use_github_app: ${{ inputs.use_github_app }}
+      update_files_artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
     secrets: inherit
 
   cleanup-on-failure:
