@@ -3,6 +3,9 @@ description: 'Checks if a specific commit SHA exists in a pull request'
 author: 'FOLIO Eureka CI'
 
 inputs:
+  repository:
+    description: 'Target repository (owner/repo format). If not provided, uses the current repository context'
+    required: false
   pr_number:
     description: 'Pull request number to check against'
     required: true
@@ -33,8 +36,10 @@ runs:
         script: |
           const prNumber = parseInt('${{ inputs.pr_number }}');
           const providedSha = '${{ inputs.commit_sha }}';
+          const repository = '${{ inputs.repository }}' || context.repo.owner + '/' + context.repo.repo;
+          const [owner, repo] = repository.split('/');
 
-          console.log(`Checking if commit ${providedSha} exists in PR #${prNumber}`);
+          console.log(`Checking if commit ${providedSha} exists in PR #${prNumber} in ${repository}`);
 
           try {
             let shaFound = false;
@@ -44,8 +49,8 @@ runs:
             // GitHub API paginates commits, so we need to check all pages
             while (!shaFound) {
               const { data: commits } = await github.rest.pulls.listCommits({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                owner: owner,
+                repo: repo,
                 pull_number: prNumber,
                 per_page: perPage,
                 page: page

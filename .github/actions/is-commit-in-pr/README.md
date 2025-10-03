@@ -10,11 +10,12 @@ The action handles pagination automatically, checking all commits in the PR rega
 
 ## Inputs
 
-| Input          | Description                              | Required  | Default               |
-|----------------|------------------------------------------|-----------|-----------------------|
-| `pr_number`    | Pull request number to check against     | Yes       | -                     |
-| `commit_sha`   | Commit SHA to check (full or short)      | Yes       | -                     |
-| `github_token` | GitHub token for API access              | Yes       | `${{ github.token }}` |
+| Input          | Description                                                                      | Required  | Default               |
+|----------------|----------------------------------------------------------------------------------|-----------|-----------------------|
+| `repository`   | Target repository (owner/repo format). If not provided, uses current repository  | No        | Current repository    |
+| `pr_number`    | Pull request number to check against                                             | Yes       | -                     |
+| `commit_sha`   | Commit SHA to check (full or short)                                              | Yes       | -                     |
+| `github_token` | GitHub token for API access                                                      | Yes       | `${{ github.token }}` |
 
 ## Outputs
 
@@ -25,7 +26,7 @@ The action handles pagination automatically, checking all commits in the PR rega
 
 ## Usage
 
-### Basic Example
+### Basic Example (Current Repository)
 
 ```yaml
 - name: Check Commit in PR
@@ -39,6 +40,23 @@ The action handles pagination automatically, checking all commits in the PR rega
 - name: Proceed if valid
   if: steps.check.outputs.commit_found == 'true'
   run: echo "Commit is valid in this PR"
+```
+
+### Cross-Repository Example
+
+```yaml
+- name: Check Commit in PR from Another Repository
+  id: check
+  uses: folio-org/kitfox-github/.github/actions/is-commit-in-pr@master
+  with:
+    repository: folio-org/app-acquisitions
+    pr_number: 123
+    commit_sha: abc123def456
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+
+- name: Proceed if valid
+  if: steps.check.outputs.commit_found == 'true'
+  run: echo "Commit abc123def456 is valid in folio-org/app-acquisitions PR #123"
 ```
 
 ### Security Check Before Running Tests
@@ -178,3 +196,5 @@ This action is particularly useful for security-sensitive workflows where you ne
 - Both full (40-character) and short (7+ character) SHA formats are supported
 - The action logs progress as it checks each page of commits
 - Large PRs with many commits may take longer to check, but the action efficiently handles pagination
+- When using the `repository` parameter to access a different repository, ensure the `github_token` has appropriate permissions for that repository
+- For cross-repository access, consider using a GitHub App token or a Personal Access Token with sufficient scope
