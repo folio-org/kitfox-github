@@ -10,6 +10,7 @@ cp environments/example.tfvars environments/your-app.tfvars
 2. Edit `environments/your-app.tfvars` with your specific values:
 - Update `app_name` to your application instance name
 - Set your `github_app_id`
+- Set your `github_installation_id`
 - Configure the path to your GitHub App private key
 - Optionally configure Route 53 DNS settings
 
@@ -130,12 +131,13 @@ The DNS record will automatically point to your API Gateway endpoint.
 # environments/my-app.tfvars
 app_name                = "my-app"
 github_app_id           = "123456"
-github_private_key_path = "../keys/my-app.pem"
+github_installation_id  = "567890"
+github_private_key_path = "~/.ssh/my-app.pem"
 
 # Enable Route 53 DNS
 enable_route53      = true
 route53_zone_name   = "ci.folio.org"
-route53_record_name = "my-app-webhooks"  # Creates my-app-webhooks.ci.folio.org
+route53_record_name = "my-app"  # Creates my-app.ci.folio.org
 
 tags = {
   AppName   = "my-app"
@@ -176,5 +178,7 @@ terraform apply \
 
 The `environments/` directory contains:
 - `example.tfvars` - Template file to copy for your own configuration
+- `eureka-ci.tfvars` - Example production configuration for Eureka CI
+- `github_events_config.json` - Event-to-workflow mapping configuration
 
 Always create your own `.tfvars` file based on `example.tfvars` for your specific deployment.
