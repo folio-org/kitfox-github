@@ -196,8 +196,12 @@ jobs:
               fi
           
               is_snapshot=$([[ "$version" == *SNAPSHOT* || $(awk -F'.' '{print length($NF)}' <<< "$version") -gt 4 ]] && echo true || echo false)
-              repository=$([[ "$is_snapshot" == "true" ]] && echo "folioci" || echo "folioorg")
-              repository=$([[ "$type" == "ui" ]] && echo "npm-$repository" || echo "$repository")
+          
+              if [[ "$type" == "ui" ]]; then
+                repository=$([[ "$is_snapshot" == "true" ]] && echo "npm-folioci" || echo "npm-folio")
+              else
+                repository=$([[ "$is_snapshot" == "true" ]] && echo "folioci" || echo "folioorg")
+              fi
           
               artifact_path=$([[ "$type" == "backend" ]] && \
                         echo "$DOCKER_REGISTRY/$repository/$module_name_esc/tags/$version" || \
@@ -226,8 +230,8 @@ jobs:
             done
           
             if [[ -z "$latest_version" ]]; then
-              echo "::error::Failed to fetch module artifacts from repository for $module_name"
-              echo "failure_reason=Failed to fetch module artifacts from repository for $module_name" >> "$GITHUB_OUTPUT"
+              echo "::error::Failed to fetch module artifacts from the Docker/NPM repository for $module_name"
+              echo "failure_reason=Failed to fetch module artifacts from the Docker/NPM repository for $module_name" >> "$GITHUB_OUTPUT"
               exit 1
             fi
             

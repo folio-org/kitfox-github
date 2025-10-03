@@ -72,6 +72,9 @@ class GitHubClient:
             'Accept': 'application/vnd.github.v3+json'
         })
 
+        # Ensure proper URL construction with slash
+        if not endpoint.startswith('/'):
+            endpoint = f'/{endpoint}'
         url = f"{self.base_url}{endpoint}"
 
         try:

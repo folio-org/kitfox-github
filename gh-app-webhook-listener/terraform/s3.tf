@@ -60,12 +60,14 @@ resource "aws_s3_bucket_policy" "app_config_policy" {
   })
 }
 
-# Upload default workflow configuration
-resource "aws_s3_object" "default_workflow_config" {
+# Upload GitHub events configuration file if S3 is enabled
+resource "aws_s3_object" "github_events_config" {
+  count = var.github_events_config_s3_enabled ? 1 : 0
+
   bucket = aws_s3_bucket.app_config.id
-  key    = "workflows/default.json"
-  source = "../config/workflows.json"
-  etag   = filemd5("../config/workflows.json")
+  key    = "github_events_config.json"
+  source = var.github_events_config_file
+  etag   = filemd5(var.github_events_config_file)
 
   tags = var.tags
 }

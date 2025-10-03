@@ -100,3 +100,16 @@ variable "route53_record_name" {
   type        = string
   default     = ""
 }
+
+# GitHub Events Configuration
+variable "github_events_config_file" {
+  description = "Full path to the GitHub events configuration JSON file"
+  type        = string
+  default     = "./environments/github_events_config.json"
+}
+
+variable "github_events_config_s3_enabled" {
+  description = "Whether to upload and use configuration from S3 (if false, config is bundled with Lambda)"
+  type        = bool
+  default     = true
+}

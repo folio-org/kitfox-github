@@ -242,7 +242,7 @@ def test_lambda_structure():
     common_dir = src_dir / "common"
     if common_dir.exists():
         print(f"[OK] common directory exists")
-        for file in ["github_client.py", "check_runner.py"]:
+        for file in ["github_client.py", "workflow_trigger.py"]:
             if (common_dir / file).exists():
                 print(f"  - {file} found")
     else:
