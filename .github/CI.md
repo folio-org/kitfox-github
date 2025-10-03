@@ -42,6 +42,7 @@ The workflows follow a layered architecture:
 │  • update-application.yml                                    │
 │  • commit-application-changes.yml                           │
 │  • compare-applications.yml                                 │
+│  • release-pr-check.yml                                     │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -185,6 +186,25 @@ The workflows follow a layered architecture:
 - Support for artifact comparison
 - Structured output for upstream processing
 
+#### Release PR Check
+**File**: [`release-pr-check.yml`](workflows/release-pr-check.yml)
+**Purpose**: Automated validation of release pull requests
+**Trigger**: `workflow_dispatch` (called from external systems)
+
+**Key Features**:
+- PR validation and commit verification
+- Release configuration validation
+- Label-based conditional execution
+- Application descriptor generation and validation
+- GitHub Checks API integration
+- Real-time status updates on PR commits
+- Platform descriptor integration for validation context
+
+**Workflow**:
+1. **Pre-Check**: Validates PR existence, commit membership, and release configuration
+2. **Application Check**: Generates and validates application descriptor
+3. **Status Reporting**: Creates GitHub check runs with detailed validation results
+
 ### Notification Workflows
 
 #### Release Preparation Notification
@@ -223,6 +243,16 @@ Each action includes comprehensive documentation with usage examples, input/outp
 **Documentation**: [`actions/update-pr/README.md`](actions/update-pr/README.md)
 **Purpose**: Update existing pull requests with new content and metadata
 **Key Features**: Selective updates, label and reviewer management, content preservation
+
+##### Get PR Info
+**Documentation**: [`actions/get-pr-info/README.md`](actions/get-pr-info/README.md)
+**Purpose**: Fetch detailed pull request information
+**Key Features**: Cross-repository support, label retrieval, branch information, state checking
+
+##### Is Commit in PR
+**Documentation**: [`actions/is-commit-in-pr/README.md`](actions/is-commit-in-pr/README.md)
+**Purpose**: Verify commit SHA exists in pull request
+**Key Features**: Security validation, pagination support, short/full SHA matching
 
 #### Application Management
 
