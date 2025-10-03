@@ -40,6 +40,14 @@ on:
         required: false
         type: boolean
         default: false
+      artifact_name:
+        description: 'Name for the uploaded artifact (defaults to app_name-descriptor)'
+        required: false
+        type: string
+      update_files_artifact_name:
+        description: 'Name for the update files artifact (defaults to app_name-update-files)'
+        required: false
+        type: string
     outputs:
       updated:
         description: 'Whether application was updated'
@@ -62,6 +70,12 @@ on:
       app_descriptor_file_name:
         description: 'Name of generated application descriptor file'
         value: ${{ jobs.update-application.outputs.app_descriptor_file_name }}
+      artifact_name:
+        description: 'Name of the uploaded descriptor artifact'
+        value: ${{ jobs.update-application.outputs.artifact_name }}
+      update_files_artifact_name:
+        description: 'Name of the update files artifact'
+        value: ${{ jobs.update-application.outputs.update_files_artifact_name }}
       failure_reason:
         description: 'Reason for failure'
         value: ${{ jobs.update-application.outputs.failure_reason }}
@@ -86,7 +100,9 @@ jobs:
       new_version: ${{ steps.update-application-version.outputs.new_version }}
       app_descriptor_file: ${{ steps.generate-application-descriptor.outputs.descriptor_file }}
       app_descriptor_file_name: ${{ steps.generate-application-descriptor.outputs.descriptor_file_name }}
-      failure_reason: ${{ steps.update-module-versions.outputs.failure_reason || 
+      artifact_name: ${{ steps.generate-application-descriptor.outputs.artifact_name }}
+      update_files_artifact_name: ${{ inputs.update_files_artifact_name || format('{0}-update-files', env.APP_NAME) }}
+      failure_reason: ${{ steps.update-module-versions.outputs.failure_reason ||
         steps.set-placeholder-modules.outputs.failure_reason ||
         steps.generate-application-descriptor.outputs.failure_reason || '' }}
     steps:
@@ -342,12 +358,13 @@ jobs:
           app_name: ${{ env.APP_NAME }}
           state_file: ${{ env.STATE_FILE }}
           upload_artifact: true
+          artifact_name: ${{ inputs.artifact_name }}
 
       - name: Upload Application Update Files
         uses: actions/upload-artifact@v4
         if: steps.update-application-version.outputs.updated == 'true'
         with:
-          name: "${{ env.APP_NAME }}-update-files"
+          name: "${{ inputs.update_files_artifact_name || format('{0}-update-files', env.APP_NAME) }}"
           path: |
             ${{ env.STATE_FILE }}
             pom.xml
