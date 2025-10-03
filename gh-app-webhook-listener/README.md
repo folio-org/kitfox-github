@@ -20,7 +20,7 @@ GitHub Event → Webhook → AWS Lambda → Trigger Workflow → GitHub Actions
   - `webhook_handler`: Validates webhooks and queues events
   - `check_processor`: Processes events and triggers workflows
 - **SQS**: Async message queue for reliable processing
-- **S3**: Configuration storage
+- **S3**: Configuration storage (optional for event mappings)
 - **Secrets Manager**: GitHub App credentials
 
 ### 2. GitHub App Configuration
@@ -97,38 +97,86 @@ Note: Terraform will automatically package the Lambda functions during deploymen
 ### Terraform Variables
 
 #### Core Variables
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `app_name` | Your application instance name | `my-app`, `folio-app` |
-| `github_app_id` | GitHub App ID | `123456` |
-| `github_private_key_path` | Path to GitHub App private key | `../keys/github-app.pem` |
-| `github_webhook_secret` | Webhook secret (pass via CLI) | `your-secret-here` |
+| Variable                  | Description                    | Example                 |
+|---------------------------|--------------------------------|-------------------------|
+| `app_name`                | Your application instance name | `my-app`, `eureka-ci`   |
+| `github_app_id`           | GitHub App ID                  | `123456`                |
+| `github_installation_id`  | GitHub App Installation ID     | `567890`                |
+| `github_private_key_path` | Path to GitHub App private key | `~/.ssh/github-app.pem` |
+| `github_webhook_secret`   | Webhook secret (pass via CLI)  | `your-secret-here`      |
+
+#### GitHub Events Configuration Variables
+| Variable                          | Description                                   | Default                                    |
+|-----------------------------------|-----------------------------------------------|--------------------------------------------|
+| `github_events_config_file`       | Path to events configuration JSON             | `./environments/github_events_config.json` |
+| `github_events_config_s3_enabled` | Upload config to S3 (vs bundling with Lambda) | `true`                                     |
 
 #### Route 53 DNS Configuration (Optional)
-| Variable | Description | Example | Default |
-|----------|-------------|---------|---------|
-| `enable_route53` | Enable Route 53 DNS record creation | `true` or `false` | `false` |
-| `route53_zone_name` | Existing Route 53 hosted zone domain | `example.com` | `""` |
-| `route53_record_name` | DNS record name to create | `webhooks` | `""` |
+| Variable              | Description                          | Example           | Default  |
+|-----------------------|--------------------------------------|-------------------|----------|
+| `enable_route53`      | Enable Route 53 DNS record creation  | `true` or `false` | `false`  |
+| `route53_zone_name`   | Existing Route 53 hosted zone domain | `ci.folio.org`    | `""`     |
+| `route53_record_name` | DNS record name to create            | `eureka-ci`       | `""`     |
 
 When Route 53 is enabled, it will create a CNAME record in your existing hosted zone. For example:
 - Zone: `ci.folio.org`
-- Record: `eureka-webhooks`
-- Result: `eureka-webhooks.ci.folio.org` → Your API Gateway endpoint
+- Record: `eureka-ci`
+- Result: `eureka-ci.ci.folio.org` → Your API Gateway endpoint
 
-### Workflow Configuration
+### GitHub Events Configuration
 
-Configure which workflows to trigger in `config/workflows.json`:
+Configure event-to-workflow mappings in your events configuration file (e.g., `terraform/environments/github_events_config.json`):
 
 ```json
 {
-  "workflows": [
+  "version": "1.0.0",
+  "description": "GitHub events to workflow mapping configuration",
+  "event_mappings": [
     {
-      "name": "your-workflow-name",
-      "file": ".github/workflows/your-workflow.yml",
-      "description": "Description of what this workflow does",
-      "enabled": true,
-      "triggers": ["pull_request", "check_suite"]
+      "event_type": "check_suite",
+      "actions": ["requested", "rerequested"],
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "app-*",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "{owner}",
+              "repository": "{repository}",
+              "workflow_file": "pr-check.yml",
+              "ref": "master",
+              "inputs": {
+                "pr_number": "{pr_number}",
+                "head_sha": "{head_sha}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event_type": "pull_request",
+      "actions": ["opened", "reopened", "synchronize"],
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "app-*",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "{owner}",
+              "repository": "{repository}",
+              "workflow_file": "pr-check.yml",
+              "ref": "master",
+              "inputs": {
+                "pr_number": "{pr_number}",
+                "head_sha": "{head_sha}"
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
@@ -150,9 +198,7 @@ Terraform automatically packages Lambda functions during deployment using the `a
 ```bash
 python scripts/package_lambda.py
 ```
-This creates optimized packages for each Lambda function in the `build/` directory:
-- `webhook_handler.zip` (~12.5 MB) - Contains only boto3 dependencies
-- `check_processor.zip` (~13 MB) - Contains boto3, requests, and PyJWT
+This creates optimized packages for each Lambda function in the `build/` directory.
 
 ### Project Structure
 ```
@@ -165,39 +211,44 @@ gh-app-webhook-listener/
 │   │   ├── handler.py     # Main handler function
 │   │   └── requirements.txt
 │   └── common/           # Shared utilities
-│       ├── signature_validator.py
-│       ├── github_client.py
-│       └── check_runner.py
+│       ├── github_client.py      # GitHub API client
+│       └── workflow_trigger.py   # Workflow triggering logic
 ├── terraform/            # Infrastructure as code
 │   ├── environments/     # Environment-specific configs
+│   │   ├── example.tfvars
+│   │   ├── eureka-ci.tfvars
+│   │   └── github_events_config.json
 │   ├── lambda.tf        # Shared Lambda resources
 │   ├── lambda_webhook_handler.tf  # Webhook handler config
 │   ├── lambda_check_processor.tf  # Check processor config
+│   ├── api_gateway.tf   # API Gateway configuration
+│   ├── sqs.tf           # SQS queue configuration
+│   ├── s3.tf            # S3 bucket for config storage
+│   ├── secrets.tf       # Secrets Manager configuration
+│   ├── route53.tf       # Route 53 DNS configuration
 │   └── *.tf             # Other Terraform resources
-├── config/              # Application configuration
+├── config/              # Application configuration templates
+│   └── github_events_config.example.json
 ├── scripts/             # Build and deployment scripts
 │   └── package_lambda.py # Manual packaging script
 └── build/               # Generated Lambda packages (gitignored)
-    ├── webhook_handler.zip
-    └── check_processor.zip
 ```
 
 ### Lambda Function Architecture
 
-The Lambda functions are now separated for optimal performance:
+The Lambda functions are separated for optimal performance:
 
 1. **webhook_handler**: Lightweight function that validates incoming webhooks
    - Dependencies: boto3 only
-   - Responsibilities: Signature validation, SQS queuing
+   - Responsibilities: Webhook signature validation, SQS queuing
 
 2. **check_processor**: Processes events and interacts with GitHub API
    - Dependencies: boto3, requests, PyJWT
-   - Responsibilities: GitHub API calls, workflow triggering
+   - Responsibilities: GitHub API calls, workflow triggering, check run management
 
 3. **common**: Shared utilities used by both functions
-   - signature_validator.py: HMAC-SHA256 validation
-   - github_client.py: GitHub API client
-   - check_runner.py: Check run management
+   - `github_client.py`: GitHub API client with JWT authentication
+   - `workflow_trigger.py`: Workflow dispatch logic and event mapping
 
 ## Monitoring
 
@@ -216,9 +267,9 @@ The Lambda functions are now separated for optimal performance:
 
 This is a generic webhook listener that can be adapted for various use cases:
 
-1. **Different GitHub Events**: Modify the webhook handler to process different event types
-2. **Custom Workflows**: Update the workflow orchestrator to trigger your specific workflows
-3. **Additional Processing**: Add custom logic in the services layer
+1. **Different GitHub Events**: Modify the events configuration to process different event types
+2. **Custom Workflows**: Update the event mappings to trigger your specific workflows
+3. **Additional Processing**: Add custom logic in the Lambda functions
 4. **Multiple Apps**: Deploy multiple instances with different `app_name` values
 
 ## Examples
@@ -228,9 +279,10 @@ This is a generic webhook listener that can be adapted for various use cases:
 1. Create a new tfvars file:
 ```hcl
 # terraform/environments/my-app.tfvars
-app_name      = "my-app"
-github_app_id = "987654"
-github_private_key_path = "../keys/my-app.pem"
+app_name                = "my-app"
+github_app_id           = "987654"
+github_installation_id  = "123456"
+github_private_key_path = "~/.ssh/my-app.pem"
 
 tags = {
   AppName   = "my-app"
@@ -254,7 +306,7 @@ To use a custom domain for your webhook endpoint:
 # Enable Route 53 DNS
 enable_route53      = true
 route53_zone_name   = "ci.folio.org"       # Your existing hosted zone
-route53_record_name = "eureka-webhooks"    # Creates eureka-webhooks.ci.folio.org
+route53_record_name = "my-app"             # Creates my-app.ci.folio.org
 ```
 
 2. Deploy:
@@ -264,7 +316,7 @@ terraform apply -var-file=environments/your-app.tfvars \
 ```
 
 3. Use the custom domain in your GitHub App:
-   - Webhook URL: `https://eureka-webhooks.ci.folio.org/webhook`
+   - Webhook URL: `https://my-app.ci.folio.org/webhook`
 
 ### Multiple Environment Deployment
 
