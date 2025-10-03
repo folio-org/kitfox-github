@@ -3,6 +3,9 @@ description: 'Fetches detailed information about a pull request including labels
 author: 'FOLIO Eureka CI'
 
 inputs:
+  repository:
+    description: 'Target repository (owner/repo format). If not provided, uses the current repository context'
+    required: false
   pr_number:
     description: 'Pull request number to fetch information for'
     required: true
@@ -44,6 +47,8 @@ runs:
         github-token: ${{ inputs.github_token }}
         script: |
           const prNumber = parseInt('${{ inputs.pr_number }}', 10);
+          const repository = '${{ inputs.repository }}' || context.repo.owner + '/' + context.repo.repo;
+          const [owner, repo] = repository.split('/');
 
           if (!prNumber || prNumber <= 0) {
             console.log(`Invalid or missing PR number: ${{ inputs.pr_number }}`);
@@ -52,12 +57,12 @@ runs:
             return;
           }
 
-          console.log(`Fetching PR #${prNumber} from ${{ github.repository }}`);
+          console.log(`Fetching PR #${prNumber} from ${repository}`);
 
           try {
             const { data: pr } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner: owner,
+              repo: repo,
               pull_number: prNumber
             });
 

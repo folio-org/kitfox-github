@@ -8,10 +8,11 @@ This action retrieves comprehensive information about a GitHub pull request usin
 
 ## Inputs
 
-| Input          | Description                                  | Required  | Default               |
-|----------------|----------------------------------------------|-----------|-----------------------|
-| `pr_number`    | Pull request number to fetch information for | Yes       | -                     |
-| `github_token` | GitHub token for API access                  | Yes       | `${{ github.token }}` |
+| Input          | Description                                                                      | Required  | Default               |
+|----------------|----------------------------------------------------------------------------------|-----------|-----------------------|
+| `repository`   | Target repository (owner/repo format). If not provided, uses current repository  | No        | Current repository    |
+| `pr_number`    | Pull request number to fetch information for                                     | Yes       | -                     |
+| `github_token` | GitHub token for API access                                                      | Yes       | `${{ github.token }}` |
 
 ## Outputs
 
@@ -27,7 +28,7 @@ This action retrieves comprehensive information about a GitHub pull request usin
 
 ## Usage
 
-### Basic Example
+### Basic Example (Current Repository)
 
 ```yaml
 - name: Get Pull Request Information
@@ -40,6 +41,24 @@ This action retrieves comprehensive information about a GitHub pull request usin
 - name: Check if PR has specific label
   if: contains(fromJson(steps.pr-info.outputs.labels), 'release')
   run: echo "PR has release label"
+```
+
+### Cross-Repository Example
+
+```yaml
+- name: Get Pull Request Information from Another Repository
+  id: pr-info
+  uses: folio-org/kitfox-github/.github/actions/get-pr-info@master
+  with:
+    repository: folio-org/app-acquisitions
+    pr_number: 123
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+
+- name: Display PR information
+  run: |
+    echo "Repository: folio-org/app-acquisitions"
+    echo "PR #123 Head Branch: ${{ steps.pr-info.outputs.head_ref }}"
+    echo "PR #123 Base Branch: ${{ steps.pr-info.outputs.base_ref }}"
 ```
 
 ### Using PR Information for Conditional Logic
@@ -137,3 +156,5 @@ skip_reason: 'PR #999 not found or inaccessible'
 - The action requires read access to pull requests
 - The `labels` output is a JSON array string that can be parsed using `fromJson()` in workflow conditions
 - The action will log PR details to the console for debugging purposes
+- When using the `repository` parameter to access a different repository, ensure the `github_token` has appropriate permissions for that repository
+- For cross-repository access, consider using a GitHub App token or a Personal Access Token with sufficient scope
