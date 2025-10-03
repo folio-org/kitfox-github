@@ -1,0 +1,98 @@
+name: 'Is Commit in PR'
+description: 'Checks if a specific commit SHA exists in a pull request'
+author: 'FOLIO Eureka CI'
+
+inputs:
+  repository:
+    description: 'Target repository (owner/repo format). If not provided, uses the current repository context'
+    required: false
+  pr_number:
+    description: 'Pull request number to check against'
+    required: true
+  commit_sha:
+    description: 'Commit SHA to check (full or short)'
+    required: true
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+    default: ${{ github.token }}
+
+outputs:
+  commit_found:
+    description: 'Whether the commit exists in the PR (true/false)'
+    value: ${{ steps.check.outputs.commit_found }}
+  skip_reason:
+    description: 'Reason for failure if commit is not found'
+    value: ${{ steps.check.outputs.skip_reason }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check Commit in PR
+      id: check
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const prNumber = parseInt('${{ inputs.pr_number }}');
+          const providedSha = '${{ inputs.commit_sha }}';
+          const repository = '${{ inputs.repository }}' || context.repo.owner + '/' + context.repo.repo;
+          const [owner, repo] = repository.split('/');
+
+          console.log(`Checking if commit ${providedSha} exists in PR #${prNumber} in ${repository}`);
+
+          try {
+            let shaFound = false;
+            let page = 1;
+            const perPage = 100;
+
+            // GitHub API paginates commits, so we need to check all pages
+            while (!shaFound) {
+              const { data: commits } = await github.rest.pulls.listCommits({
+                owner: owner,
+                repo: repo,
+                pull_number: prNumber,
+                per_page: perPage,
+                page: page
+              });
+
+              if (commits.length === 0) {
+                break; // No more commits
+              }
+
+              console.log(`Checking page ${page}: ${commits.length} commits`);
+
+              shaFound = commits.some(commit => {
+                return commit.sha === providedSha ||
+                       commit.sha.startsWith(providedSha) ||
+                       providedSha.startsWith(commit.sha);
+              });
+
+              if (shaFound) {
+                console.log(`Found commit ${providedSha} on page ${page}`);
+                break;
+              }
+
+              if (commits.length < perPage) {
+                break; // reached the end
+              }
+
+              page++;
+            }
+
+            if (!shaFound) {
+              console.log(`Error: Commit ${providedSha} not found in PR #${prNumber}`);
+              console.log(`This commit does not belong to this PR`);
+              core.setOutput('commit_found', 'false');
+              core.setOutput('skip_reason', `Commit ${providedSha} not found in PR #${prNumber}`);
+              return;
+            }
+
+            console.log(`Confirmed: Commit ${providedSha} exists in PR #${prNumber}`);
+            core.setOutput('commit_found', 'true');
+
+          } catch (error) {
+            console.log(`Failed to check commit: ${error.message}`);
+            core.setOutput('commit_found', 'false');
+            core.setOutput('skip_reason', `Failed to check commit: ${error.message}`);
+          }
