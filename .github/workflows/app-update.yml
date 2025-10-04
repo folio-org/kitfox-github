@@ -113,7 +113,7 @@ jobs:
     steps:
       - name: Verify Application
         id: verify
-        uses: ./.github/actions/verify-application
+        uses: folio-org/kitfox-github/.github/actions/verify-application@master
         with:
           app_name: ${{ inputs.app_name }}
           app_descriptor_file: ${{ needs.update-application.outputs.app_descriptor_file }}
