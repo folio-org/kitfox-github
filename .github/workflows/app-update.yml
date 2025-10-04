@@ -105,14 +105,22 @@ jobs:
     name: Verify Application
     needs: update-application
     if: needs.update-application.outputs.updated == 'true'
-    uses: ./.github/workflows/verify-application.yml
-    with:
-      app_name: ${{ inputs.app_name }}
-      app_descriptor_file: ${{ needs.update-application.outputs.app_descriptor_file }}
-      app_descriptor_file_name: ${{ needs.update-application.outputs.app_descriptor_file_name }}
-      rely_on_FAR: ${{ inputs.rely_on_FAR }}
-      skip_upload: ${{ inputs.dry_run }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    outputs:
+      validation_passed: ${{ steps.verify.outputs.validation_passed }}
+      failure_reason: ${{ steps.verify.outputs.failure_reason }}
+      uploaded_to_registry: ${{ steps.verify.outputs.uploaded_to_registry }}
+    steps:
+      - name: Verify Application
+        id: verify
+        uses: ./.github/actions/verify-application
+        with:
+          app_name: ${{ inputs.app_name }}
+          app_descriptor_file: ${{ needs.update-application.outputs.app_descriptor_file }}
+          app_descriptor_artifact_name: ${{ needs.update-application.outputs.artifact_name }}
+          rely_on_FAR: ${{ inputs.rely_on_FAR }}
+          skip_upload: ${{ inputs.dry_run }}
+          far_url: ${{ vars.FAR_URL }}
 
   commit-changes:
     name: Commit Changes
@@ -125,12 +133,13 @@ jobs:
       branch: ${{ inputs.branch }}
       commit_message: |
         Update application state file to ${{ needs.update-application.outputs.new_version }}.
-        
+
         Previous version: ${{ needs.update-application.outputs.previous_version }}
         Total modules updated: ${{ needs.update-application.outputs.updates_cnt }}
         Modules: ${{ needs.update-application.outputs.updated_modules }}
       dry_run: ${{ inputs.dry_run }}
       use_github_app: ${{ inputs.use_github_app }}
+      update_files_artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
     secrets: inherit
 
   cleanup-on-failure:

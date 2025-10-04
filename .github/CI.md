@@ -41,8 +41,8 @@ The workflows follow a layered architecture:
 │                      Core Utilities                          │
 │  • update-application.yml                                    │
 │  • commit-application-changes.yml                           │
-│  • verify-application.yml                                   │
 │  • compare-applications.yml                                 │
+│  • release-pr-check.yml                                     │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -163,9 +163,9 @@ The workflows follow a layered architecture:
 - Rollback capabilities
 
 #### Verify Application
-**File**: [`verify-application.yml`](workflows/verify-application.yml)
+**Action**: [`verify-application`](actions/verify-application/)
 **Purpose**: Application validation and registry upload
-**Documentation**: [Verify Application Guide](docs/verify-application.md)
+**Documentation**: [Verify Application Action README](actions/verify-application/README.md)
 
 **Key Features**:
 - Application descriptor validation
@@ -185,6 +185,25 @@ The workflows follow a layered architecture:
 - Detailed diff generation
 - Support for artifact comparison
 - Structured output for upstream processing
+
+#### Release PR Check
+**File**: [`release-pr-check.yml`](workflows/release-pr-check.yml)
+**Purpose**: Automated validation of release pull requests
+**Trigger**: `workflow_dispatch` (called from external systems)
+
+**Key Features**:
+- PR validation and commit verification
+- Release configuration validation
+- Label-based conditional execution
+- Application descriptor generation and validation
+- GitHub Checks API integration
+- Real-time status updates on PR commits
+- Platform descriptor integration for validation context
+
+**Workflow**:
+1. **Pre-Check**: Validates PR existence, commit membership, and release configuration
+2. **Application Check**: Generates and validates application descriptor
+3. **Status Reporting**: Creates GitHub check runs with detailed validation results
 
 ### Notification Workflows
 
@@ -224,6 +243,16 @@ Each action includes comprehensive documentation with usage examples, input/outp
 **Documentation**: [`actions/update-pr/README.md`](actions/update-pr/README.md)
 **Purpose**: Update existing pull requests with new content and metadata
 **Key Features**: Selective updates, label and reviewer management, content preservation
+
+##### Get PR Info
+**Documentation**: [`actions/get-pr-info/README.md`](actions/get-pr-info/README.md)
+**Purpose**: Fetch detailed pull request information
+**Key Features**: Cross-repository support, label retrieval, branch information, state checking
+
+##### Is Commit in PR
+**Documentation**: [`actions/is-commit-in-pr/README.md`](actions/is-commit-in-pr/README.md)
+**Purpose**: Verify commit SHA exists in pull request
+**Key Features**: Security validation, pagination support, short/full SHA matching
 
 #### Application Management
 
@@ -330,7 +359,7 @@ Workflows implement comprehensive error handling:
 #### Core Utilities
 - **[Update Application](docs/update-application.md)**: Application descriptor update logic
 - **[Commit Application Changes](docs/commit-application-changes.md)**: Git operations management
-- **[Verify Application](docs/verify-application.md)**: Validation and registry upload
+- **[Verify Application Action](actions/verify-application/README.md)**: Validation and registry upload
 - **[Compare Applications](docs/compare-applications.md)**: Version comparison and change detection
 
 #### Notifications
@@ -344,6 +373,6 @@ Workflows implement comprehensive error handling:
 
 ---
 
-**Infrastructure Team**: Kitfox DevOps  
-**Last Updated**: September 2025  
+**Infrastructure Team**: Kitfox DevOps
+**Last Updated**: September 2025
 **Purpose**: Workflow Implementation and Usage Guide

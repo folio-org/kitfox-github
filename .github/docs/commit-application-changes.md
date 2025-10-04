@@ -282,7 +282,7 @@ Solution:
 ## 📚 Related Documentation
 
 - **[update-application.md](update-application.md)**: Module update workflow
-- **[verify-application.md](verify-application.md)**: Validation workflow
+- **[Verify Application Action](../actions/verify-application/README.md)**: Validation and registry upload action
 - **[app-update.md](app-update.md)**: Orchestrator workflow
 - **[Git Best Practices](https://docs.github.com/en/get-started/using-git)**: Git documentation
 

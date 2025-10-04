@@ -169,7 +169,7 @@ jobs:
       repo: ${{ inputs.repo }}
       base_branch: ${{ inputs.release_branch }}
       head_branch: ${{ needs.update-application.outputs.updated != 'true' && inputs.update_branch || '' }}
-      artifact_name: ${{ needs.update-application.outputs.updated == 'true' && format('{0}-update-files', inputs.app_name) || '' }}
+      artifact_name: ${{ needs.update-application.outputs.updated == 'true' && needs.update-application.outputs.update_files_artifact_name || '' }}
       state_file: 'application-descriptor.json'
     secrets: inherit
 
@@ -184,12 +184,13 @@ jobs:
       branch: ${{ inputs.update_branch }}
       commit_message: |
         Update modules to ${{ needs.update-application.outputs.new_version }}.
-        
+
         Updated modules:
         ${{ needs.update-application.outputs.updated_modules }}
       dry_run: ${{ inputs.dry_run }}
       use_github_app: true
       source_branch: ${{ needs.determine-source-branch.outputs.source_branch }}
+      update_files_artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
     secrets: inherit
 
   manage-pr:

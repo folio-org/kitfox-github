@@ -9,7 +9,7 @@ inputs:
   branch:
     description: 'Branch where config file resides'
     required: false
-    default: ${{ github.base_ref || github.ref_name }}
+    default: master
   config_file:
     description: 'Path to configuration file'
     required: false
