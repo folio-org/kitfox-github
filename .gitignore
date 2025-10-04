@@ -5,6 +5,13 @@ target/
 !**/src/test/**/target/
 src/main/resources/*-dev.*
 
+# Build\Cache
+.terraform/
+
+# Terraform temp files
+*.tfstate.backup
+.terraform*
+
 ### STS ###
 .apt_generated
 .classpath
