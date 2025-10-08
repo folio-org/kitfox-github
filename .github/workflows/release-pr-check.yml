@@ -370,7 +370,6 @@ jobs:
             };
 
             // Add re-run action button if there was a fetch error or validation failure
-            const fetchError = '${{ steps.fetch-platform.outputs.fetch_error }}';
             if (fetchError === 'true' || validationPassed === 'false') {
               updateParams.actions = [{
                 label: 'Re-run Validation',
