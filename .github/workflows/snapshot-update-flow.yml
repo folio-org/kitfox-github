@@ -51,7 +51,7 @@ on:
         value: ${{ inputs.app_name }}
       updated:
         description: 'Whether application was updated'
-        value: ${{ jobs.update-application.outputs.updated }}
+        value: ${{ jobs.check-branch.outputs.branch_exists == 'true' && jobs.update-application.outputs.updated || 'false' }}
       previous_version:
         description: 'Previous application version'
         value: ${{ jobs.update-application.outputs.previous_version }}
@@ -66,9 +66,9 @@ on:
         value: ${{ jobs.update-application.outputs.updated_modules }}
       failure_reason:
         description: 'Reason for failure'
-        value: ${{ jobs.update-application.outputs.failure_reason || 
-          jobs.verify-application.outputs.failure_reason || 
-          jobs.commit-changes.outputs.failure_reason || 'unknown' }}
+        value: ${{ jobs.check-branch.outputs.branch_exists == 'false' && format('Branch {0} does not exist', inputs.branch) || jobs.update-application.outputs.failure_reason ||
+          jobs.verify-application.outputs.failure_reason ||
+          jobs.commit-changes.outputs.failure_reason || '' }}
       commit_sha:
         description: 'Commit SHA'
         value: ${{ jobs.commit-changes.outputs.commit_sha }}
@@ -89,8 +89,36 @@ env:
   FAR_API_URL: "https://far.ci.folio.org/applications"
 
 jobs:
+  check-branch:
+    name: Check Branch Existence
+    runs-on: ubuntu-latest
+    outputs:
+      branch_exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - name: Check if Branch Exists
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ inputs.repo }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Checking if branch '$BRANCH' exists in repository '$REPO'"
+
+          if gh api "repos/$REPO/git/refs/heads/$BRANCH" --silent 2>/dev/null; then
+            echo "::notice::✓ Branch '$BRANCH' exists"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Branch '$BRANCH' does not exist in repository '$REPO'"
+            echo "::warning::Skipping update workflow for this application"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
   update-application:
     name: Update Application
+    needs: check-branch
+    if: needs.check-branch.outputs.branch_exists == 'true'
     uses: ./.github/workflows/update-application.yml
     with:
       app_name: ${{ inputs.app_name }}
@@ -167,7 +195,7 @@ jobs:
   upload_results:
     name: Upload Results
     runs-on: ubuntu-latest
-    needs: [update-application, verify-application, commit-changes, cleanup-on-failure]
+    needs: [check-branch, update-application, verify-application, commit-changes, cleanup-on-failure]
     if: always()
     steps:
       - name: Prepare Output Artifact
@@ -175,15 +203,17 @@ jobs:
         if: always()
         env:
           STATUS: >-
-            ${{ 
+            ${{
+                (needs.check-branch.outputs.branch_exists == 'false' && 'skipped') ||
                 ((needs.commit-changes.result == 'failure' || needs.verify-application.result == 'failure' || needs.update-application.result == 'failure') && 'failed') ||
                 'success'
             }}
           FAILURE_REASON: >-
-            ${{ 
-                needs.update-application.outputs.failure_reason || 
-                needs.verify-application.outputs.failure_reason || 
-                needs.commit-changes.outputs.failure_reason || 'unknown' 
+            ${{
+                (needs.check-branch.outputs.branch_exists == 'false' && format('Branch {0} does not exist', inputs.branch)) ||
+                needs.update-application.outputs.failure_reason ||
+                needs.verify-application.outputs.failure_reason ||
+                needs.commit-changes.outputs.failure_reason || ''
             }}
           APP_DESCRIPTOR_URL: ${{ format('{0}/applications/{1}?full=true', vars.FAR_URL, needs.update-application.outputs.app_descriptor_file_name) }}
         run: |
