@@ -438,7 +438,7 @@ jobs:
             }
 
       - name: Send to Team Channel
-        if: steps.get-vars.outputs.team_channel != ''
+        if: false # TODO: Replace with steps.get-vars.outputs.team_channel != '' before merge
         continue-on-error: true
         uses: slackapi/slack-github-action@v2.1.1
         with:
