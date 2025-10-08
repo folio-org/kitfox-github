@@ -23,32 +23,25 @@ The workflows follow a layered architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   High-Level Orchestrators                   │
-│  • snapshot-update.yml                                       │
-│  • release-update.yml                                        │
-│  • release-preparation.yml                                   │
+│                   High-Level Orchestrators                  │
+│  • snapshot-update.yml                                      │
+│  • release-update.yml                                       │
+│  • release-preparation.yml                                  │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   Mid-Level Orchestrators                    │
-│  • app-update.yml                                           │
+│                   Mid-Level Orchestrators                   │
+│  • snapshot-update-flow.yml                                 │
 │  • release-update-flow.yml                                  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Core Utilities                          │
-│  • update-application.yml                                    │
-│  • commit-application-changes.yml                           │
 │  • release-pr-check.yml                                     │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                       Notifications                          │
-│  • release-preparation-notification.yml                      │
-│  • Integrated notifications in orchestrator workflows        │
+│                      Core Utilities                         │
+│  • update-application.yml                                   │
+│  • commit-application-changes.yml                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -110,10 +103,10 @@ The workflows follow a layered architecture:
 
 ### Mid-Level Orchestrators
 
-#### Application Update
-**File**: [`app-update.yml`](workflows/app-update.yml)
-**Purpose**: Core application update orchestration
-**Documentation**: [App Update Guide](docs/app-update.md)
+#### Snapshot Update Flow
+**File**: [`snapshot-update-flow.yml`](workflows/snapshot-update-flow.yml)
+**Purpose**: Snapshot update flow orchestration
+**Documentation**: [Snapshot Update Flow Guide](docs/snapshot-update-flow.md)
 
 **Key Features**:
 - Coordinates update, verification, and commit operations
@@ -365,7 +358,7 @@ Workflows implement comprehensive error handling:
 - **[Release Preparation](docs/release-preparation.md)**: Release branch creation and setup
 
 #### Mid-Level Orchestrators
-- **[App Update](docs/app-update.md)**: Core application update orchestration
+- **[Snapshot Update Flow](docs/snapshot-update-flow.md)**: Snapshot update flow orchestration
 - **[Release Update Flow](docs/release-update-flow.md)**: Comprehensive release update implementation
 
 #### Core Utilities
@@ -376,8 +369,6 @@ Workflows implement comprehensive error handling:
 - **[Publish Application Descriptor](actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR
 - **[Unpublish Application Descriptor](actions/unpublish-app-descriptor/README.md)**: Remove descriptors from FAR
 
-#### Notifications
-- **[Release Preparation Notification](docs/release-preparation-notification.md)**: Slack notifications for release operations
 
 ### Implementation References
 

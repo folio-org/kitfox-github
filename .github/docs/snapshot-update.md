@@ -57,7 +57,7 @@ This high-level orchestrator workflow:
 
 ### 2. update
 - **Purpose**: Core application update logic
-- **Calls**: `app-update.yml` workflow
+- **Calls**: `snapshot-update-flow.yml` workflow
 - **Passes**: All inputs and platform descriptor
 
 ### 3. notify
@@ -160,12 +160,12 @@ Check workflow logs for details
 - **Graceful Failures**: Notification failures don't fail the workflow
 - **Detailed Logging**: Comprehensive error messages
 - **Status Tracking**: All job outcomes tracked and reported
-- **Rollback Support**: Through underlying app-update workflow
+- **Rollback Support**: Through underlying snapshot-update-flow workflow
 
 ## Dependencies
 
 ### Called Workflows
-- `app-update.yml`: Core update orchestration
+- `snapshot-update-flow.yml`: Core update orchestration
 
 ### Required Secrets
 - `EUREKA_CI_SLACK_BOT_TOKEN`: For Slack notifications
@@ -207,6 +207,6 @@ Check workflow logs for details
 
 ## Related Documentation
 
-- [App Update Workflow](app-update.md)
+- [Snapshot Update Flow Workflow](snapshot-update-flow.md)
 - [Update Application Workflow](update-application.md)
 - [Platform LSP Documentation](https://github.com/folio-org/platform-lsp)

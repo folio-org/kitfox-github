@@ -1,4 +1,4 @@
-name: Application Update
+name: Snapshot update (Flow)
 
 on:
   workflow_call:
@@ -163,8 +163,6 @@ jobs:
         with:
           descriptor-id: ${{ needs.update-application.outputs.app_descriptor_file_name }}
           far-url: ${{ vars.FAR_URL }}
-
-
 
   upload_results:
     name: Upload Results

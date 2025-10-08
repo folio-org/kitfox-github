@@ -284,7 +284,7 @@ Solution:
 - **[update-application.md](update-application.md)**: Module update workflow
 - **[Validate Application Action](../actions/validate-application/README.md)**: Application descriptor validation
 - **[Publish Application Descriptor](../actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR
-- **[app-update.md](app-update.md)**: Orchestrator workflow
+- **[snapshot-update-flow.md](snapshot-update-flow.md)**: Orchestrator workflow
 - **[Git Best Practices](https://docs.github.com/en/get-started/using-git)**: Git documentation
 
 ---
