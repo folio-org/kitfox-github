@@ -190,7 +190,8 @@ The workflow provides detailed `failure_reason` output for troubleshooting.
 ## 📚 Related Documentation
 
 - **[app-update.md](app-update.md)**: Orchestrator workflow documentation
-- **[Verify Application Action](../actions/verify-application/README.md)**: Validation and registry upload action
+- **[Validate Application Action](../actions/validate-application/README.md)**: Application descriptor validation
+- **[Publish Application Descriptor](../actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR
 - **[commit-application-changes.md](commit-application-changes.md)**: Git operations workflow
 
 ---

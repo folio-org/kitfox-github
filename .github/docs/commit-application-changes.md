@@ -282,7 +282,8 @@ Solution:
 ## 📚 Related Documentation
 
 - **[update-application.md](update-application.md)**: Module update workflow
-- **[Verify Application Action](../actions/verify-application/README.md)**: Validation and registry upload action
+- **[Validate Application Action](../actions/validate-application/README.md)**: Application descriptor validation
+- **[Publish Application Descriptor](../actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR
 - **[app-update.md](app-update.md)**: Orchestrator workflow
 - **[Git Best Practices](https://docs.github.com/en/get-started/using-git)**: Git documentation
 

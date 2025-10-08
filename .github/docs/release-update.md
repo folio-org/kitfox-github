@@ -396,7 +396,6 @@ curl -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
 ## 📚 Related Documentation
 
 - **[Release Update Flow](release-update-flow.md)**: Detailed flow implementation
-- **[Compare Applications](compare-applications.md)**: Version comparison workflow
 - **[App Notification](app-notification.md)**: Notification patterns and best practices
 - **[Update Application](update-application.md)**: Module update mechanics
 
