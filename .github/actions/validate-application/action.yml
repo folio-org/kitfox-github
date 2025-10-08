@@ -14,6 +14,10 @@ inputs:
     description: 'Name of the platform descriptor artifact to download'
     required: false
     default: 'platform-descriptor'
+  use_platform_descriptor:
+    description: 'Whether platform descriptor should be used for dependency validation'
+    required: false
+    default: 'true'
   rely_on_FAR:
     description: 'Whether to rely on FAR for application descriptor dependencies'
     required: false
@@ -49,7 +53,7 @@ runs:
 
     - name: Download Platform Descriptor
       id: download-platform-descriptor
-      if: inputs.rely_on_FAR != 'true'
+      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true'
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.platform_descriptor_artifact_name }}
@@ -57,7 +61,7 @@ runs:
 
     - name: Fetch Application Descriptors from FAR
       id: fetch-app-descriptors
-      if: inputs.rely_on_FAR != 'true' && steps.download-platform-descriptor.outcome == 'success'
+      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true' && steps.download-platform-descriptor.outcome == 'success'
       shell: bash
       env:
         APP_NAME: ${{ inputs.app_name }}
@@ -143,7 +147,7 @@ runs:
 
     - name: Validate Application Dependencies Integrity
       id: validate-dependencies
-      if: steps.download-platform-descriptor.outcome == 'success' || inputs.rely_on_FAR == 'true'
+      if: (inputs.use_platform_descriptor == 'true' && steps.download-platform-descriptor.outcome == 'success') || inputs.rely_on_FAR == 'true'
       shell: bash
       env:
         RELY_ON_FAR: ${{ inputs.rely_on_FAR }}
