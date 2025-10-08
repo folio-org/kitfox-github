@@ -145,7 +145,7 @@ jobs:
 
 
   check:
-    name: Application Check
+    name: Check commit
     needs: pre-check
     if: needs.pre-check.outputs.validation_status == 'success'
     runs-on: ubuntu-latest
@@ -154,7 +154,8 @@ jobs:
       descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
       descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
       validation_passed: ${{ steps.validate.outputs.validation_passed }}
-      failure_reason: ${{ steps.generate.outputs.generated != 'true' && 'Failed to generate application descriptor' || (steps.fetch-platform.outcome == 'failure' && format('Failed to fetch platform descriptor from branch {0}', needs.pre-check.outputs.base_branch)) || steps.validate.outputs.failure_reason || 'Check workflow logs for details' }}
+      platform_found: ${{ steps.fetch-platform.outputs.platform_found }}
+      failure_reason: ${{ steps.generate.outputs.generated != 'true' && 'Failed to generate application descriptor' || steps.validate.outputs.failure_reason || 'Check workflow logs for details' }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -230,17 +231,27 @@ jobs:
 
           echo "::notice::Fetching platform descriptor from platform-lsp branch: $BRANCH"
 
-          if ! curl -fsSL "https://raw.githubusercontent.com/folio-org/platform-lsp/$BRANCH/platform-descriptor.json" \
-            -o /tmp/platform/platform-descriptor.json; then
-            echo "::error::Failed to fetch platform descriptor from branch $BRANCH"
-            echo "::error::Platform descriptor must exist for the target release branch"
+          # Fetch with detailed error handling
+          http_code=$(curl -sS -w "%{http_code}" -o /tmp/platform/platform-descriptor.json \
+            "https://raw.githubusercontent.com/folio-org/platform-lsp/$BRANCH/platform-descriptor.json")
+
+          if [ "$http_code" = "200" ]; then
+            echo "::notice::Platform descriptor fetched successfully from branch: $BRANCH"
+            echo "platform_found=true" >> "$GITHUB_OUTPUT"
+          elif [ "$http_code" = "404" ]; then
+            echo "::warning::Platform descriptor not found for branch $BRANCH (HTTP 404)"
+            echo "::warning::Dependency validation will be skipped"
+            echo "platform_found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Failed to fetch platform descriptor from branch $BRANCH (HTTP $http_code)"
+            echo "::error::This might be a temporary issue. Please retry the check."
+            echo "platform_found=false" >> "$GITHUB_OUTPUT"
+            echo "fetch_error=true" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
-          echo "::notice::Platform descriptor fetched successfully from branch: $BRANCH"
-
       - name: Upload Platform Descriptor
-        if: steps.generate.outputs.generated == 'true'
+        if: steps.generate.outputs.generated == 'true' && steps.fetch-platform.outputs.platform_found == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: platform-descriptor
@@ -272,6 +283,7 @@ jobs:
           app_name: ${{ inputs.repo_name }}
           app_descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
           app_descriptor_artifact_name: ${{ steps.generate.outputs.artifact_name }}
+          use_platform_descriptor: ${{ steps.fetch-platform.outputs.platform_found == 'true' && 'true' || 'false' }}
           rely_on_FAR: 'false'
           far_url: ${{ vars.FAR_URL }}
 
@@ -285,16 +297,12 @@ jobs:
             const generated = '${{ steps.generate.outputs.generated }}';
             const validationPassed = '${{ steps.validate.outputs.validation_passed }}';
             const failureReason = '${{ steps.validate.outputs.failure_reason }}';
-            const fetchPlatformOutcome = '${{ steps.fetch-platform.outcome }}';
+            const platformFound = '${{ steps.fetch-platform.outputs.platform_found }}';
 
             if (generated !== 'true') {
               conclusion = 'failure';
               title = 'Descriptor Generation Failed';
               summary = 'Failed to generate application descriptor';
-            } else if (fetchPlatformOutcome === 'failure') {
-              conclusion = 'failure';
-              title = 'Platform Descriptor Fetch Failed';
-              summary = 'Failed to fetch platform descriptor from branch ${{ needs.pre-check.outputs.base_branch }}';
             } else if (validationPassed === 'false') {
               conclusion = 'failure';
               title = 'Verification Failed';
@@ -302,7 +310,9 @@ jobs:
             } else if (validationPassed === 'true') {
               conclusion = 'success';
               title = 'All Checks Passed';
-              summary = 'Application verification completed successfully';
+              summary = platformFound === 'false'
+                ? 'Application verification completed successfully (dependency validation skipped - platform descriptor not found)'
+                : 'Application verification completed successfully';
             } else {
               conclusion = 'neutral';
               title = 'Check Incomplete';
@@ -338,7 +348,7 @@ jobs:
             - **Run URL:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             `;
 
-            await github.rest.checks.update({
+            const updateParams = {
               owner: '${{ inputs.repo_owner }}',
               repo: '${{ inputs.repo_name }}',
               check_run_id: ${{ steps.create-check.outputs.check_run_id }},
@@ -351,7 +361,19 @@ jobs:
                 text: text
               },
               details_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-            });
+            };
+
+            // Add re-run action button if there was a fetch error or validation failure
+            const fetchError = '${{ steps.fetch-platform.outputs.fetch_error }}';
+            if (fetchError === 'true' || validationPassed === 'false') {
+              updateParams.actions = [{
+                label: 'Re-run Validation',
+                description: 'Trigger a new validation check',
+                identifier: 're-run-validation'
+              }];
+            }
+
+            await github.rest.checks.update(updateParams);
 
 
   notify:
