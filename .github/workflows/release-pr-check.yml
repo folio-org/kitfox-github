@@ -231,7 +231,6 @@ jobs:
 
           echo "::notice::Fetching platform descriptor from platform-lsp branch: $BRANCH"
 
-          # Fetch with detailed error handling
           http_code=$(curl -sS -w "%{http_code}" -o /tmp/platform/platform-descriptor.json \
             "https://raw.githubusercontent.com/folio-org/platform-lsp/$BRANCH/platform-descriptor.json")
 
