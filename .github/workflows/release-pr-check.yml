@@ -238,10 +238,10 @@ jobs:
           if [ "$http_code" = "200" ]; then
             echo "::notice::Platform descriptor fetched successfully from branch: $BRANCH"
             echo "platform_found=true" >> "$GITHUB_OUTPUT"
-          elif [ "$http_code" = "404" ]; then
-            echo "::warning::Platform descriptor not found for branch $BRANCH (HTTP 404)"
-            echo "::warning::Dependency validation will be skipped"
-            echo "platform_found=false" >> "$GITHUB_OUTPUT"
+#          elif [ "$http_code" = "404" ]; then # TODO: Uncomment this before the merge
+#            echo "::warning::Platform descriptor not found for branch $BRANCH (HTTP 404)"
+#            echo "::warning::Dependency validation will be skipped"
+#            echo "platform_found=false" >> "$GITHUB_OUTPUT"
           else
             echo "::error::Failed to fetch platform descriptor from branch $BRANCH (HTTP $http_code)"
             echo "::error::This might be a temporary issue. Please retry the check."
