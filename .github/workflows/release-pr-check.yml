@@ -298,11 +298,17 @@ jobs:
             const validationPassed = '${{ steps.validate.outputs.validation_passed }}';
             const failureReason = '${{ steps.validate.outputs.failure_reason }}';
             const platformFound = '${{ steps.fetch-platform.outputs.platform_found }}';
+            const fetchError = '${{ steps.fetch-platform.outputs.fetch_error }}';
+            const fetchOutcome = '${{ steps.fetch-platform.outcome }}';
 
             if (generated !== 'true') {
               conclusion = 'failure';
               title = 'Descriptor Generation Failed';
               summary = 'Failed to generate application descriptor';
+            } else if (fetchError === 'true' || fetchOutcome === 'failure') {
+              conclusion = 'failure';
+              title = 'Platform Descriptor Fetch Failed';
+              summary = 'Failed to fetch platform descriptor from branch ${{ needs.pre-check.outputs.base_branch }}. This might be a temporary issue. Please use the "Re-run Validation" button to retry.';
             } else if (validationPassed === 'false') {
               conclusion = 'failure';
               title = 'Verification Failed';
