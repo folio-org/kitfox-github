@@ -153,9 +153,8 @@ jobs:
       generated: ${{ steps.generate.outputs.generated }}
       descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
       descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
-      validation_passed: ${{ steps.verify.outputs.validation_passed }}
-      failure_reason: ${{ steps.generate.outputs.generated != 'true' && 'Failed to generate application descriptor' || (steps.fetch-platform.outcome == 'failure' && format('Failed to fetch platform descriptor from branch {0}', needs.pre-check.outputs.base_branch)) || steps.verify.outputs.failure_reason || 'Check workflow logs for details' }}
-      uploaded_to_registry: ${{ steps.verify.outputs.uploaded_to_registry }}
+      validation_passed: ${{ steps.validate.outputs.validation_passed }}
+      failure_reason: ${{ steps.generate.outputs.generated != 'true' && 'Failed to generate application descriptor' || (steps.fetch-platform.outcome == 'failure' && format('Failed to fetch platform descriptor from branch {0}', needs.pre-check.outputs.base_branch)) || steps.validate.outputs.failure_reason || 'Check workflow logs for details' }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -265,16 +264,15 @@ jobs:
               }
             });
 
-      - name: Verify Application
-        id: verify
+      - name: Validate Application
+        id: validate
         if: steps.generate.outputs.generated == 'true'
-        uses: folio-org/kitfox-github/.github/actions/verify-application@master
+        uses: folio-org/kitfox-github/.github/actions/validate-application@master
         with:
           app_name: ${{ inputs.repo_name }}
           app_descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
           app_descriptor_artifact_name: ${{ steps.generate.outputs.artifact_name }}
           rely_on_FAR: 'false'
-          skip_upload: 'true'
           far_url: ${{ vars.FAR_URL }}
 
       - name: Finalize Check Run
@@ -285,8 +283,8 @@ jobs:
           script: |
             let conclusion, title, summary;
             const generated = '${{ steps.generate.outputs.generated }}';
-            const validationPassed = '${{ steps.verify.outputs.validation_passed }}';
-            const failureReason = '${{ steps.verify.outputs.failure_reason }}';
+            const validationPassed = '${{ steps.validate.outputs.validation_passed }}';
+            const failureReason = '${{ steps.validate.outputs.failure_reason }}';
             const fetchPlatformOutcome = '${{ steps.fetch-platform.outcome }}';
 
             if (generated !== 'true') {
