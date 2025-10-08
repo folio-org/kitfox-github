@@ -109,7 +109,7 @@ jobs:
     if: >
       always() && !cancelled() && !inputs.dry_run &&
       (
-        needs.update.result != 'success' ||
+        (needs.update.result != 'success' && needs.update.outputs.failure_reason != '' && !contains(needs.update.outputs.failure_reason, 'does not exist')) ||
         (needs.update.result == 'success' && needs.update.outputs.updated == 'true')
       )
     runs-on: ubuntu-latest
@@ -118,13 +118,13 @@ jobs:
       general_notif_status: ${{ steps.notify-general.outcome }}
       notification_outcome: ${{ steps.notify-team.outcome || steps.notify-general.outcome }}
     env:
-      TITLE_TEXT: "${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && (needs.update.outputs.updated == 'true' && 'updated' || 'unchanged') || 'failed' }} #${{ github.run_number }}"
+      TITLE_TEXT: "${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && (needs.update.outputs.updated == 'true' && 'updated' || 'unchanged') || contains(needs.update.outputs.failure_reason, 'does not exist') && 'skipped' || 'failed' }} #${{ github.run_number }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && (needs.update.outputs.updated == 'true' && 'updated' || 'unchanged') || 'failed' }} <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && (needs.update.outputs.updated == 'true' && 'updated' || 'unchanged') || contains(needs.update.outputs.failure_reason, 'does not exist') && 'skipped' || 'failed' }} <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
         }
       SUCCESS_ATTACHMENT: |
@@ -280,11 +280,17 @@ jobs:
                 echo "- **Current Version:** $PREVIOUS_VERSION"
               fi
             elif [[ "$UPDATE_RESULT" == "failure" ]]; then
-              echo "❌ **Update Result:** Failed"
-              if [[ -n "$FAILURE_REASON" ]]; then
+              if [[ "$FAILURE_REASON" == *"does not exist"* ]]; then
+                echo "⏭️ **Update Result:** Skipped (Branch does not exist)"
                 echo "- **Reason:** $FAILURE_REASON"
+                echo "- This is expected for new applications without a snapshot branch"
               else
-                echo "- Check the update job logs for details"
+                echo "❌ **Update Result:** Failed"
+                if [[ -n "$FAILURE_REASON" ]]; then
+                  echo "- **Reason:** $FAILURE_REASON"
+                else
+                  echo "- Check the update job logs for details"
+                fi
               fi
             elif [[ "$UPDATE_RESULT" == "cancelled" ]]; then
               echo "⚠️ **Update Result:** Cancelled"
