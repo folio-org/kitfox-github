@@ -13,8 +13,9 @@ This workflow orchestrates the complete continuous integration process for FOLIO
 The workflow has been refactored into modular components for better reusability and maintainability:
 
 1. **`update-application.yml`** - Module version checking and descriptor generation
-2. **`verify-application.yml`** - Application validation and registry operations  
-3. **`commit-application-changes.yml`** - Git operations for committing changes
+2. **`validate-application`** action - Application descriptor validation
+3. **`publish-app-descriptor`** action - Publishing descriptors to FAR
+4. **`commit-application-changes.yml`** - Git operations for committing changes
 
 This orchestrator workflow coordinates these components and handles failure scenarios.
 
@@ -64,14 +65,17 @@ This orchestrator workflow coordinates these components and handles failure scen
 - **POM Updates**: Updates pom.xml version when in release mode
 - **Artifact Generation**: Creates state files for downstream processing
 
-### 2. Verify Application (`verify-application.yml`) - *Conditional*
+### 2. Validate Application (`validate-application` action) - *Conditional*
 - **Runs only if**: Updates were found in step 1
 - **Platform Integration**: Downloads platform descriptor for validation context
 - **Interface Validation**: Validates module interface integrity via FAR API
-- **Dependency Validation**: Validates application dependencies integrity
-- **Registry Upload**: Publishes application descriptor to FAR registry (unless dry-run)
+- **Dependency Validation**: Validates application dependencies integrity (conditional based on platform descriptor availability)
 
-### 3. Commit Changes (`commit-application-changes.yml`) - *Conditional*
+### 3. Publish Descriptor (`publish-app-descriptor` action) - *Conditional*
+- **Runs only if**: Validation passed and not in dry-run mode
+- **Registry Upload**: Publishes application descriptor to FAR registry
+
+### 4. Commit Changes (`commit-application-changes.yml`) - *Conditional*
 - **Runs only if**: Updates were found and validation passed
 - **Git Configuration**: Sets up GitHub Actions bot identity
 - **File Download**: Retrieves updated state files from artifacts
