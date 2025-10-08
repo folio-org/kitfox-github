@@ -1,12 +1,13 @@
-# Application Update Workflow
+# Snapshot Update Flow Workflow
 
-**Workflow**: `app-update.yml`  
-**Purpose**: Orchestrates automated module version updates and application descriptor management for FOLIO applications  
+**Workflow**: `snapshot-update-flow.yml`
+**Purpose**: Orchestrates automated module version updates and application descriptor management for FOLIO snapshot operations
 **Type**: Reusable workflow (`workflow_call`)
+**Related Ticket**: RANCHER-2571, Item #8
 
 ## 🎯 Overview
 
-This workflow orchestrates the complete continuous integration process for FOLIO applications. It coordinates three specialized workflows to check for newer module versions, validate changes, and commit updates. It's the core orchestration workflow powering FOLIO's snapshot CI system.
+This workflow orchestrates the complete snapshot update flow for FOLIO applications. It coordinates specialized workflows and actions to check for newer module versions, validate changes, and commit updates.
 
 ## 🏗️ Refactored Architecture
 
@@ -172,7 +173,7 @@ find /tmp/app-descriptors -name '*.json' -print0 \
 ```yaml
 jobs:
   update-application:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
@@ -185,7 +186,7 @@ jobs:
 ```yaml
 jobs:
   update-application:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
@@ -203,7 +204,7 @@ jobs:
 ```yaml
 jobs:
   test-update:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
@@ -287,7 +288,7 @@ on:
 
 jobs:
   update-application:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
@@ -311,7 +312,7 @@ jobs:
 
   update-application:
     needs: fetch-platform-descriptor
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
 ```
 
 
