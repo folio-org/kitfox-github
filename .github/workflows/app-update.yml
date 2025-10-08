@@ -107,20 +107,29 @@ jobs:
     if: needs.update-application.outputs.updated == 'true'
     runs-on: ubuntu-latest
     outputs:
-      validation_passed: ${{ steps.verify.outputs.validation_passed }}
-      failure_reason: ${{ steps.verify.outputs.failure_reason }}
-      uploaded_to_registry: ${{ steps.verify.outputs.uploaded_to_registry }}
+      validation_passed: ${{ steps.validate.outputs.validation_passed }}
+      failure_reason: ${{ steps.validate.outputs.failure_reason }}
+      publish_status: ${{ steps.publish.outputs.publish-status }}
+      descriptor_url: ${{ steps.publish.outputs.descriptor-url }}
     steps:
-      - name: Verify Application
-        id: verify
-        uses: folio-org/kitfox-github/.github/actions/verify-application@master
+      - name: Validate Application
+        id: validate
+        uses: folio-org/kitfox-github/.github/actions/validate-application@master
         with:
           app_name: ${{ inputs.app_name }}
           app_descriptor_file: ${{ needs.update-application.outputs.app_descriptor_file }}
           app_descriptor_artifact_name: ${{ needs.update-application.outputs.artifact_name }}
           rely_on_FAR: ${{ inputs.rely_on_FAR }}
-          skip_upload: ${{ inputs.dry_run }}
           far_url: ${{ vars.FAR_URL }}
+
+      - name: Publish Application Descriptor
+        id: publish
+        if: inputs.dry_run != true
+        uses: folio-org/kitfox-github/.github/actions/publish-app-descriptor@master
+        with:
+          descriptor-artifact-name: ${{ needs.update-application.outputs.artifact_name }}
+          descriptor-file-name: ${{ needs.update-application.outputs.app_descriptor_file }}
+          far-url: ${{ vars.FAR_URL }}
 
   commit-changes:
     name: Commit Changes
@@ -148,30 +157,12 @@ jobs:
     needs: [update-application, verify-application, commit-changes]
     if: failure() && inputs.dry_run != true && needs.update-application.outputs.app_descriptor_file_name != ''
     steps:
-      - name: Delete Uploaded Application in Registry
-        id: delete-uploaded-app-in-registry
-        env:
-          APP_DESCRIPTOR_FILE_NAME: "${{ needs.update-application.outputs.app_descriptor_file_name }}"
-        run: |
-          set -eo pipefail
-          echo "::notice::Delete previously uploaded application $APP_DESCRIPTOR_FILE_NAME in registry"
-
-          resp_file="$(mktemp)"
-
-          http_code="$(curl -sS -o "$resp_file" -w "%{http_code}" -X DELETE \
-            -H "Content-Type: application/json" \
-            "$FAR_API_URL/$APP_DESCRIPTOR_FILE_NAME")"
-
-          if ! [[ "$http_code" =~ ^2[0-9]{2}$ ]]; then
-            echo "::error::Failed to delete application in registry (HTTP $http_code)"
-            
-            [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
-            
-            exit 1
-          fi
-
-          echo "::notice::Application descriptor deleted in registry successfully"
-          rm -f "$resp_file"
+      - name: Unpublish Application Descriptor
+        id: unpublish
+        uses: folio-org/kitfox-github/.github/actions/unpublish-app-descriptor@master
+        with:
+          descriptor-id: ${{ needs.update-application.outputs.app_descriptor_file_name }}
+          far-url: ${{ vars.FAR_URL }}
 
 
 
