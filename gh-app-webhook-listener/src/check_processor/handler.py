@@ -208,8 +208,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # Extract base branch info from pull_request event
                 base_branch = event_object.get('base', {}).get('ref', '')
                 base_sha = event_object.get('base', {}).get('sha', '')
-            elif event_type == 'check_suite':
-                # For check_suite events, look in the pull_requests array
+            elif event_type in ['check_suite', 'check_run']:
+                # For check_suite and check_run events, look in the pull_requests array
                 pull_requests = event_object.get('pull_requests', [])
                 if pull_requests:
                     pr_number = str(pull_requests[0].get('number', ''))
