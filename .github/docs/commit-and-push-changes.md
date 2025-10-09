@@ -1,12 +1,20 @@
-# Commit Application Changes Workflow
+# Commit and Push Changes Workflow
 
-**Workflow**: `commit-application-changes.yml`  
-**Purpose**: Git operations for committing and pushing application changes  
+**Workflow**: `commit-and-push-changes.yml`
+**Purpose**: Generic Git operations for committing and pushing repository changes from artifacts
 **Type**: Reusable workflow (`workflow_call`)
 
 ## 🎯 Overview
 
-This workflow handles all Git operations for committing and pushing changes to application repositories. It supports branch creation, multiline commit messages, GitHub App authentication, and flexible branch management strategies.
+This is a generic, reusable workflow that handles Git operations for committing and pushing changes to any repository. It downloads files from a workflow artifact, commits them to a specified branch, and pushes to the remote repository. Perfect for automated update workflows, release preparation, or any scenario where changes need to be committed from CI/CD pipelines.
+
+**Key Features**:
+- Downloads changes from workflow artifacts
+- Supports branch creation from source branches
+- Multiline commit message support
+- GitHub App authentication for cross-repo operations
+- Dry-run mode for testing
+- Graceful handling of no-change scenarios
 
 ## 📋 Workflow Interface
 
@@ -14,21 +22,22 @@ This workflow handles all Git operations for committing and pushing changes to a
 
 | Input            | Description                                          | Required | Type    | Default      |
 |------------------|------------------------------------------------------|----------|---------|--------------|
-| `app_name`       | Application name                                     | Yes      | string  | -            |
-| `repo`           | Application repository name (org/repo format)        | Yes      | string  | -            |
-| `branch`         | Target branch for changes                            | No       | string  | `'snapshot'` |
-| `source_branch`  | Source branch to create new branch from              | No       | string  | `''`         |
+| `repo`           | Target repository (org/repo format)                  | Yes      | string  | -            |
+| `branch`         | Target branch for changes                            | No       | string  | `'main'`     |
+| `artifact_name`  | Name of artifact containing files to commit          | Yes      | string  | -            |
 | `commit_message` | Full commit message (supports multiline)             | Yes      | string  | -            |
-| `dry_run`        | Perform dry run without making changes               | No       | boolean | `false`      |
+| `dry_run`        | Perform dry run without pushing changes              | No       | boolean | `false`      |
 | `use_github_app` | Use GitHub App for authentication                    | No       | boolean | `false`      |
+| `source_branch`  | Source branch to checkout from (for branch creation) | No       | string  | `''`         |
 
 ### Outputs
 
-| Output            | Description                        |
-|-------------------|------------------------------------|
-| `commit_sha`      | SHA of the created commit          |
-| `branch_created`  | Whether a new branch was created   |
-| `changes_made`    | Whether any changes were committed |
+| Output            | Description                         |
+|-------------------|-------------------------------------|
+| `commit_sha`      | SHA of the created commit           |
+| `branch_created`  | Whether a new branch was created    |
+| `changes_made`    | Whether any changes were committed  |
+| `failure_reason`  | Reason for failure if any           |
 
 ### Secrets
 
@@ -39,48 +48,53 @@ This workflow handles all Git operations for committing and pushing changes to a
 
 ## 🔄 Workflow Execution Flow
 
-### 1. Authentication Setup
+### 1. Extract Owner and Repository
+- Parses `repo` input (org/repo format)
+- Extracts owner and repository name for authentication
+
+### 2. Authentication Setup
 - **GitHub App Mode**: Generates app token when `use_github_app=true`
 - **Standard Mode**: Uses default GitHub token
 - Configures permissions for repository access
 
-### 2. Repository Checkout
+### 3. Repository Checkout
 - Clones the target repository
 - If `source_branch` provided: Checks out source branch
 - If no source branch: Checks out target branch directly
 - Fetches full history for branch operations
 
-### 3. Download Updated Files
-- Retrieves application update files from artifacts:
-  - `application-descriptor.json`
-  - `pom.xml`
-- Places files in repository root
+### 4. Download Artifact
+- Retrieves files from specified artifact
+- Downloads to repository root
+- Supports any file types from the artifact
 
-### 4. Git Configuration
-- Sets up GitHub Actions bot identity:
-  - Name: `github-actions[bot]`
-  - Email: `41898282+github-actions[bot]@users.noreply.github.com`
+### 5. Git Configuration
+- Sets up bot identity based on authentication mode:
+  - GitHub App: `eureka-ci[bot]`
+  - Standard: `github-actions[bot]`
 - Configures Git for automated commits
 
-### 5. Branch Management
+### 6. Branch Management
 - **If `source_branch` provided**:
-  - Creates new branch from source
+  - Creates new branch from source (if doesn't exist)
   - Switches to target branch
+  - Sets `branch_created` output
 - **If no source branch**:
   - Works directly on target branch
 - Handles existing branch scenarios gracefully
 
-### 6. Commit Creation
-- Stages all changes
-- Creates commit with provided message
-- Supports multiline messages via temporary file
+### 7. Commit Creation
+- Reviews and stages all changes
 - Validates changes exist before committing
+- Creates commit with provided message via temporary file
+- Supports multiline messages with special characters
+- Sets `commit_sha` and `changes_made` outputs
 
-### 7. Push Changes
-- **If not dry-run**: Pushes changes to remote
-- **If dry-run**: Skips push, reports what would be done
+### 8. Push Changes
+- **If not dry-run**: Pushes changes to remote with `-u` flag
+- **If dry-run**: Skips push, local commit only
 - Handles both new and existing branches
-- Force-push protection for safety
+- Provides clear error messages on failure
 
 ## 🔀 Branch Management Strategies
 
@@ -123,46 +137,60 @@ with:
 
 ### Basic Commit and Push
 ```yaml
-- uses: ./.github/workflows/commit-application-changes.yml
+- uses: ./.github/workflows/commit-and-push-changes.yml
   with:
-    app_name: ${{ inputs.app_name }}
-    repo: ${{ inputs.repo }}
+    repo: folio-org/my-application
+    artifact_name: update-files
     commit_message: 'Update application modules'
+```
+
+### Application Update with Artifact
+```yaml
+- uses: ./.github/workflows/commit-and-push-changes.yml
+  with:
+    repo: ${{ inputs.repo }}
+    branch: snapshot
+    artifact_name: ${{ needs.update-job.outputs.artifact_name }}
+    commit_message: |
+      Update application to version ${{ needs.update-job.outputs.new_version }}
+
+      Updated modules: ${{ needs.update-job.outputs.updated_cnt }}
+      Previous version: ${{ needs.update-job.outputs.previous_version }}
 ```
 
 ### Release Branch Creation
 ```yaml
-- uses: ./.github/workflows/commit-application-changes.yml
+- uses: ./.github/workflows/commit-and-push-changes.yml
   with:
-    app_name: ${{ inputs.app_name }}
-    repo: ${{ inputs.repo }}
-    branch: ${{ inputs.new_release_branch }}
-    source_branch: ${{ inputs.previous_release_branch }}
+    repo: folio-org/my-app
+    branch: R1-2025
+    source_branch: R2-2024
+    artifact_name: release-prep-files
     commit_message: |
-      Prepare ${{ inputs.app_name }} for release
-      
-      Previous release: ${{ inputs.previous_release_branch }}
-      New release: ${{ inputs.new_release_branch }}
+      Prepare for R1-2025 release
+
+      Based on R2-2024 branch
+      Setting placeholder versions
 ```
 
 ### Dry Run Testing
 ```yaml
-- uses: ./.github/workflows/commit-application-changes.yml
+- uses: ./.github/workflows/commit-and-push-changes.yml
   with:
-    app_name: ${{ inputs.app_name }}
     repo: ${{ inputs.repo }}
+    artifact_name: test-changes
     commit_message: 'Test update'
-    dry_run: true  # No actual commit/push
+    dry_run: true  # No actual push
 ```
 
 ### GitHub App Authentication
 ```yaml
-- uses: ./.github/workflows/commit-application-changes.yml
+- uses: ./.github/workflows/commit-and-push-changes.yml
   with:
-    app_name: ${{ inputs.app_name }}
-    repo: ${{ inputs.repo }}
+    repo: folio-org/my-app
+    artifact_name: automated-updates
     commit_message: 'Automated update'
-    use_github_app: true  # Use app token
+    use_github_app: true  # Use app token for cross-repo access
   secrets: inherit
 ```
 

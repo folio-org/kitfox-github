@@ -164,11 +164,11 @@ jobs:
     name: Commit and Push Changes
     needs: [determine-source-branch, update-application]
     if: needs.update-application.outputs.updated == 'true'
-    uses: ./.github/workflows/commit-application-changes.yml
+    uses: ./.github/workflows/commit-and-push-changes.yml
     with:
-      app_name: ${{ inputs.app_name }}
       repo: ${{ inputs.repo }}
       branch: ${{ inputs.update_branch }}
+      artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
       commit_message: |
         Update modules to ${{ needs.update-application.outputs.new_version }}.
 
@@ -177,7 +177,6 @@ jobs:
       dry_run: ${{ inputs.dry_run }}
       use_github_app: true
       source_branch: ${{ needs.determine-source-branch.outputs.source_branch }}
-      update_files_artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
     secrets: inherit
 
   manage-pr:

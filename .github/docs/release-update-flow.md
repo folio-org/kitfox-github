@@ -527,7 +527,7 @@ jobs:
 
 - **[Release Update](release-update.md)**: Main orchestration workflow
 - **[Update Application](update-application.md)**: Module update mechanics
-- **[Commit Application Changes](commit-application-changes.md)**: Change commitment workflow
+- **[Commit and Push Changes](commit-and-push-changes.md)**: Change commitment workflow
 - **[Compare State Files Action](../actions/compare-state-files/README.md)**: Version comparison action
 - **[GitHub Actions: Create PR](../actions/create-pr/README.md)**: PR creation action
 - **[GitHub Actions: Update PR](../actions/update-pr/README.md)**: PR update action
