@@ -1,0 +1,198 @@
+name: Compare State Files
+description: Compare application state files from different sources (artifacts or branches)
+
+inputs:
+  repo:
+    description: 'Repository name in org/repo format'
+    required: true
+  base-source-type:
+    description: 'Type of base source: "artifact" or "branch"'
+    required: true
+  base-source:
+    description: 'Base source: artifact name or branch name'
+    required: true
+  head-source-type:
+    description: 'Type of head source: "artifact" or "branch"'
+    required: true
+  head-source:
+    description: 'Head source: artifact name or branch name'
+    required: true
+  state-file:
+    description: 'Name of the state file (application descriptor)'
+    required: false
+    default: 'application-descriptor.json'
+  github-token:
+    description: 'GitHub token for API access'
+    required: true
+
+outputs:
+  updated-modules:
+    description: 'List of updated modules'
+    value: ${{ steps.compare-versions.outputs.updated_modules }}
+  updates-cnt:
+    description: 'Number of module updates'
+    value: ${{ steps.compare-versions.outputs.updates_cnt }}
+  new-version:
+    description: 'New version of the application'
+    value: ${{ steps.compare-versions.outputs.new_version }}
+  has-changes:
+    description: 'Whether there are changes between versions'
+    value: ${{ steps.compare-versions.outputs.has_changes }}
+
+runs:
+  using: composite
+  steps:
+    - name: Generate Unique Working Directory
+      id: gen-dir
+      shell: bash
+      run: |
+        unique_dir="/tmp/compare-state-${RANDOM}-${RANDOM}-$$"
+        mkdir -p "$unique_dir"
+        echo "work_dir=$unique_dir" >> "$GITHUB_OUTPUT"
+        echo "Using working directory: $unique_dir"
+
+    - name: Get base state from branch
+      if: inputs.base-source-type == 'branch'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ inputs.repo }}
+        BRANCH: ${{ inputs.base-source }}
+        STATE_FILE: ${{ inputs.state-file }}
+        WORK_DIR: ${{ steps.gen-dir.outputs.work_dir }}
+      run: |
+        api_url="https://api.github.com/repos/$REPO/contents/$STATE_FILE?ref=$BRANCH"
+        curl -sS -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3.raw" \
+          "$api_url" -o "$WORK_DIR/base_state.json"
+
+        if [ $? -ne 0 ] || [ ! -s "$WORK_DIR/base_state.json" ]; then
+          echo "::error::Failed to download $STATE_FILE from branch $BRANCH"
+          exit 1
+        fi
+
+    - name: Get base state from artifact
+      if: inputs.base-source-type == 'artifact'
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.base-source }}
+        path: ${{ steps.gen-dir.outputs.work_dir }}/base-artifact
+
+    - name: Copy base state from artifact
+      if: inputs.base-source-type == 'artifact'
+      shell: bash
+      env:
+        STATE_FILE: ${{ inputs.state-file }}
+        WORK_DIR: ${{ steps.gen-dir.outputs.work_dir }}
+      run: |
+        if [ -f "$WORK_DIR/base-artifact/$STATE_FILE" ]; then
+          cp "$WORK_DIR/base-artifact/$STATE_FILE" "$WORK_DIR/base_state.json"
+        else
+          echo "::error::State file not found in base artifact"
+          exit 1
+        fi
+
+    - name: Get head state from branch
+      if: inputs.head-source-type == 'branch'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ inputs.repo }}
+        BRANCH: ${{ inputs.head-source }}
+        STATE_FILE: ${{ inputs.state-file }}
+        WORK_DIR: ${{ steps.gen-dir.outputs.work_dir }}
+      run: |
+        api_url="https://api.github.com/repos/$REPO/contents/$STATE_FILE?ref=$BRANCH"
+        curl -sS -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3.raw" \
+          "$api_url" -o "$WORK_DIR/head_state.json"
+
+        if [ $? -ne 0 ] || [ ! -s "$WORK_DIR/head_state.json" ]; then
+          echo "::error::Failed to download $STATE_FILE from branch $BRANCH"
+          exit 1
+        fi
+
+    - name: Get head state from artifact
+      if: inputs.head-source-type == 'artifact'
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.head-source }}
+        path: ${{ steps.gen-dir.outputs.work_dir }}/head-artifact
+
+    - name: Copy head state from artifact
+      if: inputs.head-source-type == 'artifact'
+      shell: bash
+      env:
+        STATE_FILE: ${{ inputs.state-file }}
+        WORK_DIR: ${{ steps.gen-dir.outputs.work_dir }}
+      run: |
+        if [ -f "$WORK_DIR/head-artifact/$STATE_FILE" ]; then
+          cp "$WORK_DIR/head-artifact/$STATE_FILE" "$WORK_DIR/head_state.json"
+        else
+          echo "::error::State file not found in head artifact"
+          exit 1
+        fi
+
+    - name: Compare versions and generate module list
+      id: compare-versions
+      shell: bash
+      env:
+        WORK_DIR: ${{ steps.gen-dir.outputs.work_dir }}
+      run: |
+        echo "::notice::Comparing application versions"
+
+        base_version=$(jq -r '.version // "unknown"' "$WORK_DIR/base_state.json")
+        head_version=$(jq -r '.version // "unknown"' "$WORK_DIR/head_state.json")
+
+        echo "Base version: $base_version"
+        echo "Head version: $head_version"
+
+        updated_modules=""
+        updates_cnt=0
+
+        all_modules=$(jq -r '(.modules[]?.name, .uiModules[]?.name) // empty' "$WORK_DIR/base_state.json" "$WORK_DIR/head_state.json" 2>/dev/null | sort -u)
+
+        for module in $all_modules; do
+          base_ver=$(jq -r "(.modules[]? | select(.name == \"$module\") | .version) // (.uiModules[]? | select(.name == \"$module\") | .version) // \"not present\"" "$WORK_DIR/base_state.json" | head -1)
+          head_ver=$(jq -r "(.modules[]? | select(.name == \"$module\") | .version) // (.uiModules[]? | select(.name == \"$module\") | .version) // \"not present\"" "$WORK_DIR/head_state.json" | head -1)
+
+          [ -z "$base_ver" ] && base_ver="not present"
+          [ -z "$head_ver" ] && head_ver="not present"
+
+          if [ "$base_ver" != "$head_ver" ]; then
+            if [ "$base_ver" = "not present" ]; then
+              module_update="+ $module: $head_ver (new)"
+            elif [ "$head_ver" = "not present" ]; then
+              module_update="- $module: $base_ver (removed)"
+            else
+              module_update="$module: $base_ver → $head_ver"
+            fi
+
+            if [ -z "$updated_modules" ]; then
+              updated_modules="$module_update"
+            else
+              updated_modules="$updated_modules"$'\n'"$module_update"
+            fi
+            updates_cnt=$((updates_cnt + 1))
+          fi
+        done
+
+        if [ "$updates_cnt" -gt 0 ] || [ "$base_version" != "$head_version" ]; then
+          has_changes=true
+        else
+          has_changes=false
+        fi
+
+        echo "updated_modules<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$updated_modules" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+
+        echo "updates_cnt=$updates_cnt" >> "$GITHUB_OUTPUT"
+        echo "new_version=$head_version" >> "$GITHUB_OUTPUT"
+        echo "has_changes=$has_changes" >> "$GITHUB_OUTPUT"
+
+        echo "::notice::Found $updates_cnt module updates"
+        if [ -n "$updated_modules" ]; then
+          echo "::notice::Updated modules:"
+          echo "$updated_modules"
+        fi

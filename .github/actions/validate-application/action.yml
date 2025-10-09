@@ -1,5 +1,5 @@
-name: 'Verify Application'
-description: 'Verify application descriptor integrity and upload to registry'
+name: 'Validate Application'
+description: 'Validate application descriptor integrity'
 inputs:
   app_name:
     description: 'Application name'
@@ -14,12 +14,12 @@ inputs:
     description: 'Name of the platform descriptor artifact to download'
     required: false
     default: 'platform-descriptor'
+  use_platform_descriptor:
+    description: 'Whether platform descriptor should be used for dependency validation'
+    required: false
+    default: 'true'
   rely_on_FAR:
     description: 'Whether to rely on FAR for application descriptor dependencies'
-    required: false
-    default: 'false'
-  skip_upload:
-    description: 'Skip uploading to registry (for PR validation flows)'
     required: false
     default: 'false'
   far_url:
@@ -28,26 +28,32 @@ inputs:
 outputs:
   validation_passed:
     description: 'Whether all validations passed'
-    value: ${{ steps.final-status.outputs.validation_passed }}
+    value: ${{ steps.validate-interfaces.outputs.validation_passed == 'true' && (steps.validate-dependencies.outputs.validation_passed == 'true' || steps.validate-dependencies.outcome == 'skipped') }}
   failure_reason:
     description: 'Reason for failure'
-    value: ${{ steps.fetch-app-descriptors.outputs.failure_reason || steps.validate-interfaces.outputs.failure_reason || steps.validate-dependencies.outputs.failure_reason || steps.upload-to-registry.outputs.failure_reason || '' }}
-  uploaded_to_registry:
-    description: 'Whether the application was uploaded to registry'
-    value: ${{ steps.upload-to-registry.outputs.uploaded }}
+    value: ${{ steps.fetch-app-descriptors.outputs.failure_reason || steps.validate-interfaces.outputs.failure_reason || steps.validate-dependencies.outputs.failure_reason || '' }}
 
 runs:
   using: 'composite'
   steps:
+    - name: Validate Inputs
+      shell: bash
+      run: |
+        if [[ -z "${{ inputs.app_descriptor_artifact_name }}" && -z "${{ inputs.app_descriptor_file }}" ]]; then
+          echo "::error::Neither application descriptor artifact nor descriptor file is provided. At least one must be specified."
+          exit 1
+        fi
+
     - name: Download Descriptor Artifact
+      if: inputs.app_descriptor_artifact_name != ''
       uses: actions/download-artifact@v4
       with:
-        name: ${{ inputs.app_descriptor_artifact_name || format('{0}-descriptor', inputs.app_name) }}
+        name: ${{ inputs.app_descriptor_artifact_name }}
         path: /tmp/app-descriptors
 
     - name: Download Platform Descriptor
       id: download-platform-descriptor
-      if: ${{ inputs.rely_on_FAR != 'true' }}
+      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true'
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.platform_descriptor_artifact_name }}
@@ -55,7 +61,7 @@ runs:
 
     - name: Fetch Application Descriptors from FAR
       id: fetch-app-descriptors
-      if: ${{ inputs.rely_on_FAR != 'true' && steps.download-platform-descriptor.outcome == 'success' }}
+      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true' && steps.download-platform-descriptor.outcome == 'success'
       shell: bash
       env:
         APP_NAME: ${{ inputs.app_name }}
@@ -141,6 +147,7 @@ runs:
 
     - name: Validate Application Dependencies Integrity
       id: validate-dependencies
+      if: (inputs.use_platform_descriptor == 'true' && steps.download-platform-descriptor.outcome == 'success') || inputs.rely_on_FAR == 'true'
       shell: bash
       env:
         RELY_ON_FAR: ${{ inputs.rely_on_FAR }}
@@ -174,46 +181,3 @@ runs:
         echo "validation_passed=true" >> "$GITHUB_OUTPUT"
         [[ "$RELY_ON_FAR" == "true" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
         rm -f "$resp_file"
-
-    - name: Upload to Application Registry
-      id: upload-to-registry
-      if: inputs.skip_upload != 'true'
-      shell: bash
-      env:
-        APP_DESCRIPTOR_FILE: "/tmp/app-descriptors/${{ inputs.app_descriptor_file }}"
-        FAR_API_URL: "${{ inputs.far_url }}/applications"
-      run: |
-        set -eo pipefail
-        echo "::notice::Upload application to registry"
-
-        resp_file="$(mktemp)"
-
-        http_code="$(curl -sS -o "$resp_file" -w "%{http_code}" -X POST \
-          -H "Content-Type: application/json" \
-          -d @"$APP_DESCRIPTOR_FILE" \
-          "$FAR_API_URL?check=false")"
-
-        if ! [[ "$http_code" =~ ^2[0-9]{2}$ ]]; then
-          echo "::error::Failed to upload application to registry (HTTP $http_code)"
-
-          [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
-
-          echo "failure_reason=Failed to upload application to registry (HTTP $http_code)" >> "$GITHUB_OUTPUT"
-          exit 1
-        fi
-
-        echo "::notice::Application uploaded to registry successfully"
-        echo "uploaded=true" >> "$GITHUB_OUTPUT"
-        rm -f "$resp_file"
-
-    - name: Final Status
-      id: final-status
-      if: always()
-      shell: bash
-      run: |
-        if [ "${{ steps.validate-interfaces.outputs.validation_passed }}" == "true" ] && \
-           [ "${{ steps.validate-dependencies.outputs.validation_passed }}" == "true" ]; then
-          echo "validation_passed=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "validation_passed=false" >> "$GITHUB_OUTPUT"
-        fi

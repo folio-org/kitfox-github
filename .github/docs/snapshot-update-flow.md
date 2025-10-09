@@ -1,20 +1,22 @@
-# Application Update Workflow
+# Snapshot Update Flow Workflow
 
-**Workflow**: `app-update.yml`  
-**Purpose**: Orchestrates automated module version updates and application descriptor management for FOLIO applications  
+**Workflow**: `snapshot-update-flow.yml`
+**Purpose**: Orchestrates automated module version updates and application descriptor management for FOLIO snapshot operations
 **Type**: Reusable workflow (`workflow_call`)
+**Related Ticket**: RANCHER-2571, Item #8
 
 ## 🎯 Overview
 
-This workflow orchestrates the complete continuous integration process for FOLIO applications. It coordinates three specialized workflows to check for newer module versions, validate changes, and commit updates. It's the core orchestration workflow powering FOLIO's snapshot CI system.
+This workflow orchestrates the complete snapshot update flow for FOLIO applications. It coordinates specialized workflows and actions to check for newer module versions, validate changes, and commit updates.
 
 ## 🏗️ Refactored Architecture
 
 The workflow has been refactored into modular components for better reusability and maintainability:
 
 1. **`update-application.yml`** - Module version checking and descriptor generation
-2. **`verify-application.yml`** - Application validation and registry operations  
-3. **`commit-application-changes.yml`** - Git operations for committing changes
+2. **`validate-application`** action - Application descriptor validation
+3. **`publish-app-descriptor`** action - Publishing descriptors to FAR
+4. **`commit-application-changes.yml`** - Git operations for committing changes
 
 This orchestrator workflow coordinates these components and handles failure scenarios.
 
@@ -57,33 +59,43 @@ This orchestrator workflow coordinates these components and handles failure scen
 
 ## 🔄 Workflow Execution Flow
 
-### 1. Update Application (`update-application.yml`)
+### 1. Check Branch Existence - *Resilience Gate*
+- **Branch Validation**: Verifies target branch exists in the repository
+- **Graceful Skipping**: If branch doesn't exist, workflow skips update without failing
+- **Status Reporting**: Reports "skipped" status with clear reason
+- **Resilience**: Prevents failures when new applications don't have snapshot branches yet
+
+### 2. Update Application (`update-application.yml`) - *Conditional*
+- **Runs only if**: Branch exists
 - **Module Version Checking**: Queries FOLIO registry for latest module versions
 - **Version Comparison**: Compares current vs. available versions
 - **Descriptor Updates**: Updates application-descriptor.json with new module versions
 - **POM Updates**: Updates pom.xml version when in release mode
 - **Artifact Generation**: Creates state files for downstream processing
 
-### 2. Verify Application (`verify-application.yml`) - *Conditional*
-- **Runs only if**: Updates were found in step 1
+### 3. Validate Application (`validate-application` action) - *Conditional*
+- **Runs only if**: Updates were found in step 2
 - **Platform Integration**: Downloads platform descriptor for validation context
 - **Interface Validation**: Validates module interface integrity via FAR API
-- **Dependency Validation**: Validates application dependencies integrity
-- **Registry Upload**: Publishes application descriptor to FAR registry (unless dry-run)
+- **Dependency Validation**: Validates application dependencies integrity (conditional based on platform descriptor availability)
 
-### 3. Commit Changes (`commit-application-changes.yml`) - *Conditional*
+### 4. Publish Descriptor (`publish-app-descriptor` action) - *Conditional*
+- **Runs only if**: Validation passed and not in dry-run mode
+- **Registry Upload**: Publishes application descriptor to FAR registry
+
+### 5. Commit Changes (`commit-application-changes.yml`) - *Conditional*
 - **Runs only if**: Updates were found and validation passed
 - **Git Configuration**: Sets up GitHub Actions bot identity
 - **File Download**: Retrieves updated state files from artifacts
 - **Commit Creation**: Creates descriptive commit with update details
 - **Branch Push**: Pushes changes to target branch (unless dry-run)
 
-### 4. Cleanup on Failure - *Conditional*
+### 6. Cleanup on Failure - *Conditional*
 - **Runs only if**: Commit failed after registry upload
 - **Registry Cleanup**: Removes uploaded descriptor from FAR registry
 - **Error Reporting**: Provides failure context for troubleshooting
 
-### 5. Upload Results
+### 7. Upload Results
 - **Always runs**: Regardless of success or failure
 - **Result Aggregation**: Collects all workflow outputs
 - **Artifact Creation**: Creates structured JSON result artifact
@@ -168,7 +180,7 @@ find /tmp/app-descriptors -name '*.json' -print0 \
 ```yaml
 jobs:
   update-application:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
@@ -181,7 +193,7 @@ jobs:
 ```yaml
 jobs:
   update-application:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
@@ -199,7 +211,7 @@ jobs:
 ```yaml
 jobs:
   test-update:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
@@ -233,6 +245,13 @@ When `dry_run: true`:
 ## 🔍 Troubleshooting
 
 ### Common Issues
+
+**Branch Does Not Exist**:
+```
+Warning: Branch 'snapshot' does not exist in repository 'folio-org/app-example'
+Status: Skipped (not failed)
+Solution: Workflow gracefully skips update. Create the branch when ready or this is expected for new applications.
+```
 
 **State File Missing**:
 ```
@@ -283,7 +302,7 @@ on:
 
 jobs:
   update-application:
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
@@ -307,7 +326,7 @@ jobs:
 
   update-application:
     needs: fetch-platform-descriptor
-    uses: folio-org/kitfox-github/.github/workflows/app-update.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
 ```
 
 

@@ -23,33 +23,25 @@ The workflows follow a layered architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   High-Level Orchestrators                   │
-│  • snapshot-update.yml                                       │
-│  • release-update.yml                                        │
-│  • release-preparation.yml                                   │
+│                   High-Level Orchestrators                  │
+│  • snapshot-update.yml                                      │
+│  • release-update.yml                                       │
+│  • release-preparation.yml                                  │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   Mid-Level Orchestrators                    │
-│  • app-update.yml                                           │
+│                   Mid-Level Orchestrators                   │
+│  • snapshot-update-flow.yml                                 │
 │  • release-update-flow.yml                                  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Core Utilities                          │
-│  • update-application.yml                                    │
-│  • commit-application-changes.yml                           │
-│  • compare-applications.yml                                 │
 │  • release-pr-check.yml                                     │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                       Notifications                          │
-│  • release-preparation-notification.yml                      │
-│  • Integrated notifications in orchestrator workflows        │
+│                      Core Utilities                         │
+│  • update-application.yml                                   │
+│  • commit-application-changes.yml                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,10 +103,10 @@ The workflows follow a layered architecture:
 
 ### Mid-Level Orchestrators
 
-#### Application Update
-**File**: [`app-update.yml`](workflows/app-update.yml)
-**Purpose**: Core application update orchestration
-**Documentation**: [App Update Guide](docs/app-update.md)
+#### Snapshot Update Flow
+**File**: [`snapshot-update-flow.yml`](workflows/snapshot-update-flow.yml)
+**Purpose**: Snapshot update flow orchestration
+**Documentation**: [Snapshot Update Flow Guide](docs/snapshot-update-flow.md)
 
 **Key Features**:
 - Coordinates update, verification, and commit operations
@@ -150,10 +142,10 @@ The workflows follow a layered architecture:
 - Platform descriptor integration
 - Detailed change tracking
 
-#### Commit Application Changes
-**File**: [`commit-application-changes.yml`](workflows/commit-application-changes.yml)
-**Purpose**: Git operations for application updates
-**Documentation**: [Commit Application Changes Guide](docs/commit-application-changes.md)
+#### Commit and Push Changes
+**File**: [`commit-and-push-changes.yml`](workflows/commit-and-push-changes.yml)
+**Purpose**: Generic Git operations for committing and pushing changes
+**Documentation**: [Commit and Push Changes Guide](docs/commit-and-push-changes.md)
 
 **Key Features**:
 - Atomic Git operations with error handling
@@ -162,48 +154,61 @@ The workflows follow a layered architecture:
 - Dry-run support for validation
 - Rollback capabilities
 
-#### Verify Application
-**Action**: [`verify-application`](actions/verify-application/)
-**Purpose**: Application validation and registry upload
-**Documentation**: [Verify Application Action README](actions/verify-application/README.md)
+#### Validate Application
+**Action**: [`validate-application`](actions/validate-application/)
+**Purpose**: Application descriptor validation
+**Documentation**: [Validate Application Action README](actions/validate-application/README.md)
 
 **Key Features**:
 - Application descriptor validation
-- Maven artifact verification
-- Registry upload capabilities
+- Module interface integrity checks
+- Conditional dependency validation
 - Comprehensive error reporting
-- Integration with FAR registry
+- Integration with FAR registry for validation
 
-#### Compare Applications
-**File**: [`compare-applications.yml`](workflows/compare-applications.yml)
-**Purpose**: Version comparison and change detection
-**Documentation**: [Compare Applications Guide](docs/compare-applications.md)
+#### Publish Application Descriptor
+**Action**: [`publish-app-descriptor`](actions/publish-app-descriptor/)
+**Purpose**: Publish application descriptors to FAR
+**Documentation**: [Publish Application Descriptor README](actions/publish-app-descriptor/README.md)
 
 **Key Features**:
-- Cross-branch version comparison
-- Module change detection
-- Detailed diff generation
-- Support for artifact comparison
-- Structured output for upstream processing
+- Publishes validated descriptors to FAR
+- Supports artifact and file path inputs
+- Unique temporary directories to avoid conflicts
+- Comprehensive error handling
+
+#### Unpublish Application Descriptor
+**Action**: [`unpublish-app-descriptor`](actions/unpublish-app-descriptor/)
+**Purpose**: Remove application descriptors from FAR
+**Documentation**: [Unpublish Application Descriptor README](actions/unpublish-app-descriptor/README.md)
+
+**Key Features**:
+- Removes descriptors from FAR registry
+- Used in cleanup-on-failure scenarios
+- Comprehensive error handling
 
 #### Release PR Check
 **File**: [`release-pr-check.yml`](workflows/release-pr-check.yml)
 **Purpose**: Automated validation of release pull requests
-**Trigger**: `workflow_dispatch` (called from external systems)
+**Documentation**: [Release PR Check Guide](docs/release-pr-check.md)
+**Trigger**: `workflow_dispatch` (called from GitHub App webhook)
 
 **Key Features**:
 - PR validation and commit verification
 - Release configuration validation
 - Label-based conditional execution
 - Application descriptor generation and validation
-- GitHub Checks API integration
+- GitHub Checks API integration with interactive re-run buttons
 - Real-time status updates on PR commits
 - Platform descriptor integration for validation context
+- Intelligent error handling (404 vs real errors)
+- Slack notifications to team and general channels
 
 **Workflow**:
 1. **Pre-Check**: Validates PR existence, commit membership, and release configuration
 2. **Application Check**: Generates and validates application descriptor
-3. **Status Reporting**: Creates GitHub check runs with detailed validation results
+3. **Notifications**: Sends status updates to configured Slack channels
+4. **Summary**: Generates comprehensive workflow summary
 
 ### Notification Workflows
 
@@ -353,17 +358,17 @@ Workflows implement comprehensive error handling:
 - **[Release Preparation](docs/release-preparation.md)**: Release branch creation and setup
 
 #### Mid-Level Orchestrators
-- **[App Update](docs/app-update.md)**: Core application update orchestration
+- **[Snapshot Update Flow](docs/snapshot-update-flow.md)**: Snapshot update flow orchestration
 - **[Release Update Flow](docs/release-update-flow.md)**: Comprehensive release update implementation
 
 #### Core Utilities
 - **[Update Application](docs/update-application.md)**: Application descriptor update logic
-- **[Commit Application Changes](docs/commit-application-changes.md)**: Git operations management
-- **[Verify Application Action](actions/verify-application/README.md)**: Validation and registry upload
-- **[Compare Applications](docs/compare-applications.md)**: Version comparison and change detection
+- **[Commit and Push Changes](docs/commit-and-push-changes.md)**: Git operations management
+- **[Release PR Check](docs/release-pr-check.md)**: Automated PR validation with GitHub Checks integration
+- **[Validate Application Action](actions/validate-application/README.md)**: Application descriptor validation
+- **[Publish Application Descriptor](actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR
+- **[Unpublish Application Descriptor](actions/unpublish-app-descriptor/README.md)**: Remove descriptors from FAR
 
-#### Notifications
-- **[Release Preparation Notification](docs/release-preparation-notification.md)**: Slack notifications for release operations
 
 ### Implementation References
 

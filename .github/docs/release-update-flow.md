@@ -95,24 +95,7 @@ Delegates to the `update-application.yml` workflow with release-specific configu
 - Module update state files
 - Version information
 
-### 3. Version Comparison (Conditional)
-**Job**: `compare-applications`
-
-**Execution Condition**: Only runs when update branch already exists
-
-**Comparison Logic**:
-- **Base Branch**: Always uses the original release branch
-- **Head Source**: Uses either update branch or artifact based on update status
-- **Change Detection**: Identifies differences between versions
-- **Module Analysis**: Provides detailed module-level comparison
-
-**Flexible Input Handling**:
-```yaml
-head_branch: ${{ needs.update-application.outputs.updated != 'true' && inputs.update_branch || '' }}
-artifact_name: ${{ needs.update-application.outputs.updated == 'true' && format('{0}-update-files', inputs.app_name) || '' }}
-```
-
-### 4. Change Commitment
+### 3. Change Commitment
 **Job**: `commit-changes`
 
 **Execution Condition**: Only when updates are found
@@ -131,7 +114,7 @@ Updated modules:
 {detailed_module_list}
 ```
 
-### 5. Pull Request Management
+### 4. Pull Request Management
 **Job**: `manage-pr`
 
 This sophisticated job handles both PR creation and updates:
@@ -184,14 +167,11 @@ if: |
 
 ### Dynamic Version Handling
 
-**Version Source Priority**:
-1. **Comparison Results**: Uses compare-applications output when available
-2. **Update Results**: Falls back to update-application output
-3. **Graceful Degradation**: Handles missing version information
+**Version Source**: The manage-pr job compares the release branch with the update branch to get accurate version and module information for PR content.
 
 **Example Version Resolution**:
 ```yaml
-new_version: ${{ needs.compare-applications.outputs.new_version || needs.update-application.outputs.new_version || 'No updates' }}
+new_version: ${{ steps.compare.outputs.new-version || 'No updates' }}
 ```
 
 ### Comprehensive Error Tracking
@@ -323,8 +303,8 @@ jobs:
 
 **Partial Success Handling**:
 ```yaml
-# PR creation with fallback content
-pr_title: "Release: Update to ${{ needs.compare-applications.outputs.new_version || needs.update-application.outputs.new_version || 'No updates' }}"
+# PR creation with version from comparison
+pr_title: "Release: Update to ${{ steps.compare.outputs.new-version || 'No updates' }}"
 
 # Reviewer management with success/failure tracking
 successful_reviewers: ${{ steps.create-pr.outputs.successful_reviewers || steps.update-pr.outputs.successful_reviewers || '' }}
@@ -546,9 +526,9 @@ jobs:
 ## 📚 Related Documentation
 
 - **[Release Update](release-update.md)**: Main orchestration workflow
-- **[Compare Applications](compare-applications.md)**: Version comparison implementation
 - **[Update Application](update-application.md)**: Module update mechanics
-- **[Commit Application Changes](commit-application-changes.md)**: Change commitment workflow
+- **[Commit and Push Changes](commit-and-push-changes.md)**: Change commitment workflow
+- **[Compare State Files Action](../actions/compare-state-files/README.md)**: Version comparison action
 - **[GitHub Actions: Create PR](../actions/create-pr/README.md)**: PR creation action
 - **[GitHub Actions: Update PR](../actions/update-pr/README.md)**: PR update action
 

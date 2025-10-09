@@ -132,10 +132,10 @@ runs:
             
             if response=$(gh api "repos/${{ inputs.repo }}/branches/$branch" 2>&1); then
               existing+=("$branch")
-              echo "::notice::  ✓ Branch exists: $branch"
+              echo "::notice::Branch exists: $branch"
             else
-              echo "::warning::  ✗ Branch not found: $branch"
-              echo "::warning::    API response: $response"
+              echo "::warning::Branch not found: $branch"
+              echo "::warning::API response: $response"
             fi
           done
           
