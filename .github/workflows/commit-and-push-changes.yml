@@ -1,27 +1,27 @@
-name: Commit Application Changes (Reusable)
+name: Commit and Push Changes (Reusable)
 
 on:
   workflow_call:
     inputs:
-      app_name:
-        description: 'Application name'
-        required: true
-        type: string
       repo:
-        description: 'Application repository name (org/repo format)'
+        description: 'Target repository (org/repo format)'
         required: true
         type: string
       branch:
-        description: 'Branch to update'
+        description: 'Target branch for changes'
         required: false
         type: string
-        default: 'snapshot'
+        default: 'main'
       commit_message:
         description: 'Commit message (supports multiline)'
         required: true
         type: string
+      artifact_name:
+        description: 'Name of artifact containing files to commit'
+        required: true
+        type: string
       dry_run:
-        description: 'Perform dry run without making changes'
+        description: 'Perform dry run without pushing changes'
         required: false
         type: boolean
         default: false
@@ -31,38 +31,57 @@ on:
         type: boolean
         default: false
       source_branch:
-        description: 'Source branch to checkout from (if different from target branch)'
+        description: 'Source branch to checkout from (for branch creation)'
         required: false
         type: string
         default: ''
-      update_files_artifact_name:
-        description: 'Name of the update files artifact to download (defaults to app_name-update-files)'
-        required: false
-        type: string
 
     outputs:
       commit_sha:
-        description: 'Commit SHA'
-        value: ${{ jobs.commit-changes.outputs.commit_sha }}
+        description: 'SHA of the created commit'
+        value: ${{ jobs.commit-and-push.outputs.commit_sha }}
+      branch_created:
+        description: 'Whether a new branch was created'
+        value: ${{ jobs.commit-and-push.outputs.branch_created }}
+      changes_made:
+        description: 'Whether any changes were committed'
+        value: ${{ jobs.commit-and-push.outputs.changes_made }}
       failure_reason:
-        description: 'Reason for failure'
-        value: ${{ jobs.commit-changes.outputs.failure_reason }}
+        description: 'Reason for failure if any'
+        value: ${{ jobs.commit-and-push.outputs.failure_reason }}
 
 permissions:
   contents: write
 
-env:
-  APP_NAME: ${{ inputs.app_name }}
-
 jobs:
-  commit-changes:
-    name: Commit Changes
+  commit-and-push:
+    name: Commit and Push Changes
     runs-on: ubuntu-latest
     outputs:
-      commit_sha: ${{ steps.commit-changes.outputs.commit_sha }}
-      failure_reason: ${{ steps.commit-changes.outputs.failure_reason || 
-        steps.push-changes.outputs.failure_reason || ''}}
+      commit_sha: ${{ steps.commit.outputs.commit_sha }}
+      branch_created: ${{ steps.switch-branch.outputs.branch_created || 'false' }}
+      changes_made: ${{ steps.commit.outputs.changes_made || 'false' }}
+      failure_reason: ${{ steps.commit.outputs.failure_reason ||
+        steps.push.outputs.failure_reason || ''}}
     steps:
+      - name: Extract Owner and Repository Name
+        id: extract-repo-parts
+        env:
+          REPO: ${{ inputs.repo }}
+        run: |
+          set -eo pipefail
+
+          # Extract owner (part before /)
+          owner="${REPO%%/*}"
+          # Extract repository name (part after /)
+          repo_name="${REPO##*/}"
+
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+          echo "repo_name=$repo_name" >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Owner: $owner"
+          echo "::notice::Repository: $repo_name"
+
       - name: Generate App Token
         id: app-token
         if: inputs.use_github_app == true
@@ -70,10 +89,10 @@ jobs:
         with:
           app-id: ${{ vars.EUREKA_CI_APP_ID }}
           private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ inputs.app_name }}
+          owner: ${{ steps.extract-repo-parts.outputs.owner }}
+          repositories: ${{ steps.extract-repo-parts.outputs.repo_name }}
 
-      - name: Checkout Application Repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo }}
@@ -103,50 +122,59 @@ jobs:
 
           echo "::notice::Switching to branch '$TARGET_BRANCH' (from source '$SOURCE_BRANCH')"
 
-          git rev-parse --verify $TARGET_BRANCH >/dev/null 2>&1 || git switch -c $TARGET_BRANCH
-          git switch $TARGET_BRANCH
-          
+          branch_created="false"
+          if ! git rev-parse --verify "$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "::notice::Creating new branch '$TARGET_BRANCH'"
+            git switch -c "$TARGET_BRANCH"
+            branch_created="true"
+          else
+            echo "::notice::Switching to existing branch '$TARGET_BRANCH'"
+            git switch "$TARGET_BRANCH"
+          fi
+
+          echo "branch_created=$branch_created" >> "$GITHUB_OUTPUT"
           echo "::notice::Successfully switched to branch '$TARGET_BRANCH'"
 
-
-      - name: Download Application Update Files
+      - name: Download Artifact with Changes
         uses: actions/download-artifact@v4
         with:
-          name: "${{ inputs.update_files_artifact_name || format('{0}-update-files', env.APP_NAME) }}"
+          name: ${{ inputs.artifact_name }}
           path: .
 
       - name: Commit Changes
-        id: commit-changes
+        id: commit
         env:
           COMMIT_MESSAGE: ${{ inputs.commit_message }}
         run: |
           set -eo pipefail
 
-          echo "::group::Stage changes for commit"
+          echo "::group::Review changes"
           git status
           echo "::endgroup::"
-          
+
           git add . 2>/dev/null || true
 
           if git diff --cached --quiet; then
-            echo "::error::No changes to commit"
+            echo "::warning::No changes to commit"
+            echo "changes_made=false" >> "$GITHUB_OUTPUT"
             echo "failure_reason=No changes to commit" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           commit_msg_file=$(mktemp)
           echo "$COMMIT_MESSAGE" > "$commit_msg_file"
-          
+
           git commit -F "$commit_msg_file"
           rm -f "$commit_msg_file"
-          
+
           commit_sha=$(git rev-parse HEAD)
-          
-          echo "::notice::Successfully committed changes #$commit_sha"
+
+          echo "::notice::Successfully committed changes: $commit_sha"
           echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+          echo "changes_made=true" >> "$GITHUB_OUTPUT"
 
       - name: Push Changes
-        id: push-changes
+        id: push
         if: inputs.dry_run == false
         env:
           BRANCH_NAME: ${{ inputs.branch }}

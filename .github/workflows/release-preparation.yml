@@ -206,11 +206,11 @@ jobs:
     name: Commit and Push Changes
     needs: [prepare-branch, update-application]
     if: needs.update-application.outputs.updated == 'true'
-    uses: ./.github/workflows/commit-application-changes.yml
+    uses: ./.github/workflows/commit-and-push-changes.yml
     with:
-      app_name: ${{ inputs.app_name }}
       repo: ${{ inputs.repo }}
       branch: ${{ inputs.new_release_branch }}
+      artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
       commit_message: |
         Prepare ${{ inputs.app_name }} for release. Initial commit.
 
@@ -222,5 +222,4 @@ jobs:
         All module versions set to placeholder <CHANGE_ME> for team updates.
       dry_run: ${{ inputs.dry_run }}
       source_branch: ${{ needs.prepare-branch.outputs.source_branch }}
-      update_files_artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
     secrets: inherit

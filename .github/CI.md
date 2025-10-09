@@ -142,10 +142,10 @@ The workflows follow a layered architecture:
 - Platform descriptor integration
 - Detailed change tracking
 
-#### Commit Application Changes
-**File**: [`commit-application-changes.yml`](workflows/commit-application-changes.yml)
-**Purpose**: Git operations for application updates
-**Documentation**: [Commit Application Changes Guide](docs/commit-application-changes.md)
+#### Commit and Push Changes
+**File**: [`commit-and-push-changes.yml`](workflows/commit-and-push-changes.yml)
+**Purpose**: Generic Git operations for committing and pushing changes
+**Documentation**: [Commit and Push Changes Guide](docs/commit-and-push-changes.md)
 
 **Key Features**:
 - Atomic Git operations with error handling
@@ -363,7 +363,7 @@ Workflows implement comprehensive error handling:
 
 #### Core Utilities
 - **[Update Application](docs/update-application.md)**: Application descriptor update logic
-- **[Commit Application Changes](docs/commit-application-changes.md)**: Git operations management
+- **[Commit and Push Changes](docs/commit-and-push-changes.md)**: Git operations management
 - **[Release PR Check](docs/release-pr-check.md)**: Automated PR validation with GitHub Checks integration
 - **[Validate Application Action](actions/validate-application/README.md)**: Application descriptor validation
 - **[Publish Application Descriptor](actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR

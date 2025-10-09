@@ -163,11 +163,11 @@ jobs:
     name: Commit Changes
     needs: [update-application, verify-application]
     if: needs.update-application.outputs.updated == 'true'
-    uses: ./.github/workflows/commit-application-changes.yml
+    uses: ./.github/workflows/commit-and-push-changes.yml
     with:
-      app_name: ${{ inputs.app_name }}
       repo: ${{ inputs.repo }}
       branch: ${{ inputs.branch }}
+      artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
       commit_message: |
         Update application state file to ${{ needs.update-application.outputs.new_version }}.
 
@@ -176,7 +176,6 @@ jobs:
         Modules: ${{ needs.update-application.outputs.updated_modules }}
       dry_run: ${{ inputs.dry_run }}
       use_github_app: ${{ inputs.use_github_app }}
-      update_files_artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
     secrets: inherit
 
   cleanup-on-failure:

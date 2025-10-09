@@ -191,7 +191,7 @@ The workflow provides detailed `failure_reason` output for troubleshooting.
 
 - **[Validate Application Action](../actions/validate-application/README.md)**: Application descriptor validation
 - **[Publish Application Descriptor](../actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR
-- **[commit-application-changes.md](commit-application-changes.md)**: Git operations workflow
+- **[commit-and-push-changes.md](commit-and-push-changes.md)**: Git operations workflow
 
 ---
 
