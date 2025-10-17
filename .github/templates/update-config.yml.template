@@ -1,0 +1,15 @@
+scan_config:
+  enabled: true
+  update_branch_format: "version-update/{0}"
+  labels:
+    - release-update
+  pr_reviewers:
+    - folio-org/kitfox
+
+release_branches:
+  - snapshot
+      enabled: true
+      need_pr: false
+#  - R2-2024
+#      enable: false
+#      need_pr: true
