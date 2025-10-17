@@ -40,25 +40,32 @@ on:
         value: ${{ inputs.app_name }}
       app_version:
         description: 'Determined application version'
-        value: ${{ jobs.prepare-branch.outputs.app_version }}
+        value: ${{ jobs.update-template.outputs.app_version }}
       source_branch:
         description: 'Source branch'
-        value: ${{ jobs.prepare-branch.outputs.source_branch }}
+        value: ${{ jobs.update-template.outputs.source_branch }}
       commit_sha:
         description: 'Commit SHA'
-        value: ${{ jobs.commit-changes.outputs.commit_sha }}
+        value: ${{ jobs.commit-release-branch.outputs.commit_sha }}
 
 permissions:
   contents: write
 
+env:
+  APPLICATION_TEMPLATE_FILE: 'application.template.json'
+  UPDATE_CONFIG_FILE: 'update-config.yml'
+  UPDATE_CONFIG_TEMPLATE_PATH: '.github/templates/update-config.yml.template'
+  APPLICATION_STATE_FILE: 'application.lock.json'
+
 jobs:
-  prepare-branch:
-    name: Prepare Release Branch
+  update-template:
+    name: Update Application Template
     runs-on: ubuntu-latest
 
     outputs:
       app_version: ${{ steps.determine-new-version.outputs.new_version }}
       source_branch: ${{ steps.verify-branches.outputs.source_branch }}
+      default_branch: ${{ steps.verify-branches.outputs.default_branch }}
 
     env:
       PREV_BRANCH: ${{ inputs.previous_release_branch }}
@@ -113,16 +120,14 @@ jobs:
             exit 1
           fi
 
-          if git ls-remote --exit-code --heads origin "master" >/dev/null 2>&1; then
-            echo "::notice::Master branch exists"
-            echo "default_branch=master" >> "$GITHUB_OUTPUT"
-          elif git ls-remote --exit-code --heads origin "main" >/dev/null 2>&1; then
-            echo "::notice::Main branch exists"
-            echo "default_branch=main" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::Missing branch. Neither master nor main branches exist"
+          default_branch=$(gh api repos/${{ inputs.repo }} --jq .default_branch)
+          if [ -z "$default_branch" ]; then
+            echo "::error::Could not determine default branch for ${{ inputs.repo }}"
             exit 1
           fi
+
+          echo "::notice::Default branch is: $default_branch"
+          echo "default_branch=$default_branch" >> "$GITHUB_OUTPUT"
 
           if ! git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
             echo "::error::Missing branch. The snapshot branch does not exist"
@@ -189,37 +194,151 @@ jobs:
           echo "::notice::New determined version: $new_version"
           echo "new_version=$new_version"       >>"$GITHUB_OUTPUT"
 
-  update-application:
-    name: Update Application Files
-    needs: prepare-branch
-    uses: ./.github/workflows/update-application.yml
-    with:
-      app_name: ${{ inputs.app_name }}
-      repo: ${{ inputs.repo }}
-      branch: ${{ needs.prepare-branch.outputs.source_branch }}
-      workflow_run_number: ${{ github.run_number }}
-      target_version: ${{ needs.prepare-branch.outputs.app_version }}
-      placeholder_modules: true
-    secrets: inherit
+      - name: Update Application Template
+        id: update-template
+        env:
+          TARGET_VERSION: ${{ steps.determine-new-version.outputs.new_version }}
+        run: |
+          set -eo pipefail
 
-  commit-changes:
-    name: Commit and Push Changes
-    needs: [prepare-branch, update-application]
-    if: needs.update-application.outputs.updated == 'true'
+          if [ ! -f "$APPLICATION_TEMPLATE_FILE" ]; then
+            echo "::error::$APPLICATION_TEMPLATE_FILE not found"
+            exit 1
+          fi
+
+          echo "::notice::Updating $APPLICATION_TEMPLATE_FILE with version $TARGET_VERSION and ^VERSION placeholders"
+
+          jq --arg version "$TARGET_VERSION" '
+            .version = $version
+            | .modules     |= map(.version = "^VERSION")
+            | .uiModules   |= map(.version = "^VERSION")
+          ' "$APPLICATION_TEMPLATE_FILE" > temp.json && mv temp.json "$APPLICATION_TEMPLATE_FILE"
+
+          echo "::group::Updated template"
+          cat "$APPLICATION_TEMPLATE_FILE"
+          echo "::endgroup::"
+
+      - name: Update POM Version
+        id: update-pom
+        env:
+          TARGET_VERSION: ${{ steps.determine-new-version.outputs.new_version }}
+        run: |
+          set -eo pipefail
+
+          if [ -f "pom.xml" ]; then
+            echo "::notice::Updating pom.xml version to $TARGET_VERSION"
+            mvn versions:set -DnewVersion="$TARGET_VERSION" -DgenerateBackupPoms=false
+          else
+            echo "::notice::No pom.xml found, skipping"
+          fi
+
+      - name: Upload Release Branch Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ inputs.app_name }}-release-files"
+          path: |
+            ${{ env.APPLICATION_TEMPLATE_FILE }}
+            pom.xml
+          retention-days: 1
+
+  update-config:
+    name: Update Configuration File
+    needs: update-template
+    runs-on: ubuntu-latest
+    outputs:
+      config_updated: ${{ steps.update-config.outputs.updated }}
+
+    steps:
+      - name: Checkout Repository (Default Branch)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ needs.update-template.outputs.default_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get or Create Update Config
+        id: update-config
+        env:
+          NEW_BRANCH: ${{ inputs.new_release_branch }}
+        run: |
+          set -eo pipefail
+
+          if [ -f "$UPDATE_CONFIG_FILE" ]; then
+            echo "::notice::$UPDATE_CONFIG_FILE exists, updating it"
+
+            if grep -q "^  - $NEW_BRANCH$" "$UPDATE_CONFIG_FILE"; then
+              echo "::notice::Branch $NEW_BRANCH already in config, no update needed"
+              echo "updated=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "  - $NEW_BRANCH" >> "$UPDATE_CONFIG_FILE"
+          else
+            echo "::notice::$UPDATE_CONFIG_FILE not found, creating from template"
+
+            # Clone kitfox-github to get template
+            git clone --depth 1 https://github.com/folio-org/kitfox-github.git /tmp/kitfox-github
+
+            template_path="/tmp/kitfox-github/$UPDATE_CONFIG_TEMPLATE_PATH"
+            if [ -f "$template_path" ]; then
+              cp "$template_path" "$UPDATE_CONFIG_FILE"
+              echo "  - $NEW_BRANCH" >> "$UPDATE_CONFIG_FILE"
+            else
+              echo "::error::Template not found at $template_path"
+              exit 1
+            fi
+          fi
+
+          echo "::group::Updated config"
+          cat "$UPDATE_CONFIG_FILE"
+          echo "::endgroup::"
+
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Config File
+        if: steps.update-config.outputs.updated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ inputs.app_name }}-config-file"
+          path: ${{ env.UPDATE_CONFIG_FILE }}
+          retention-days: 1
+
+  commit-release-branch:
+    name: Commit Release Branch Changes
+    needs: [update-template, update-config]
+    if: needs.update-template.result == 'success'
     uses: ./.github/workflows/commit-and-push-changes.yml
     with:
       repo: ${{ inputs.repo }}
       branch: ${{ inputs.new_release_branch }}
-      artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
+      artifact_name: "${{ inputs.app_name }}-release-files"
       commit_message: |
         Prepare ${{ inputs.app_name }} for release. Initial commit.
 
         Previous release: ${{ inputs.previous_release_branch }}
         New release: ${{ inputs.new_release_branch }}
-        Source branch: ${{ needs.prepare-branch.outputs.source_branch }}
-        Version: ${{ needs.prepare-branch.outputs.app_version }}
+        Source branch: ${{ needs.update-template.outputs.source_branch }}
+        Version: ${{ needs.update-template.outputs.app_version }}
 
-        All module versions set to placeholder <CHANGE_ME> for team updates.
+        Module versions set to ^VERSION placeholder for team updates.
       dry_run: ${{ inputs.dry_run }}
-      source_branch: ${{ needs.prepare-branch.outputs.source_branch }}
+      source_branch: ${{ needs.update-template.outputs.source_branch }}
+      deleted_files: |
+        ${{ env.APPLICATION_STATE_FILE }}
+    secrets: inherit
+
+  commit-config:
+    name: Commit Config to Default Branch
+    needs: [update-template, update-config, commit-release-branch]
+    if: needs.update-config.outputs.config_updated == 'true' && needs.commit-release-branch.result == 'success' && inputs.dry_run == false
+    uses: ./.github/workflows/commit-and-push-changes.yml
+    with:
+      repo: ${{ inputs.repo }}
+      branch: ${{ needs.update-template.outputs.default_branch }}
+      artifact_name: "${{ inputs.app_name }}-config-file"
+      commit_message: |
+        Add ${{ inputs.new_release_branch }} to update configuration
+
+        Automatically added by release preparation workflow.
+      dry_run: ${{ inputs.dry_run }}
     secrets: inherit
