@@ -35,6 +35,11 @@ on:
         required: false
         type: string
         default: ''
+      deleted_files:
+        description: 'List of files to delete from the branch (multiline string, one file per line)'
+        required: false
+        type: string
+        default: ''
 
     outputs:
       commit_sha:
@@ -140,6 +145,30 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}
           path: .
+
+      - name: Delete Specified Files
+        if: inputs.deleted_files != ''
+        env:
+          FILES_TO_DELETE: ${{ inputs.deleted_files }}
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Deleting specified files"
+
+          while IFS= read -r file; do
+            # Skip empty lines and trim whitespace
+            file=$(echo "$file" | xargs)
+            if [ -z "$file" ]; then
+              continue
+            fi
+
+            if [ -f "$file" ]; then
+              echo "::notice::Deleting $file"
+              rm "$file"
+            else
+              echo "::notice::File $file not found, skipping"
+            fi
+          done <<< "$FILES_TO_DELETE"
 
       - name: Commit Changes
         id: commit
