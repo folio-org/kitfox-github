@@ -106,19 +106,19 @@ jobs:
         steps.set-placeholder-modules.outputs.failure_reason ||
         steps.generate-application-descriptor.outputs.failure_reason || '' }}
     steps:
-      - name: Checkout Application Repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.repo }}
-          ref: ${{ inputs.branch }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Collect Previous Version
         id: collect-previous-version
         uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
         with:
           app_name: ${{ inputs.repo }}
           branch: ${{ inputs.branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout Application Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set Placeholder Module Versions
