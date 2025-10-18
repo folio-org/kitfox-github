@@ -10,9 +10,10 @@ on:
         required: true
         type: string
       update_branch:
-        description: 'Update branch name for this release branch'
-        required: true
+        description: 'Update branch name for this release branch (null/empty means direct update)'
+        required: false
         type: string
+        default: ''
       dry_run:
         description: 'Perform dry run without creating PRs'
         required: false

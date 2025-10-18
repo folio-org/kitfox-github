@@ -1,10 +1,10 @@
 # Get Release Configuration Action
 
-A GitHub Action that reads and parses release configuration from a `release-config.yml` file in a repository. This action validates configuration settings, checks for existing release branches, and provides structured outputs for release automation workflows.
+A GitHub Action that reads and parses release configuration from an `update-config.yml` file in a repository. This action validates configuration settings, checks for existing release branches, and provides structured outputs for release automation workflows.
 
 ## Features
 
-- **Configuration File Discovery**: Automatically locates and reads `release-config.yml` files
+- **Configuration File Discovery**: Automatically locates and reads `update-config.yml` files
 - **Branch Validation**: Verifies that configured release branches actually exist in the repository
 - **Flexible Configuration**: Supports custom config file paths and branch references
 - **Structured Outputs**: Provides JSON arrays and maps for easy consumption by other workflow steps
@@ -51,7 +51,7 @@ A GitHub Action that reads and parses release configuration from a `release-conf
 |----------------|------------|-----------------------------------------------|-----------------------------------------------------------------|
 | `repo`         | Yes        | -                                             | Repository in `org/repo` format to read configuration from      |
 | `branch`       | No         | `${{ github.base_ref \|\| github.ref_name }}` | Branch where the configuration file resides                     |
-| `config_file`  | No         | `.github/release-config.yml`                  | Path to the configuration file within the repository            |
+| `config_file`  | No         | `.github/update-config.yml`                   | Path to the configuration file within the repository            |
 | `github_token` | No         | `${{ github.token }}`                         | GitHub token for API access (needs repository read permissions) |
 
 ## Outputs
@@ -63,46 +63,57 @@ A GitHub Action that reads and parses release configuration from a `release-conf
 | `branch_count`        | Number of existing release branches (integer)                            |
 | `pr_reviewers`        | Comma-separated list of PR reviewers                                     |
 | `pr_labels`           | Comma-separated list of PR labels                                        |
-| `update_branches_map` | JSON map of release branches to their corresponding update branches      |
+| `update_branches_map` | JSON map of release branches to their corresponding update branches (or `null` for direct updates) |
 | `config_exists`       | Whether the configuration file exists in the repository (`true`/`false`) |
 
 ## Configuration File Format
 
-The `release-config.yml` file should follow this structure:
+The `update-config.yml` file should follow this structure:
 
 ```yaml
-# Release scanning configuration
-scan_config:
+# Platform version update configuration
+update_config:
   enabled: true
   pr_reviewers:
-    - "reviewer1"
-    - "reviewer2"
+    - "org/team-name"
+    - "username"
   labels:
-    - "release-update"
-    - "automated"
-  update_branch_format: "release-update/{0}"
+    - "label1"
+    - "label2"
+  update_branch_format: "update/{0}"
 
-# List of release branches to monitor
-release_branches:
-  - "r1.0"
-  - "r2.0"
-  - "r3.0"
+# List of branches to monitor (releases, snapshots, etc.)
+branches:
+  - branch1:
+      enabled: false      # Skip this branch
+      need_pr: false      # Not applicable when disabled
+  - branch2:
+      enabled: true       # Monitor this branch
+      need_pr: true       # Create PR for updates
+  - branch3:
+      enabled: true       # Monitor this branch
+      need_pr: false      # Update directly without PR
 ```
 
 ### Configuration Options
 
-#### `scan_config` Section
+#### `update_config` Section
 
-- **`enabled`**: Boolean flag to enable/disable release scanning
-- **`pr_reviewers`**: Array of GitHub usernames to assign as PR reviewers
+- **`enabled`**: Boolean flag to enable/disable version update scanning
+- **`pr_reviewers`**: Array of GitHub usernames or teams to assign as PR reviewers
 - **`labels`**: Array of labels to apply to generated PRs
-- **`update_branch_format`**: Template for update branch names (use `{0}` as placeholder for release branch name)
+- **`update_branch_format`**: Template for update branch names (use `{0}` as placeholder for branch name)
 
-#### `release_branches` Section
+#### `branches` Section
 
-- Array of release branch names to monitor and process
-- Only existing branches will be included in the outputs
-- Non-existent branches are logged as warnings but don't cause failures
+- Array of branch objects with per-branch configuration
+- Each branch object has a single key (branch name) with metadata:
+  - **`enabled`**: Whether to scan this branch (default: `true`)
+  - **`need_pr`**: Whether to create a PR or update directly (default: `true`)
+    - When `true`: Creates update branch and PR
+    - When `false`: Commits directly to the branch (no PR)
+- Only existing and enabled branches will be included in outputs
+- Disabled or non-existent branches are logged as warnings
 
 ## Examples
 
@@ -265,7 +276,7 @@ The GitHub token must have the following permissions:
 
 #### Configuration File Not Found
 ```
-::warning::Configuration file not found: .github/release-config.yml on branch main
+::warning::Configuration file not found: .github/update-config.yml on branch main
 ```
 **Solutions**:
 - Verify the configuration file exists at the specified path
@@ -319,27 +330,49 @@ Validate your configuration file structure:
 
 ```yaml
 # ✅ Correct format
-scan_config:
+update_config:
   enabled: true
   pr_reviewers:
     - "user1"
     - "user2"
   labels:
-    - "release"
-    - "automated"
+    - "label1"
+    - "label2"
+  update_branch_format: "update/{0}"
 
-release_branches:
-  - "r1.0"
-  - "r2.0"
+branches:
+  - branch1:
+      enabled: true
+      need_pr: true
+  - branch2:
+      enabled: false
+      need_pr: false
 
 # ❌ Incorrect format
-scan_config:
+update_config:
   enabled: yes  # Should be true/false
   pr_reviewers: "user1,user2"  # Should be array
-  labels: release  # Should be array
+  labels: label1  # Should be array
 
-release_branches: "r1.0,r2.0"  # Should be array
+branches:
+  - "branch1"  # Should be object with metadata
+  - branch2: true  # Should have enabled/need_pr properties
 ```
+
+### Update Branches Map
+
+The `update_branches_map` output is generated based on the `need_pr` setting:
+
+```json
+{
+  "branch1": "update/branch1",  // need_pr: true
+  "branch2": null               // need_pr: false
+}
+```
+
+When consuming this map:
+- **Non-null value**: Create/update a PR from the update branch
+- **Null value**: Commit directly to the branch (no PR needed)
 
 ## Related Actions
 

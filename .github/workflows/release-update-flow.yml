@@ -16,9 +16,10 @@ on:
         required: true
         type: string
       update_branch:
-        description: 'Update branch name for this release branch'
-        required: true
+        description: 'Update branch name for this release branch (null/empty means direct update)'
+        required: false
         type: string
+        default: ''
       workflow_run_number:
         description: 'GitHub run number for display'
         required: true
@@ -90,6 +91,7 @@ jobs:
     outputs:
       source_branch: ${{ steps.determine-branch.outputs.source_branch }}
       update_branch_exists: ${{ steps.determine-branch.outputs.update_branch_exists }}
+      need_pr: ${{ steps.determine-branch.outputs.need_pr }}
       pr_exists: ${{ steps.check-pr.outputs.pr_exists }}
       pr_number: ${{ steps.check-pr.outputs.pr_number }}
       pr_url: ${{ steps.check-pr.outputs.pr_url }}
@@ -102,17 +104,25 @@ jobs:
           UPDATE_BRANCH: ${{ inputs.update_branch }}
         run: |
           set -eo pipefail
-          
-          echo "::notice::Checking if update branch exists: $UPDATE_BRANCH"
-          
-          if gh api "repos/$REPO/branches/$UPDATE_BRANCH" >/dev/null 2>&1; then
-            echo "::notice::Update branch exists, will scan: $UPDATE_BRANCH"
-            echo "source_branch=$UPDATE_BRANCH" >> "$GITHUB_OUTPUT"
-            echo "update_branch_exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Update branch does not exist, will scan: $RELEASE_BRANCH"
+
+          if [[ -z "$UPDATE_BRANCH" ]]; then
+            echo "::notice::No update branch provided, will update release branch directly: $RELEASE_BRANCH"
             echo "source_branch=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
             echo "update_branch_exists=false" >> "$GITHUB_OUTPUT"
+            echo "need_pr=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Checking if update branch exists: $UPDATE_BRANCH"
+
+            if gh api "repos/$REPO/branches/$UPDATE_BRANCH" >/dev/null 2>&1; then
+              echo "::notice::Update branch exists, will scan: $UPDATE_BRANCH"
+              echo "source_branch=$UPDATE_BRANCH" >> "$GITHUB_OUTPUT"
+              echo "update_branch_exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::notice::Update branch does not exist, will scan: $RELEASE_BRANCH"
+              echo "source_branch=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
+              echo "update_branch_exists=false" >> "$GITHUB_OUTPUT"
+            fi
+            echo "need_pr=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check for existing PR
@@ -167,7 +177,7 @@ jobs:
     uses: ./.github/workflows/commit-and-push-changes.yml
     with:
       repo: ${{ inputs.repo }}
-      branch: ${{ inputs.update_branch }}
+      branch: ${{ needs.determine-source-branch.outputs.need_pr == 'true' && inputs.update_branch || inputs.release_branch }}
       artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
       commit_message: |
         Update modules to ${{ needs.update-application.outputs.new_version }}.
@@ -186,6 +196,7 @@ jobs:
       always() &&
       !inputs.dry_run &&
       !cancelled() &&
+      needs.determine-source-branch.outputs.need_pr == 'true' &&
       needs.update-application.result == 'success' &&
       (
         needs.update-application.outputs.updated == 'true' ||
