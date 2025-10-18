@@ -1,22 +1,33 @@
 # Application Release Preparation Workflow
 
-**Workflow**: `release-preparation.yml`  
-**Purpose**: Orchestrates release branch preparation for FOLIO applications  
-**Type**: Reusable workflow (`workflow_call`)
+**Workflows**: `release-preparation.yml` (public) + `release-preparation-flow.yml` (core logic)
+**Purpose**: Orchestrates release branch preparation for FOLIO applications
+**Type**: Reusable workflows (`workflow_call`)
 
 ## 🎯 Overview
 
-This workflow orchestrates the preparation of FOLIO application repositories for release cycles using a **template-based approach**. It creates release branches with `^VERSION` placeholders in application templates, manages branch tracking configuration, and cleans up generated state files for CI regeneration.
+This workflow system orchestrates the preparation of FOLIO application repositories for release cycles using a **template-based approach**. It creates release branches with `^VERSION` placeholders in application templates, manages branch tracking configuration, and cleans up generated state files for CI regeneration.
 
 **Key Concept**: Application templates are the source of truth. State files (like `application.lock.json`) are generated artifacts that should be recreated by CI, not committed.
 
 ## 🏗️ Architecture
 
-The workflow uses a multi-job architecture with artifact-based coordination:
+The workflow system uses a **two-layer architecture** similar to snapshot updates:
 
+### Layer 1: Public Workflow (`release-preparation.yml`)
+```
+prepare (calls flow) ──→ notify ──→ summarize
+```
+
+**Jobs**:
+1. **`prepare`** - Calls `release-preparation-flow.yml` to execute core logic
+2. **`notify`** - Sends Slack notifications (team and general channels)
+3. **`summarize`** - Generates workflow summary with results
+
+### Layer 2: Core Logic (`release-preparation-flow.yml`)
 ```
 update-template ──────┐
-                      ├──→ commit-release-branch ──→ commit-config
+                      ├──→ commit-release-branch ──→ commit-config ──→ upload_results
 update-config ────────┘
 ```
 
@@ -25,8 +36,14 @@ update-config ────────┘
 2. **`update-config`** - Manages update-config.yml for branch tracking
 3. **`commit-release-branch`** - Creates release branch with template changes
 4. **`commit-config`** - Commits configuration to default branch
+5. **`upload_results`** - Uploads result artifact for orchestrator collection
 
 All commits use the reusable **`commit-and-push-changes.yml`** workflow for consistency.
+
+**Why Two Layers?**
+- **Separation of concerns**: Core logic vs notifications/summaries
+- **Matrix compatibility**: Orchestrators can call `-flow.yml` directly in matrix
+- **Artifact-based results**: Flow uploads results for orchestrator aggregation
 
 ## 📋 Workflow Interface
 
@@ -35,6 +52,7 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 | Input                     | Description                                            | Required  | Type    | Default |
 |---------------------------|--------------------------------------------------------|-----------|---------|---------|
 | `app_name`                | Application repository name (e.g., 'app-acquisitions') | Yes       | string  | -       |
+| `repo`                    | Application repository (org/repo format)               | Yes       | string  | -       |
 | `previous_release_branch` | Previous release branch (e.g., 'R1-2024')              | Yes       | string  | -       |
 | `new_release_branch`      | New release branch to create (e.g., 'R2-2025')         | Yes       | string  | -       |
 | `use_snapshot_fallback`   | Use snapshot branch if previous branch not found       | No        | boolean | `false` |
@@ -43,12 +61,14 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 
 ### Outputs
 
-| Output          | Description                                    |
-|-----------------|------------------------------------------------|
-| `app_name`      | Application name (pass-through from input)     |
-| `app_version`   | Determined application version for release     |
-| `source_branch` | Source branch used for release preparation     |
-| `commit_sha`    | SHA of the commit on the new release branch    |
+| Output                  | Description                                      |
+|-------------------------|--------------------------------------------------|
+| `preparation_result`    | Result of preparation (success/failure/skipped)  |
+| `app_name`              | Application name (pass-through from input)       |
+| `app_version`           | Determined application version for release       |
+| `source_branch`         | Source branch used for release preparation       |
+| `commit_sha`            | SHA of the commit on the new release branch      |
+| `notification_outcome`  | Outcome of Slack notification (success/failure)  |
 
 ## 🔄 Workflow Execution Flow
 
@@ -219,6 +239,7 @@ jobs:
     uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
     with:
       app_name: 'app-acquisitions'
+      repo: 'folio-org/app-acquisitions'
       previous_release_branch: 'R1-2024'
       new_release_branch: 'R2-2025'
 ```
@@ -231,6 +252,7 @@ jobs:
     uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
     with:
       app_name: 'app-acquisitions'
+      repo: 'folio-org/app-acquisitions'
       previous_release_branch: 'R1-2024'
       new_release_branch: 'R2-2025'
       use_snapshot_fallback: true
@@ -245,6 +267,7 @@ jobs:
     uses: folio-org/kitfox-github/.github/workflows/release-preparation.yml@main
     with:
       app_name: 'app-acquisitions'
+      repo: 'folio-org/app-acquisitions'
       previous_release_branch: 'R1-2024'
       new_release_branch: 'R2-2025'
       dry_run: true
@@ -339,44 +362,87 @@ The workflow provides comprehensive logging:
 
 ## 🔄 Integration Patterns
 
-### Matrix Processing
+### Two-Stage Orchestration
+
+**CRITICAL**: Release preparation uses a two-stage approach to prevent difficult cleanup scenarios:
 
 ```yaml
-strategy:
-  matrix:
-    application: ${{ fromJson(needs.setup.outputs.applications) }}
-  fail-fast: false
-  max-parallel: 5
+check-applications:
+  name: Check ${{ matrix.application }} Application
+  strategy:
+    matrix:
+      application: ${{ fromJson(needs.setup.outputs.applications) }}
+    fail-fast: false
+    max-parallel: 5
+  uses: folio-org/kitfox-github/.github/workflows/release-preparation-flow.yml@master
+  with:
+    app_name: ${{ matrix.application }}
+    repo: folio-org/${{ matrix.application }}
+    previous_release_branch: ${{ inputs.previous_release_branch }}
+    new_release_branch: ${{ inputs.new_release_branch }}
+    use_snapshot_fallback: ${{ inputs.use_snapshot_fallback }}
+    use_snapshot_version: ${{ inputs.use_snapshot_version }}
+    dry_run: true  # Always dry run for pre-check
+  secrets: inherit
 
-steps:
-  - name: 'Prepare Application Release'
-    uses: folio-org/kitfox-github/.github/actions/orchestrate-external-workflow@main
-    with:
-      repository: 'folio-org/${{ matrix.application }}'
-      workflow_file: 'release-preparation.yml'
-      workflow_parameters: |
-        previous_release_branch: ${{ inputs.previous_release_branch }}
-        new_release_branch: ${{ inputs.new_release_branch }}
-        dry_run: ${{ inputs.dry_run }}
+prepare-applications:
+  name: Prepare ${{ matrix.application }} Application
+  needs: [check-applications]
+  if: needs.check-applications.result == 'success' && inputs.dry_run != true
+  strategy:
+    matrix:
+      application: ${{ fromJson(needs.setup.outputs.applications) }}
+    fail-fast: false
+    max-parallel: 5
+  uses: folio-org/kitfox-github/.github/workflows/release-preparation-flow.yml@master
+  with:
+    app_name: ${{ matrix.application }}
+    repo: folio-org/${{ matrix.application }}
+    previous_release_branch: ${{ inputs.previous_release_branch }}
+    new_release_branch: ${{ inputs.new_release_branch }}
+    use_snapshot_fallback: ${{ inputs.use_snapshot_fallback }}
+    use_snapshot_version: ${{ inputs.use_snapshot_version }}
+    dry_run: ${{ inputs.dry_run }}  # Actual dry_run value
+  secrets: inherit
 ```
+
+**Why Two Stages?**
+- **Safety**: If validation fails in check stage, no branches are created
+- **Cleanup**: Release branches are hard to clean up (multiple repos, config files)
+- **Confidence**: Pre-check ensures all apps can be prepared before committing
 
 ### Result Aggregation
 
 ```yaml
 collect-results:
+  name: Collect Application Results
   needs: [prepare-applications]
-  if: always()
+  runs-on: ubuntu-latest
+  if: always() && needs.prepare-applications.result != 'skipped'
+  outputs:
+    failed_apps: ${{ steps.gather-failures.outputs.failed_apps }}
+    success_count: ${{ steps.gather-failures.outputs.success_count }}
+    failure_count: ${{ steps.gather-failures.outputs.failure_count }}
   steps:
-    - name: 'Download Results'
+    - name: Download All Application Results
       uses: actions/download-artifact@v4
       with:
-        pattern: 'result-*'
+        pattern: "result-*"
+        path: /tmp/all-results
         merge-multiple: true
-    
-    - name: 'Aggregate Results'
+
+    - name: Gather Application Results
+      id: gather-failures
       run: |
-        success_count=$(jq -s 'map(select(.success)) | length' result-*.json)
-        echo "Successfully prepared: $success_count applications"
+        all=$(jq -s '.' /tmp/all-results/*.json)
+
+        success_count=$(jq '[.[] | select(.status=="success")] | length' <<<"$all")
+        failure_count=$(jq '[.[] | select(.status!="success")] | length' <<<"$all")
+        failed_apps=$(jq -r '[.[] | select(.status!="success") | .application] | join(", ")' <<<"$all")
+
+        echo "failed_apps=$failed_apps" >> "$GITHUB_OUTPUT"
+        echo "success_count=$success_count" >> "$GITHUB_OUTPUT"
+        echo "failure_count=$failure_count" >> "$GITHUB_OUTPUT"
 ```
 
 ## 🔧 Maintainer Notes
@@ -410,8 +476,10 @@ env:
 
 ## 📚 Related Documentation
 
+- **[Release Preparation Flow](release-preparation-flow.md)**: Core logic workflow (called by this wrapper)
 - **[App Notification Guide](app-notification.md)**: Slack notification patterns
 - **[Distributed Orchestration](distributed-orchestration.md)**: Cross-repository coordination
+- **[Commit and Push Changes](commit-and-push-changes.md)**: Reusable commit workflow
 - **[Security Implementation](security-implementation.md)**: Authorization patterns
 - **[FOLIO Release Process](https://folio-org.atlassian.net/wiki/spaces/FOLIJET/pages/886178625/Release+preparation)**: Official documentation
 
