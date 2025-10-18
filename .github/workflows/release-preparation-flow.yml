@@ -1,0 +1,400 @@
+name: Release Preparation (Flow)
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository name (org/repo format)'
+        required: true
+        type: string
+      previous_release_branch:
+        description: 'Previous release branch (e.g., R1-2024)'
+        required: true
+        type: string
+      new_release_branch:
+        description: 'New release branch (e.g., R2-2024)'
+        required: true
+        type: string
+      use_snapshot_fallback:
+        description: 'Use snapshot branch as fallback if previous release branch not found'
+        required: false
+        type: boolean
+        default: false
+      use_snapshot_version:
+        description: 'Use snapshot version as a base version'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Perform dry run without making changes'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      app_name:
+        description: 'Application name (passed through from input)'
+        value: ${{ inputs.app_name }}
+      app_version:
+        description: 'Determined application version'
+        value: ${{ jobs.update-template.outputs.app_version }}
+      source_branch:
+        description: 'Source branch'
+        value: ${{ jobs.update-template.outputs.source_branch }}
+      commit_sha:
+        description: 'Commit SHA'
+        value: ${{ jobs.commit-release-branch.outputs.commit_sha }}
+
+permissions:
+  contents: write
+
+env:
+  APPLICATION_TEMPLATE_FILE: 'application.template.json'
+  UPDATE_CONFIG_FILE: 'update-config.yml'
+  UPDATE_CONFIG_TEMPLATE_PATH: '.github/templates/update-config.yml.template'
+  APPLICATION_STATE_FILE: 'application.lock.json'
+
+jobs:
+  update-template:
+    name: Update Application Template
+    runs-on: ubuntu-latest
+
+    outputs:
+      app_version: ${{ steps.determine-new-version.outputs.new_version }}
+      source_branch: ${{ steps.verify-branches.outputs.source_branch }}
+      default_branch: ${{ steps.verify-branches.outputs.default_branch }}
+
+    env:
+      PREV_BRANCH: ${{ inputs.previous_release_branch }}
+      NEW_BRANCH: ${{ inputs.new_release_branch }}
+
+    steps:
+      - name: Input parameters
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Input parameters"
+          echo ""
+          echo "${{ toJSON(github.event.inputs) }}"
+          echo ""
+
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::notice::This is a dry run - no actual changes will be made"
+            echo "::notice::Set dry_run=false to apply changes"
+          fi
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ inputs.repo }}
+          fetch-depth: 0
+
+      - name: Verify Branches
+        id: verify-branches
+        run: |
+          set -eo pipefail
+
+          if git ls-remote --exit-code --heads origin "$NEW_BRANCH" >/dev/null 2>&1; then
+            echo "::error::New release branch '$NEW_BRANCH' already exists"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --heads origin "$PREV_BRANCH" >/dev/null 2>&1; then
+            echo "::notice::Using previous release branch: $PREV_BRANCH"
+            echo "source_branch=$PREV_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "has_previous_branch=true" >> "$GITHUB_OUTPUT"
+
+          elif [[ "${{ inputs.use_snapshot_fallback }}" == "true" ]] \
+              && git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
+
+            echo "::warning::Previous release branch not found, using snapshot branch as fallback"
+            echo "source_branch=snapshot" >> "$GITHUB_OUTPUT"
+            echo "has_previous_branch=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Missing branch. Neither previous release branch $PREV_BRANCH nor snapshot branch exists"
+            exit 1
+          fi
+
+          default_branch=$(gh api repos/${{ inputs.repo }} --jq .default_branch)
+          if [ -z "$default_branch" ]; then
+            echo "::error::Could not determine default branch for ${{ inputs.repo }}"
+            exit 1
+          fi
+
+          echo "::notice::Default branch is: $default_branch"
+          echo "default_branch=$default_branch" >> "$GITHUB_OUTPUT"
+
+          if ! git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
+            echo "::error::Missing branch. The snapshot branch does not exist"
+            exit 1
+          fi
+
+      - name: Collect Previous Version
+        id: collect-previous-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
+        with:
+          app_name: ${{ inputs.repo }}
+          branch: ${{ steps.verify-branches.outputs.source_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect Default Branch Version
+        id: collect-default-branch-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
+        if: steps.verify-branches.outputs.has_previous_branch == 'false'
+        with:
+          app_name: ${{ inputs.repo }}
+          branch: ${{ steps.verify-branches.outputs.default_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine New Version
+        id: determine-new-version
+        env:
+          HAS_PREV_BRANCH:   ${{ steps.verify-branches.outputs.has_previous_branch }}
+          PREV_VERSION:      ${{ steps.collect-previous-version.outputs.version }}
+          PREV_MAJOR:        ${{ steps.collect-previous-version.outputs.major }}
+          PREV_MINOR:        ${{ steps.collect-previous-version.outputs.minor }}
+          PREV_PATCH:        ${{ steps.collect-previous-version.outputs.patch }}
+          DEFAULT_VERSION:   ${{ steps.collect-default-branch-version.outputs.version }}
+          DEFAULT_MAJOR:     ${{ steps.collect-default-branch-version.outputs.major }}
+          DEFAULT_MINOR:     ${{ steps.collect-default-branch-version.outputs.minor }}
+          DEFAULT_PATCH:     ${{ steps.collect-default-branch-version.outputs.patch }}
+        run: |
+          set -eo pipefail
+
+          if [[ "$HAS_PREV_BRANCH" == 'true' ]]; then
+            new_major=$(( PREV_MAJOR + 1 ))
+            new_minor=0
+            new_patch=0
+
+            echo "::notice::Previous release has been taken $PREV_VERSION. Incrementing major version from $PREV_MAJOR to $new_major"
+
+          else
+            if (( PREV_MAJOR > DEFAULT_MAJOR )); then
+              new_major=$PREV_MAJOR
+              new_minor=$(( PREV_MINOR + 1 ))
+              new_patch=$PREV_PATCH
+
+              echo "::notice::Snapshot version has been taken $PREV_VERSION and minor/patch versions have been risen from $PREV_MINOR to $new_minor"
+            else
+              new_major=$(( DEFAULT_MAJOR + 1 ))
+              new_minor=0
+              new_patch=0
+
+              echo "::notice::Default branch version has been taken $DEFAULT_VERSION and bumped up from $DEFAULT_MAJOR to $new_major"
+            fi
+          fi
+
+          new_version="${new_major}.${new_minor}.${new_patch}"
+
+          echo "::notice::New determined version: $new_version"
+          echo "new_version=$new_version"       >>"$GITHUB_OUTPUT"
+
+      - name: Update Application Template
+        id: update-template
+        env:
+          TARGET_VERSION: ${{ steps.determine-new-version.outputs.new_version }}
+        run: |
+          set -eo pipefail
+
+          if [ ! -f "$APPLICATION_TEMPLATE_FILE" ]; then
+            echo "::error::$APPLICATION_TEMPLATE_FILE not found"
+            exit 1
+          fi
+
+          echo "::notice::Updating $APPLICATION_TEMPLATE_FILE with version $TARGET_VERSION and ^VERSION placeholders"
+
+          jq --arg version "$TARGET_VERSION" '
+            .version = $version
+            | .modules     |= map(.version = "^VERSION")
+            | .uiModules   |= map(.version = "^VERSION")
+          ' "$APPLICATION_TEMPLATE_FILE" > temp.json && mv temp.json "$APPLICATION_TEMPLATE_FILE"
+
+          echo "::group::Updated template"
+          cat "$APPLICATION_TEMPLATE_FILE"
+          echo "::endgroup::"
+
+      - name: Update POM Version
+        id: update-pom
+        env:
+          TARGET_VERSION: ${{ steps.determine-new-version.outputs.new_version }}
+        run: |
+          set -eo pipefail
+
+          if [ -f "pom.xml" ]; then
+            echo "::notice::Updating pom.xml version to $TARGET_VERSION"
+            mvn versions:set -DnewVersion="$TARGET_VERSION" -DgenerateBackupPoms=false
+          else
+            echo "::notice::No pom.xml found, skipping"
+          fi
+
+      - name: Upload Release Branch Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ inputs.app_name }}-release-files"
+          path: |
+            ${{ env.APPLICATION_TEMPLATE_FILE }}
+            pom.xml
+          retention-days: 1
+
+  update-config:
+    name: Update Configuration File
+    needs: update-template
+    runs-on: ubuntu-latest
+    outputs:
+      config_updated: ${{ steps.update-config.outputs.updated }}
+
+    steps:
+      - name: Checkout Repository (Default Branch)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ needs.update-template.outputs.default_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get or Create Update Config
+        id: update-config
+        env:
+          NEW_BRANCH: ${{ inputs.new_release_branch }}
+        run: |
+          set -eo pipefail
+
+          if [ -f "$UPDATE_CONFIG_FILE" ]; then
+            echo "::notice::$UPDATE_CONFIG_FILE exists"
+          else
+            echo "::notice::$UPDATE_CONFIG_FILE not found, creating from template"
+
+            git clone --depth 1 https://github.com/folio-org/kitfox-github.git /tmp/kitfox-github
+
+            template_path="/tmp/kitfox-github/$UPDATE_CONFIG_TEMPLATE_PATH"
+            if [ ! -f "$template_path" ]; then
+              echo "::error::Template not found at $template_path"
+              exit 1
+            fi
+
+            cp "$template_path" "$UPDATE_CONFIG_FILE"
+          fi
+
+          if yq eval ".branches[] | select(. == \"$NEW_BRANCH\" or .\"$NEW_BRANCH\")" "$UPDATE_CONFIG_FILE" | grep -q "$NEW_BRANCH"; then
+            echo "::notice::Branch $NEW_BRANCH already in config, no update needed"
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          yq eval ".branches += [{\"$NEW_BRANCH\": {\"enabled\": true, \"need_pr\": true}}]" -i "$UPDATE_CONFIG_FILE"
+
+          echo "::group::Updated config"
+          cat "$UPDATE_CONFIG_FILE"
+          echo "::endgroup::"
+
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Config File
+        if: steps.update-config.outputs.updated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ inputs.app_name }}-config-file"
+          path: ${{ env.UPDATE_CONFIG_FILE }}
+          retention-days: 1
+
+  commit-release-branch:
+    name: Commit Release Branch Changes
+    needs: [update-template, update-config]
+    if: needs.update-template.result == 'success'
+    uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@master
+    with:
+      repo: ${{ inputs.repo }}
+      branch: ${{ inputs.new_release_branch }}
+      artifact_name: "${{ inputs.app_name }}-release-files"
+      commit_message: |
+        Prepare ${{ inputs.app_name }} for release. Initial commit.
+
+        Previous release: ${{ inputs.previous_release_branch }}
+        New release: ${{ inputs.new_release_branch }}
+        Source branch: ${{ needs.update-template.outputs.source_branch }}
+        Version: ${{ needs.update-template.outputs.app_version }}
+
+        Module versions set to ^VERSION placeholder for team updates.
+      dry_run: ${{ inputs.dry_run }}
+      source_branch: ${{ needs.update-template.outputs.source_branch }}
+      deleted_files: |
+        ${{ env.APPLICATION_STATE_FILE }}
+    secrets: inherit
+
+  commit-config:
+    name: Commit Config to Default Branch
+    needs: [update-template, update-config, commit-release-branch]
+    if: needs.update-config.outputs.config_updated == 'true' && needs.commit-release-branch.result == 'success' && inputs.dry_run == false
+    uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@master
+    with:
+      repo: ${{ inputs.repo }}
+      branch: ${{ needs.update-template.outputs.default_branch }}
+      artifact_name: "${{ inputs.app_name }}-config-file"
+      commit_message: |
+        Add ${{ inputs.new_release_branch }} to update configuration
+
+        Automatically added by release preparation workflow.
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  upload_results:
+    name: Upload Results
+    runs-on: ubuntu-latest
+    needs: [update-template, update-config, commit-release-branch, commit-config]
+    if: always()
+    steps:
+      - name: Prepare Output Artifact
+        id: prepare-artifact
+        if: always()
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          STATUS: >-
+            ${{
+                (needs.update-template.result == 'failure' && 'failed') ||
+                (needs.commit-release-branch.result == 'failure' && 'failed') ||
+                'success'
+            }}
+          FAILURE_REASON: >-
+            ${{
+                (needs.update-template.result == 'failure' && 'Template update or branch verification failed') ||
+                (needs.commit-release-branch.result == 'failure' && 'Failed to commit release branch changes') ||
+                ''
+            }}
+        run: |
+          set -eo pipefail
+
+          mkdir -p /tmp/results
+
+          printf '%s' "$FAILURE_REASON" > /tmp/failure_reason.txt
+
+          jq -n \
+          --arg application             "$APP_NAME" \
+          --arg status                  "$STATUS" \
+          --arg version                 "${{ needs.update-template.outputs.app_version }}" \
+          --arg source_branch           "${{ needs.update-template.outputs.source_branch }}" \
+          --arg new_release_branch      "${{ inputs.new_release_branch }}" \
+          --rawfile failure_reason      /tmp/failure_reason.txt \
+          --arg commit_sha              "${{ needs.commit-release-branch.outputs.commit_sha }}" \
+          '{
+              application: $application,
+              status: $status,
+              version: $version,
+              source_branch: $source_branch,
+              new_release_branch: $new_release_branch,
+              failure_reason: $failure_reason,
+              commit_sha: $commit_sha
+            }' > "/tmp/results/$APP_NAME.json"
+
+          cat "/tmp/results/$APP_NAME.json"
+
+      - name: Upload Application Result
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "result-${{ inputs.app_name }}"
+          path: "/tmp/results/${{ inputs.app_name }}.json"
+          retention-days: 1
