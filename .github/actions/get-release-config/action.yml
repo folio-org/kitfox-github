@@ -1,6 +1,6 @@
 name: 'Get Release Configuration'
 
-description: 'Reads and parses release configuration from release-config.yml'
+description: 'Reads and parses release configuration from update-config.yml'
 
 inputs:
   repo:
@@ -13,7 +13,7 @@ inputs:
   config_file:
     description: 'Path to configuration file'
     required: false
-    default: '.github/release-config.yml'
+    default: '.github/update-config.yml'
   github_token:
     description: 'GitHub token for API access'
     required: false
@@ -62,7 +62,7 @@ runs:
           echo "exists=true" >> "$GITHUB_OUTPUT"
           
           gh api "repos/$REPO/contents/$CONFIG_FILE?ref=$BRANCH" \
-            --jq '.content' | base64 -d > /tmp/release-config.yml
+            --jq '.content' | base64 -d > /tmp/update-config.yml
         else
           echo "::warning::Configuration file not found: $CONFIG_FILE on branch $BRANCH"
           echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -88,7 +88,7 @@ runs:
           exit 0
         fi
         
-        CONFIG_FILE="/tmp/release-config.yml"
+        CONFIG_FILE="/tmp/update-config.yml"
         echo "::notice::Parsing configuration from $CONFIG_FILE"
         
         raw_enabled=$(yq eval '.update_config.enabled' "$CONFIG_FILE" 2>/dev/null | tr -d '\r' | tr 'A-Z' 'a-z')
@@ -98,8 +98,8 @@ runs:
           ENABLED="false"
         fi
         
-        BRANCHES=$(yq eval -o=json -I=0 '.branches // []' "$CONFIG_FILE")
-        BRANCH_COUNT=$(yq -e '(.branches // []) | length' "$CONFIG_FILE" 2>/dev/null || echo "0")
+        BRANCHES=$(yq eval -o=json -I=0 '.branches // [] | map(keys[0])' "$CONFIG_FILE")
+        BRANCH_COUNT=$(echo "$BRANCHES" | jq 'length')
         
         PR_REVIEWERS=$(yq eval -o=json -I=0 '.update_config.pr_reviewers // []' "$CONFIG_FILE" | \
            jq -r 'if type == "array" then join(",") elif type == "string" then . else "" end')
@@ -109,11 +109,19 @@ runs:
         
         UPDATE_BRANCH_FORMAT=$(yq eval '.update_config.update_branch_format // "release-update/{0}"' "$CONFIG_FILE" 2>/dev/null)
                 
+        # Build update branches map, only for branches that need PR
         UPDATE_BRANCHES_MAP="{}"
         if [[ "$BRANCHES" != "[]" ]] && [[ -n "$UPDATE_BRANCH_FORMAT" ]]; then
           UPDATE_BRANCHES_MAP=$(echo "$BRANCHES" | jq -r '.[]' | while read -r branch; do
-            update_branch=$(echo "$UPDATE_BRANCH_FORMAT" | sed "s/{0}/$branch/g")
-            jq -n --arg key "$branch" --arg val "$update_branch" '{($key): $val}'
+            # Check if branch needs PR
+            need_pr=$(yq eval ".branches[] | select(has(\"$branch\")) | .$branch.need_pr // true" "$CONFIG_FILE" 2>/dev/null | tr -d '\r' | tr 'A-Z' 'a-z')
+
+            if [[ "$need_pr" == "true" ]]; then
+              update_branch=$(echo "$UPDATE_BRANCH_FORMAT" | sed "s/{0}/$branch/g")
+              jq -n --arg key "$branch" --arg val "$update_branch" '{($key): $val}'
+            else
+              jq -n --arg key "$branch" --arg val null '{($key): $val}'
+            fi
           done | jq -s 'add // {}')
         fi
         
@@ -128,11 +136,18 @@ runs:
           existing=()
           
           for branch in "${branches_array[@]}"; do
+            branch_enabled=$(yq eval ".branches[] | select(has(\"$branch\")) | .$branch.enabled // true" "$CONFIG_FILE" 2>/dev/null | tr -d '\r' | tr 'A-Z' 'a-z')
+
+            if [[ "$branch_enabled" != "true" ]]; then
+              echo "::warning::Branch $branch is disabled in configuration, skipping"
+              continue
+            fi
+
             echo "::notice::Checking branch: $branch"
-            
+
             if response=$(gh api "repos/${{ inputs.repo }}/branches/$branch" 2>&1); then
               existing+=("$branch")
-              echo "::notice::Branch exists: $branch"
+              echo "::notice::Branch exists and is enabled: $branch"
             else
               echo "::warning::Branch not found: $branch"
               echo "::warning::API response: $response"
@@ -144,8 +159,15 @@ runs:
             EXISTING_COUNT=${#existing[@]}
             
             EXISTING_UPDATE_MAP=$(printf '%s\n' "${existing[@]}" | while read -r branch; do
-              update_branch=$(echo "$UPDATE_BRANCH_FORMAT" | sed "s/{0}/$branch/g")
-              jq -n --arg key "$branch" --arg val "$update_branch" '{($key): $val}'
+              # Check if branch needs PR
+              need_pr=$(yq eval ".branches[] | select(has(\"$branch\")) | .$branch.need_pr // true" "$CONFIG_FILE" 2>/dev/null | tr -d '\r' | tr 'A-Z' 'a-z')
+
+              if [[ "$need_pr" == "true" ]]; then
+                update_branch=$(echo "$UPDATE_BRANCH_FORMAT" | sed "s/{0}/$branch/g")
+                jq -n --arg key "$branch" --arg val "$update_branch" '{($key): $val}'
+              else
+                jq -n --arg key "$branch" --arg val null '{($key): $val}'
+              fi
             done | jq -s 'add // {}')
           fi
         fi
