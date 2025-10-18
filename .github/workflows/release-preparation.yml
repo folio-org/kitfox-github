@@ -264,30 +264,28 @@ jobs:
           set -eo pipefail
 
           if [ -f "$UPDATE_CONFIG_FILE" ]; then
-            echo "::notice::$UPDATE_CONFIG_FILE exists, updating it"
-
-            if grep -q "^  - $NEW_BRANCH$" "$UPDATE_CONFIG_FILE"; then
-              echo "::notice::Branch $NEW_BRANCH already in config, no update needed"
-              echo "updated=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            echo "  - $NEW_BRANCH" >> "$UPDATE_CONFIG_FILE"
+            echo "::notice::$UPDATE_CONFIG_FILE exists"
           else
             echo "::notice::$UPDATE_CONFIG_FILE not found, creating from template"
 
-            # Clone kitfox-github to get template
             git clone --depth 1 https://github.com/folio-org/kitfox-github.git /tmp/kitfox-github
 
             template_path="/tmp/kitfox-github/$UPDATE_CONFIG_TEMPLATE_PATH"
-            if [ -f "$template_path" ]; then
-              cp "$template_path" "$UPDATE_CONFIG_FILE"
-              echo "  - $NEW_BRANCH" >> "$UPDATE_CONFIG_FILE"
-            else
+            if [ ! -f "$template_path" ]; then
               echo "::error::Template not found at $template_path"
               exit 1
             fi
+
+            cp "$template_path" "$UPDATE_CONFIG_FILE"
           fi
+
+          if yq eval ".branches[] | select(. == \"$NEW_BRANCH\" or .\"$NEW_BRANCH\")" "$UPDATE_CONFIG_FILE" | grep -q "$NEW_BRANCH"; then
+            echo "::notice::Branch $NEW_BRANCH already in config, no update needed"
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          yq eval ".branches += [{\"$NEW_BRANCH\": {\"enabled\": true, \"need_pr\": true}}]" -i "$UPDATE_CONFIG_FILE"
 
           echo "::group::Updated config"
           cat "$UPDATE_CONFIG_FILE"
