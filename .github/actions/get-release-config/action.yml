@@ -91,23 +91,23 @@ runs:
         CONFIG_FILE="/tmp/release-config.yml"
         echo "::notice::Parsing configuration from $CONFIG_FILE"
         
-        raw_enabled=$(yq eval '.scan_config.enabled' "$CONFIG_FILE" 2>/dev/null | tr -d '\r' | tr 'A-Z' 'a-z')
+        raw_enabled=$(yq eval '.update_config.enabled' "$CONFIG_FILE" 2>/dev/null | tr -d '\r' | tr 'A-Z' 'a-z')
         if [[ "$raw_enabled" == "true" || "$raw_enabled" == "false" ]]; then
           ENABLED="$raw_enabled"
         else
           ENABLED="false"
         fi
         
-        BRANCHES=$(yq eval -o=json -I=0 '.release_branches // []' "$CONFIG_FILE")
-        BRANCH_COUNT=$(yq -e '(.release_branches // []) | length' "$CONFIG_FILE" 2>/dev/null || echo "0")
+        BRANCHES=$(yq eval -o=json -I=0 '.branches // []' "$CONFIG_FILE")
+        BRANCH_COUNT=$(yq -e '(.branches // []) | length' "$CONFIG_FILE" 2>/dev/null || echo "0")
         
-        PR_REVIEWERS=$(yq eval -o=json -I=0 '.scan_config.pr_reviewers // []' "$CONFIG_FILE" | \
+        PR_REVIEWERS=$(yq eval -o=json -I=0 '.update_config.pr_reviewers // []' "$CONFIG_FILE" | \
            jq -r 'if type == "array" then join(",") elif type == "string" then . else "" end')
         
-        PR_LABELS=$(yq eval -o=json -I=0 '.scan_config.labels // []' "$CONFIG_FILE" | \
+        PR_LABELS=$(yq eval -o=json -I=0 '.update_config.labels // []' "$CONFIG_FILE" | \
            jq -r 'if type == "array" then join(",") elif type == "string" then . else "" end')
         
-        UPDATE_BRANCH_FORMAT=$(yq eval '.scan_config.update_branch_format // "release-update/{0}"' "$CONFIG_FILE" 2>/dev/null)
+        UPDATE_BRANCH_FORMAT=$(yq eval '.update_config.update_branch_format // "release-update/{0}"' "$CONFIG_FILE" 2>/dev/null)
                 
         UPDATE_BRANCHES_MAP="{}"
         if [[ "$BRANCHES" != "[]" ]] && [[ -n "$UPDATE_BRANCH_FORMAT" ]]; then
