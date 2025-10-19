@@ -9,7 +9,7 @@ inputs:
   branch:
     description: 'Branch where config file resides'
     required: false
-    default: master
+    default: RANCHER-2572-test #TODO: Switch to master
   config_file:
     description: 'Path to configuration file'
     required: false
