@@ -173,7 +173,7 @@ jobs:
         if: vars.SLACK_NOTIF_CHANNEL != ''
         continue-on-error: true
         env:
-          CHANNEL: ${{ vars.SLACK_NOTIF_CHANNEL }}
+          CHANNEL: "" #TODO: Uncomment later ${{ vars.SLACK_NOTIF_CHANNEL }}
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
@@ -196,7 +196,7 @@ jobs:
         if: vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
         continue-on-error: true
         env:
-          CHANNEL: "" #TODO: Uncomment ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}
+          CHANNEL: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}
         uses: slackapi/slack-github-action@v2.1.1
         with:
           method: chat.postMessage
