@@ -234,7 +234,20 @@ jobs:
             echo "### 🎯 Application: \`${{ inputs.app_name }}\`"
             echo ""
 
-            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            if [[ "$PREP_RESULT" == "failure" ]]; then
+              echo "❌ **Preparation Result:** Failed"
+              if [[ -n "$FAILURE_REASON" ]]; then
+                echo "- **Error:** $FAILURE_REASON"
+              else
+                echo "- Check the preparation job logs for details"
+              fi
+              if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+                echo ""
+                echo "_Note: This failure occurred during a dry run._"
+              fi
+            elif [[ "$PREP_RESULT" == "cancelled" ]]; then
+              echo "⚠️ **Preparation Result:** Cancelled"
+            elif [[ "${{ inputs.dry_run }}" == "true" && "$PREP_RESULT" == "success" ]]; then
               echo "#### 🏃 Dry Run Mode"
               echo "This was a dry run - no actual changes were made."
               echo "- Release branch was verified but not created"
@@ -246,15 +259,6 @@ jobs:
               echo "- **Source Branch:** $SOURCE_BRANCH"
               echo "- **New Version:** $APP_VERSION"
               echo "- **Commit SHA:** [$COMMIT_SHA](${{ github.server_url }}/${{ inputs.repo }}/commit/$COMMIT_SHA)"
-            elif [[ "$PREP_RESULT" == "failure" ]]; then
-              echo "❌ **Preparation Result:** Failed"
-              if [[ -n "$FAILURE_REASON" ]]; then
-                echo "- **Error:** $FAILURE_REASON"
-              else
-                echo "- Check the preparation job logs for details"
-              fi
-            elif [[ "$PREP_RESULT" == "cancelled" ]]; then
-              echo "⚠️ **Preparation Result:** Cancelled"
             else
               echo "⏭️ **Preparation Result:** Skipped"
             fi
