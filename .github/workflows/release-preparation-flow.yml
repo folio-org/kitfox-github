@@ -305,7 +305,7 @@ jobs:
     name: Commit Release Branch Changes
     needs: [update-template, update-config]
     if: needs.update-template.result == 'success'
-    uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@RANCHER-2572-test #TODO: Switch to master
     with:
       repo: ${{ inputs.repo }}
       branch: ${{ inputs.new_release_branch }}
@@ -329,7 +329,7 @@ jobs:
     name: Commit Config to Default Branch
     needs: [update-template, update-config, commit-release-branch]
     if: needs.update-config.outputs.config_updated == 'true' && needs.commit-release-branch.result == 'success' && inputs.dry_run == false
-    uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@master
+    uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@RANCHER-2572-test #TODO: Switch to master
     with:
       repo: ${{ inputs.repo }}
       branch: ${{ needs.update-template.outputs.default_branch }}
