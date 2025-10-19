@@ -71,21 +71,6 @@ jobs:
       NEW_BRANCH: ${{ inputs.new_release_branch }}
 
     steps:
-      - name: Input parameters
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
-        run: |
-          set -eo pipefail
-
-          echo "::notice::Input parameters"
-          echo ""
-          echo "${{ toJSON(github.event.inputs) }}"
-          echo ""
-
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            echo "::notice::This is a dry run - no actual changes will be made"
-            echo "::notice::Set dry_run=false to apply changes"
-          fi
-
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
@@ -95,6 +80,8 @@ jobs:
 
       - name: Verify Branches
         id: verify-branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eo pipefail
 
