@@ -490,7 +490,7 @@ The workflow uses centralized environment variables for file names, making it ea
 ```yaml
 env:
   APPLICATION_TEMPLATE_FILE: 'application.template.json'
-  UPDATE_CONFIG_FILE: 'update-config.yml'
+  UPDATE_CONFIG_FILE: '.github/update-config.yml'
   UPDATE_CONFIG_TEMPLATE_PATH: '.github/templates/update-config.yml.template'
   APPLICATION_STATE_FILE: 'application.lock.json'
 ```

@@ -73,7 +73,7 @@ permissions:
 
 env:
   APPLICATION_TEMPLATE_FILE: 'application.template.json'
-  UPDATE_CONFIG_FILE: 'update-config.yml'
+  UPDATE_CONFIG_FILE: '.github/update-config.yml'
   UPDATE_CONFIG_TEMPLATE_PATH: '.github/templates/update-config.yml.template'
 
 jobs:
@@ -292,6 +292,7 @@ jobs:
               exit 1
             fi
 
+            mkdir -p "$(dirname "$UPDATE_CONFIG_FILE")"
             cp "$template_path" "$UPDATE_CONFIG_FILE"
           fi
 
