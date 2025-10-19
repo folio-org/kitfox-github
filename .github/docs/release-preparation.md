@@ -89,10 +89,11 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 
 3. **Template Update**
    - Updates `application.template.json`:
-     - Sets version to new release version
-     - Sets all module versions to `^VERSION` placeholder
-     - Sets all UI module versions to `^VERSION` placeholder
-   - Example: `{"version": "2.0.0", "modules": [{"version": "^VERSION"}]}`
+     - Preserves version field (typically Maven placeholder like `${project.version}`)
+     - Sets all module versions to `^VERSION` placeholder with `preRelease: false`
+     - Sets all UI module versions to `^VERSION` placeholder with `preRelease: false`
+     - Sets all dependency versions to `^VERSION` placeholder with `preRelease: false`
+   - Example: `{"version": "${project.version}", "modules": [{"version": "^VERSION", "preRelease": false}]}`
 
 4. **POM Update** (if present)
    - Updates Maven pom.xml with new version
@@ -156,16 +157,19 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 
 ### What is ^VERSION?
 
-After release preparation, `application.template.json` contains `^VERSION` placeholders for all module versions:
+After release preparation, `application.template.json` contains `^VERSION` placeholders for all module, uiModule, and dependency versions with `preRelease: false`:
 
 ```json
 {
-  "version": "2.0.0",
+  "version": "${project.version}",
+  "dependencies": [
+    {"name": "app-platform-complete", "version": "^VERSION", "preRelease": false}
+  ],
   "modules": [
-    {"name": "mod-inventory", "version": "^VERSION"}
+    {"name": "mod-inventory", "version": "^VERSION", "preRelease": false}
   ],
   "uiModules": [
-    {"name": "ui-users", "version": "^VERSION"}
+    {"name": "ui-users", "version": "^VERSION", "preRelease": false}
   ]
 }
 ```
@@ -177,17 +181,20 @@ After release preparation, `application.template.json` contains `^VERSION` place
 ### Version Constraint Examples
 
 ```json
-// Caret range (allow minor and patch updates)
-{"name": "mod-inventory", "version": "^2.0.0"}
+// Caret range (allow minor and patch updates) - Release version
+{"name": "mod-inventory", "version": "^2.0.0", "preRelease": false}
 
-// Tilde range (allow patch updates only)
-{"name": "mod-users", "version": "~1.5.0"}
+// Tilde range (allow patch updates only) - Release version
+{"name": "mod-users", "version": "~1.5.0", "preRelease": false}
 
-// Range constraints
-{"name": "mod-orders", "version": ">1.0.0 <=2.5.0"}
+// Range constraints - Release version
+{"name": "mod-orders", "version": ">1.0.0 <=2.5.0", "preRelease": false}
 
-// Exact version (not recommended for most cases)
-{"name": "mod-circulation", "version": "3.1.0"}
+// Exact version (not recommended for most cases) - Release version
+{"name": "mod-circulation", "version": "3.1.0", "preRelease": false}
+
+// Pre-release versions (for snapshot/development branches)
+{"name": "mod-finance", "version": "^2.0.0-SNAPSHOT", "preRelease": true}
 ```
 
 ### File Lifecycle
@@ -296,8 +303,10 @@ When `dry_run: true`:
 
 #### Post-Execution
 - [ ] New release branch created with correct source
-- [ ] `application.template.json` updated with new version
-- [ ] All module versions set to `^VERSION`
+- [ ] `application.template.json` version field preserved (not overwritten)
+- [ ] All module versions set to `^VERSION` with `preRelease: false`
+- [ ] All uiModule versions set to `^VERSION` with `preRelease: false`
+- [ ] All dependency versions set to `^VERSION` with `preRelease: false`
 - [ ] `application.lock.json` deleted from release branch
 - [ ] `update-config.yml` created/updated on default branch
 - [ ] pom.xml updated with release version (if applicable)
