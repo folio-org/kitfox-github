@@ -276,7 +276,7 @@ The action provides detailed logging:
 
 - **[create-pr](../create-pr/README.md)**: Create pull requests with generated descriptors
 - **[update-pr](../update-pr/README.md)**: Update existing pull requests with new descriptors
-- **[get-release-config](../get-release-config/README.md)**: Get configuration for release workflows
+- **[get-release-config](../get-update-config/README.md)**: Get configuration for release workflows
 
 ## Integration Examples
 

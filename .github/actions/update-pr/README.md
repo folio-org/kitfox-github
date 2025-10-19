@@ -369,7 +369,7 @@ gh label create "test-label" --repo org/repo --description "Test" --color "0366d
 ## Related Actions
 
 - **[create-pr](../create-pr/README.md)**: Create new pull requests
-- **[get-release-config](../get-release-config/README.md)**: Get configuration for PR reviewers and labels
+- **[get-release-config](../get-update-config/README.md)**: Get configuration for PR reviewers and labels
 - **[generate-application-descriptor](../generate-application-descriptor/README.md)**: Generate content for PR updates
 
 ## Integration Examples
@@ -379,7 +379,7 @@ gh label create "test-label" --repo org/repo --description "Test" --color "0366d
 ```yaml
 - name: Get Release Configuration
   id: config
-  uses: ./.github/actions/get-release-config
+  uses: ./.github/actions/get-update-config
   with:
     repo: ${{ github.repository }}
 

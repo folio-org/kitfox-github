@@ -282,7 +282,7 @@ Each action includes comprehensive documentation with usage examples, input/outp
 #### Configuration and Security
 
 ##### Get Release Config
-**Documentation**: [`actions/get-release-config/README.md`](actions/get-release-config/README.md)
+**Documentation**: [`actions/get-update-config/README.md`](actions/get-update-config/README.md)
 **Purpose**: Read and validate release configuration from repository files
 **Key Features**: Branch validation, configuration parsing, dynamic workflow configuration
 
