@@ -47,6 +47,16 @@ on:
       commit_sha:
         description: 'Commit SHA'
         value: ${{ jobs.commit-release-branch.outputs.commit_sha }}
+      failure_reason:
+        description: 'Specific failure reason if workflow failed'
+        value: >-
+          ${{
+            (jobs.update-template.result == 'failure' && (jobs.update-template.outputs.failure_reason || 'Template update or branch verification failed')) ||
+            (jobs.update-config.result == 'failure' && (jobs.update-config.outputs.failure_reason || 'Failed to update configuration file')) ||
+            (jobs.commit-release-branch.result == 'failure' && (jobs.commit-release-branch.outputs.failure_reason || 'Failed to commit release branch changes')) ||
+            (jobs.commit-config.result == 'failure' && (jobs.commit-config.outputs.failure_reason || 'Failed to commit config to default branch')) ||
+            ''
+          }}
 
 permissions:
   contents: write
@@ -65,6 +75,7 @@ jobs:
       app_version: ${{ steps.determine-new-version.outputs.new_version }}
       source_branch: ${{ steps.verify-branches.outputs.source_branch }}
       default_branch: ${{ steps.verify-branches.outputs.default_branch }}
+      failure_reason: ${{ steps.verify-branches.outputs.error || steps.update-template.outputs.error }}
 
     env:
       PREV_BRANCH: ${{ inputs.previous_release_branch }}
@@ -86,6 +97,7 @@ jobs:
           set -eo pipefail
 
           if git ls-remote --exit-code --heads origin "$NEW_BRANCH" >/dev/null 2>&1; then
+            echo "error=New release branch '$NEW_BRANCH' already exists" >> "$GITHUB_OUTPUT"
             echo "::error::New release branch '$NEW_BRANCH' already exists"
             exit 1
           fi
@@ -102,12 +114,14 @@ jobs:
             echo "source_branch=snapshot" >> "$GITHUB_OUTPUT"
             echo "has_previous_branch=false" >> "$GITHUB_OUTPUT"
           else
+            echo "error=Missing branch. Neither previous release branch $PREV_BRANCH nor snapshot branch exists" >> "$GITHUB_OUTPUT"
             echo "::error::Missing branch. Neither previous release branch $PREV_BRANCH nor snapshot branch exists"
             exit 1
           fi
 
           default_branch=$(gh api repos/${{ inputs.repo }} --jq .default_branch)
           if [ -z "$default_branch" ]; then
+            echo "error=Could not determine default branch for ${{ inputs.repo }}" >> "$GITHUB_OUTPUT"
             echo "::error::Could not determine default branch for ${{ inputs.repo }}"
             exit 1
           fi
@@ -116,6 +130,7 @@ jobs:
           echo "default_branch=$default_branch" >> "$GITHUB_OUTPUT"
 
           if ! git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
+            echo "error=Missing branch. The snapshot branch does not exist" >> "$GITHUB_OUTPUT"
             echo "::error::Missing branch. The snapshot branch does not exist"
             exit 1
           fi
@@ -188,6 +203,7 @@ jobs:
           set -eo pipefail
 
           if [ ! -f "$APPLICATION_TEMPLATE_FILE" ]; then
+            echo "error=$APPLICATION_TEMPLATE_FILE not found in repository" >> "$GITHUB_OUTPUT"
             echo "::error::$APPLICATION_TEMPLATE_FILE not found"
             exit 1
           fi
@@ -233,6 +249,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       config_updated: ${{ steps.update-config.outputs.updated }}
+      failure_reason: ${{ steps.update-config.outputs.error }}
 
     steps:
       - name: Checkout Repository (Default Branch)
@@ -258,6 +275,7 @@ jobs:
 
             template_path="/tmp/kitfox-github/$UPDATE_CONFIG_TEMPLATE_PATH"
             if [ ! -f "$template_path" ]; then
+              echo "error=Template not found at $template_path" >> "$GITHUB_OUTPUT"
               echo "::error::Template not found at $template_path"
               exit 1
             fi
@@ -346,8 +364,10 @@ jobs:
             }}
           FAILURE_REASON: >-
             ${{
-                (needs.update-template.result == 'failure' && 'Template update or branch verification failed') ||
-                (needs.commit-release-branch.result == 'failure' && 'Failed to commit release branch changes') ||
+                (needs.update-template.result == 'failure' && (needs.update-template.outputs.failure_reason || 'Template update or branch verification failed')) ||
+                (needs.update-config.result == 'failure' && (needs.update-config.outputs.failure_reason || 'Failed to update configuration file')) ||
+                (needs.commit-release-branch.result == 'failure' && (needs.commit-release-branch.outputs.failure_reason || 'Failed to commit release branch changes')) ||
+                (needs.commit-config.result == 'failure' && (needs.commit-config.outputs.failure_reason || 'Failed to commit config to default branch')) ||
                 ''
             }}
         run: |

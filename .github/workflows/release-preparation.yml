@@ -52,6 +52,9 @@ on:
       commit_sha:
         description: 'Commit SHA of the release'
         value: ${{ jobs.prepare.outputs.commit_sha }}
+      failure_reason:
+        description: 'Specific failure reason if preparation failed'
+        value: ${{ jobs.prepare.outputs.failure_reason }}
       notification_outcome:
         description: 'Outcome of the notification'
         value: ${{ jobs.notify.outputs.notification_outcome }}
@@ -143,6 +146,11 @@ jobs:
               "title": "Source Branch",
               "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ needs.prepare.outputs.source_branch }}|${{ needs.prepare.outputs.source_branch }}>",
               "short": true
+            },
+            {
+              "title": "Error",
+              "value": "${{ needs.prepare.outputs.failure_reason || 'Check workflow logs for details' }}",
+              "short": false
             }
           ],
           "footer": "Eureka CI/CD"
@@ -206,6 +214,7 @@ jobs:
           APP_VERSION: ${{ needs.prepare.outputs.app_version }}
           SOURCE_BRANCH: ${{ needs.prepare.outputs.source_branch }}
           COMMIT_SHA: ${{ needs.prepare.outputs.commit_sha }}
+          FAILURE_REASON: ${{ needs.prepare.outputs.failure_reason }}
           TEAM_NOTIF_STATUS: ${{ needs.notify.outputs.team_notif_status || 'skipped' }}
           TEAM_NOTIF_STATUS_ICON: >-
             ${{
@@ -239,7 +248,11 @@ jobs:
               echo "- **Commit SHA:** [$COMMIT_SHA](${{ github.server_url }}/${{ inputs.repo }}/commit/$COMMIT_SHA)"
             elif [[ "$PREP_RESULT" == "failure" ]]; then
               echo "❌ **Preparation Result:** Failed"
-              echo "- Check the preparation job logs for details"
+              if [[ -n "$FAILURE_REASON" ]]; then
+                echo "- **Error:** $FAILURE_REASON"
+              else
+                echo "- Check the preparation job logs for details"
+              fi
             elif [[ "$PREP_RESULT" == "cancelled" ]]; then
               echo "⚠️ **Preparation Result:** Cancelled"
             else
