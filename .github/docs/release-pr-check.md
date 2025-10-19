@@ -679,7 +679,7 @@ curl -I https://raw.githubusercontent.com/folio-org/platform-lsp/R2-2025/platfor
 - **[Generate Application Descriptor Action](../actions/generate-application-descriptor/README.md)**: Descriptor generation
 - **[Get PR Info Action](../actions/get-pr-info/README.md)**: PR information retrieval
 - **[Is Commit in PR Action](../actions/is-commit-in-pr/README.md)**: Commit verification
-- **[Get Release Config Action](../actions/get-release-config/README.md)**: Configuration loading
+- **[Get Update Config Action](../actions/get-update-config/README.md)**: Configuration loading
 
 ---
 
