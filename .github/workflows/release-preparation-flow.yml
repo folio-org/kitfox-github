@@ -345,6 +345,7 @@ jobs:
         with:
           name: "${{ inputs.app_name }}-config-file"
           path: /tmp/config-artifact/
+          include-hidden-files: true
           retention-days: 1
 
   commit-release-branch:
