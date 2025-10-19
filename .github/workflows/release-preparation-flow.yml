@@ -55,7 +55,6 @@ env:
   APPLICATION_TEMPLATE_FILE: 'application.template.json'
   UPDATE_CONFIG_FILE: 'update-config.yml'
   UPDATE_CONFIG_TEMPLATE_PATH: '.github/templates/update-config.yml.template'
-  APPLICATION_STATE_FILE: 'application.lock.json'
 
 jobs:
   update-template:
@@ -322,7 +321,7 @@ jobs:
       dry_run: ${{ inputs.dry_run }}
       source_branch: ${{ needs.update-template.outputs.source_branch }}
       deleted_files: |
-        ${{ env.APPLICATION_STATE_FILE }}
+        application.lock.json
     secrets: inherit
 
   commit-config:
