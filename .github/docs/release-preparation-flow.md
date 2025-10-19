@@ -37,15 +37,17 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 
 ### Inputs
 
-| Input                     | Description                                            | Required  | Type    | Default |
-|---------------------------|--------------------------------------------------------|-----------|---------|---------|
-| `app_name`                | Application repository name (e.g., 'app-acquisitions') | Yes       | string  | -       |
-| `repo`                    | Application repository (org/repo format)               | Yes       | string  | -       |
-| `previous_release_branch` | Previous release branch (e.g., 'R1-2024')              | Yes       | string  | -       |
-| `new_release_branch`      | New release branch to create (e.g., 'R2-2025')         | Yes       | string  | -       |
-| `use_snapshot_fallback`   | Use snapshot branch if previous branch not found       | No        | boolean | `false` |
-| `use_snapshot_version`    | Use snapshot version for new release                   | No        | boolean | `false` |
-| `dry_run`                 | Perform dry run without making changes                 | No        | boolean | `false` |
+| Input                     | Description                                            | Required  | Type    | Default   |
+|---------------------------|--------------------------------------------------------|-----------|---------|-----------|
+| `app_name`                | Application repository name (e.g., 'app-acquisitions') | Yes       | string  | -         |
+| `repo`                    | Application repository (org/repo format)               | Yes       | string  | -         |
+| `previous_release_branch` | Previous release branch (e.g., 'R1-2024')              | Yes       | string  | -         |
+| `new_release_branch`      | New release branch to create (e.g., 'R2-2025')         | Yes       | string  | -         |
+| `use_snapshot_fallback`   | Use snapshot branch if previous branch not found       | No        | boolean | `false`   |
+| `use_snapshot_version`    | Use snapshot version for new release                   | No        | boolean | `false`   |
+| `dry_run`                 | Perform dry run without making changes                 | No        | boolean | `false`   |
+| `need_pr`                 | Require PR for version updates on this branch          | No        | boolean | `true`    |
+| `prerelease_mode`         | Module version constraints: `"false"`, `"true"`, `"only"` | No     | string  | `"false"` |
 
 ### Outputs
 
@@ -106,7 +108,23 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 3. **Duplicate Check**
    - Skips update if branch already in configuration
 
-4. **Artifact Upload**
+4. **Branch Configuration Generation**
+   - Dynamically builds branch configuration using jq:
+     - `enabled: true` - Always enabled for new release branches
+     - `need_pr: <input>` - From `need_pr` input parameter (default: `true`)
+     - `preRelease: <input>` - From `prerelease_mode` input parameter (default: `"false"`)
+   - Example configuration:
+     ```json
+     {
+       "R2-2025": {
+         "enabled": true,
+         "need_pr": true,
+         "preRelease": "false"
+       }
+     }
+     ```
+
+5. **Artifact Upload**
    - Uploads modified `update-config.yml` as artifact
    - Artifact name: `{app_name}-config-file`
 

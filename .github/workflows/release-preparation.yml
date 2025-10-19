@@ -36,6 +36,16 @@ on:
         required: false
         type: boolean
         default: false
+      need_pr:
+        description: 'Require PR for version updates on this branch'
+        required: false
+        type: boolean
+        default: true
+      prerelease_mode:
+        description: 'PreRelease mode for version updates ("false", "true", or "only")'
+        required: false
+        type: string
+        default: 'false'
     outputs:
       preparation_result:
         description: 'Result of the preparation (success/failure/skipped)'
@@ -78,6 +88,8 @@ jobs:
       use_snapshot_fallback: ${{ inputs.use_snapshot_fallback }}
       use_snapshot_version: ${{ inputs.use_snapshot_version }}
       dry_run: ${{ inputs.dry_run }}
+      need_pr: ${{ inputs.need_pr }}
+      prerelease_mode: ${{ inputs.prerelease_mode }}
     secrets: inherit
 
   notify:
