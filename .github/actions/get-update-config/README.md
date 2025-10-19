@@ -1,11 +1,11 @@
-# Get Release Configuration Action
+# Get Update Configuration Action
 
-A GitHub Action that reads and parses release configuration from an `update-config.yml` file in a repository. This action validates configuration settings, checks for existing release branches, and provides structured outputs for release automation workflows.
+A GitHub Action that reads and parses update configuration from an `update-config.yml` file in a repository. This action validates configuration settings, checks for existing update branches, and provides structured outputs for update automation workflows.
 
 ## Features
 
 - **Configuration File Discovery**: Automatically locates and reads `update-config.yml` files
-- **Branch Validation**: Verifies that configured release branches actually exist in the repository
+- **Branch Validation**: Verifies that configured update branches actually exist in the repository
 - **Flexible Configuration**: Supports custom config file paths and branch references
 - **Structured Outputs**: Provides JSON arrays and maps for easy consumption by other workflow steps
 - **Default Handling**: Gracefully handles missing configuration files with sensible defaults
@@ -16,8 +16,8 @@ A GitHub Action that reads and parses release configuration from an `update-conf
 ### Basic Usage
 
 ```yaml
-- name: Get Release Configuration
-  uses: ./.github/actions/get-release-config
+- name: Get Update Configuration
+  uses: ./.github/actions/get-update-config
   with:
     repo: 'folio-org/platform-complete'
 ```
@@ -25,8 +25,8 @@ A GitHub Action that reads and parses release configuration from an `update-conf
 ### With Custom Configuration
 
 ```yaml
-- name: Get Release Configuration
-  uses: ./.github/actions/get-release-config
+- name: Get Update Configuration
+  uses: ./.github/actions/get-update-config
   with:
     repo: 'my-org/my-repo'
     branch: 'develop'
@@ -37,8 +37,8 @@ A GitHub Action that reads and parses release configuration from an `update-conf
 ### Cross-Repository Configuration
 
 ```yaml
-- name: Get Release Configuration from Template Repo
-  uses: ./.github/actions/get-release-config
+- name: Get Update Configuration from Template Repo
+  uses: ./.github/actions/get-update-config
   with:
     repo: 'folio-org/platform-template'
     branch: 'main'
@@ -58,12 +58,12 @@ A GitHub Action that reads and parses release configuration from an `update-conf
 
 | Output                | Description                                                              |
 |-----------------------|--------------------------------------------------------------------------|
-| `enabled`             | Whether release scanning is enabled (`true`/`false`)                     |
-| `release_branches`    | JSON array of existing release branches (e.g., `["r1.0", "r2.0"]`)       |
-| `branch_count`        | Number of existing release branches (integer)                            |
+| `enabled`             | Whether update scanning is enabled (`true`/`false`)                     |
+| `release_branches`    | JSON array of existing update branches (e.g., `["r1.0", "r2.0"]`)       |
+| `branch_count`        | Number of existing update branches (integer)                            |
 | `pr_reviewers`        | Comma-separated list of PR reviewers                                     |
 | `pr_labels`           | Comma-separated list of PR labels                                        |
-| `update_branches_map` | JSON map of release branches to their corresponding update branches (or `null` for direct updates) |
+| `update_branches_map` | JSON map of update branches to their corresponding update branches (or `null` for direct updates) |
 | `config_exists`       | Whether the configuration file exists in the repository (`true`/`false`) |
 
 ## Configuration File Format
@@ -134,9 +134,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get Release Configuration
+      - name: Get Update Configuration
         id: config
-        uses: ./.github/actions/get-release-config
+        uses: ./.github/actions/get-update-config
         with:
           repo: ${{ github.repository }}
           branch: ${{ github.ref_name }}
@@ -147,8 +147,8 @@ jobs:
           RELEASE_BRANCHES: ${{ steps.config.outputs.release_branches }}
           UPDATE_BRANCHES_MAP: ${{ steps.config.outputs.update_branches_map }}
         run: |
-          echo "Found ${{ steps.config.outputs.branch_count }} release branches to process"
-          echo "Release branches: $RELEASE_BRANCHES"
+          echo "Found ${{ steps.config.outputs.branch_count }} update branches to process"
+          echo "Update branches: $RELEASE_BRANCHES"
           echo "Update branches mapping: $UPDATE_BRANCHES_MAP"
 
           # Process each release branch
@@ -161,9 +161,9 @@ jobs:
         if: steps.config.outputs.enabled != 'true'
         run: |
           if [ "${{ steps.config.outputs.config_exists }}" == "false" ]; then
-            echo "No release configuration found - using defaults"
+            echo "No update configuration found - using defaults"
           else
-            echo "Release scanning is disabled in configuration"
+            echo "Update scanning is disabled in configuration"
           fi
 ```
 
@@ -175,9 +175,9 @@ strategy:
     include: ${{ fromJson(steps.config.outputs.release_branches) }}
 
 steps:
-  - name: Get Release Configuration
+  - name: Get Update Configuration
     id: config
-    uses: ./.github/actions/get-release-config
+    uses: ./.github/actions/get-update-config
     with:
       repo: ${{ github.repository }}
 
@@ -193,9 +193,9 @@ steps:
 ### Conditional PR Creation Example
 
 ```yaml
-- name: Get Release Configuration
+- name: Get Update Configuration
   id: config
-  uses: ./.github/actions/get-release-config
+  uses: ./.github/actions/get-update-config
   with:
     repo: ${{ github.repository }}
 
@@ -209,7 +209,7 @@ steps:
     pr_body: |
       ## Automated Release Updates
 
-      This PR contains updates for the following release branches:
+      This PR contains updates for the following update branches:
       ${{ steps.config.outputs.release_branches }}
 
       **Configuration Details:**
@@ -267,7 +267,7 @@ The GitHub token must have the following permissions:
 ### Repository Structure
 
 - **Configuration file**: Must be valid YAML format
-- **Branch references**: Release branches should exist in the repository
+- **Branch references**: Update branches should exist in the repository
 - **File location**: Configuration file must be accessible at the specified path
 
 ## Troubleshooting
@@ -306,7 +306,7 @@ Error parsing configuration file
 
 #### Empty Results
 ```
-::warning::No existing release branches found to scan
+::warning::No existing update branches found to scan
 ```
 **Solutions**:
 - Verify that the configured branches actually exist
@@ -378,16 +378,16 @@ When consuming this map:
 
 - **[create-pr](../create-pr/README.md)**: Create pull requests using the configuration outputs
 - **[update-pr](../update-pr/README.md)**: Update PRs with reviewers and labels from configuration
-- **[generate-application-descriptor](../generate-application-descriptor/README.md)**: Generate descriptors for release branches
+- **[generate-application-descriptor](../generate-application-descriptor/README.md)**: Generate descriptors for update branches
 
 ## Integration Examples
 
 ### With Release Automation
 
 ```yaml
-- name: Get Release Configuration
+- name: Get Update Configuration
   id: config
-  uses: ./.github/actions/get-release-config
+  uses: ./.github/actions/get-update-config
   with:
     repo: ${{ github.repository }}
 
@@ -406,7 +406,7 @@ strategy:
 
 ```yaml
 - name: Get Template Configuration
-  uses: ./.github/actions/get-release-config
+  uses: ./.github/actions/get-update-config
   with:
     repo: 'folio-org/platform-template'
     branch: 'main'

@@ -1,6 +1,6 @@
-name: 'Get Release Configuration'
+name: 'Get Update Configuration'
 
-description: 'Reads and parses release configuration from update-config.yml'
+description: 'Reads and parses update configuration from update-config.yml'
 
 inputs:
   repo:
@@ -20,13 +20,13 @@ inputs:
     default: ${{ github.token }}
 outputs:
   enabled:
-    description: 'Whether release scanning is enabled'
+    description: 'Whether update scanning is enabled'
     value: ${{ steps.parse.outputs.enabled }}
   release_branches:
-    description: 'JSON array of release branches'
+    description: 'JSON array of update branches'
     value: ${{ steps.parse.outputs.branches }}
   branch_count:
-    description: 'Number of release branches'
+    description: 'Number of update branches'
     value: ${{ steps.parse.outputs.branch_count }}
   pr_reviewers:
     description: 'Comma-separated list of PR reviewers'
@@ -35,7 +35,7 @@ outputs:
     description: 'Comma-separated list of PR labels'
     value: ${{ steps.parse.outputs.labels }}
   update_branches_map:
-    description: 'JSON map of release branches to update branches'
+    description: 'JSON map of base branches to update branches'
     value: ${{ steps.parse.outputs.map }}
   config_exists:
     description: 'Whether configuration file exists'
@@ -155,5 +155,5 @@ runs:
         [[ -n "$PR_LABELS" ]] && echo "::notice::  PR Labels: $PR_LABELS"
         [[ "$UPDATE_MAP" != "{}" ]] && echo "::notice::  Update Branches Map: $(echo $UPDATE_MAP | jq -c .)"
         
-        [[ "$ENABLED" != "true" ]] && echo "::warning::Release scanning is disabled in configuration" || true
-        [[ "$COUNT" -eq 0 ]] && echo "::warning::No existing release branches found to scan" || true
+        [[ "$ENABLED" != "true" ]] && echo "::warning::Update scanning is disabled in configuration" || true
+        [[ "$COUNT" -eq 0 ]] && echo "::warning::No existing update branches found to scan" || true
