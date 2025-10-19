@@ -218,20 +218,6 @@ The workflows follow a layered architecture:
 3. **Notifications**: Sends status updates to configured Slack channels
 4. **Summary**: Generates comprehensive workflow summary
 
-### Notification Workflows
-
-#### Release Preparation Notification
-**File**: [`release-preparation-notification.yml`](workflows/release-preparation-notification.yml)
-**Purpose**: Slack notifications for release preparation
-**Documentation**: [Release Preparation Notification Guide](docs/release-preparation-notification.md)
-
-**Key Features**:
-- Rich Slack message formatting
-- Success and failure templates
-- Direct links to branches and commits
-- Error handling for notification failures
-- Output status for tracking
-
 ## 🔧 Universal Actions
 
 ### Core Infrastructure Actions
