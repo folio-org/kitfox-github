@@ -10,4 +10,4 @@ branches:
   - snapshot:
       enabled: false
       need_pr: false
-      pre_release: only
+      pre_release: "only"
