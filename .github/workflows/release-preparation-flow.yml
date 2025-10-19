@@ -332,7 +332,7 @@ jobs:
   commit-config:
     name: Commit Config to Default Branch
     needs: [update-template, update-config, commit-release-branch]
-    if: needs.update-config.outputs.config_updated == 'true' && needs.commit-release-branch.result == 'success' && inputs.dry_run == false
+    if: needs.update-config.outputs.config_updated == 'true' && needs.commit-release-branch.result == 'success'
     uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@RANCHER-2572-test #TODO: Switch to master
     with:
       repo: ${{ inputs.repo }}
