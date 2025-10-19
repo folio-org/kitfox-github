@@ -139,8 +139,9 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
      ```
 
 5. **Artifact Upload**
-   - Uploads modified `update-config.yml` as artifact
+   - Uploads modified `.github/update-config.yml` as artifact
    - Artifact name: `{app_name}-config-file`
+   - Uses `include-hidden-files: true` to preserve `.github/` directory structure
 
 ### 3. Commit Release Branch Job
 
