@@ -76,10 +76,11 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 3. **Template Update**
    - Updates `application.template.json`:
      - Preserves version field (typically Maven placeholder like `${project.version}`)
-     - Sets all module versions to `^VERSION` placeholder with `preRelease: false`
-     - Sets all UI module versions to `^VERSION` placeholder with `preRelease: false`
-     - Sets all dependency versions to `^VERSION` placeholder with `preRelease: false`
-   - Example: `{"version": "${project.version}", "modules": [{"version": "^VERSION", "preRelease": false}]}`
+     - Sets all module versions to `^VERSION` placeholder with `preRelease: "false"`
+     - Sets all UI module versions to `^VERSION` placeholder with `preRelease: "false"`
+     - Sets all dependency versions to `^VERSION` placeholder with `preRelease: "false"`
+   - Example: `{"version": "${project.version}", "modules": [{"version": "^VERSION", "preRelease": "false"}]}`
+   - **Note**: `preRelease` is a string enum with possible values: `"false"`, `"true"`, or `"only"`
 
 4. **POM Update** (if present)
    - Updates Maven pom.xml with new version
@@ -167,22 +168,27 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 
 ### What is ^VERSION?
 
-After release preparation, `application.template.json` contains `^VERSION` placeholders for all module, uiModule, and dependency versions with `preRelease: false`:
+After release preparation, `application.template.json` contains `^VERSION` placeholders for all module, uiModule, and dependency versions with `preRelease: "false"`:
 
 ```json
 {
   "version": "${project.version}",
   "dependencies": [
-    {"name": "app-platform-complete", "version": "^VERSION", "preRelease": false}
+    {"name": "app-platform-complete", "version": "^VERSION", "preRelease": "false"}
   ],
   "modules": [
-    {"name": "mod-inventory", "version": "^VERSION", "preRelease": false}
+    {"name": "mod-inventory", "version": "^VERSION", "preRelease": "false"}
   ],
   "uiModules": [
-    {"name": "ui-users", "version": "^VERSION", "preRelease": false}
+    {"name": "ui-users", "version": "^VERSION", "preRelease": "false"}
   ]
 }
 ```
+
+**Note**: The `preRelease` field is a string enum, not a boolean. Possible values:
+- `"false"` - Include only release versions (no snapshots or pre-releases)
+- `"true"` - Include all versions including pre-releases and snapshots
+- `"only"` - Include only pre-release/snapshot versions
 
 ### Developer Responsibility
 
@@ -191,20 +197,23 @@ After release preparation, `application.template.json` contains `^VERSION` place
 ### Version Constraint Examples
 
 ```json
-// Caret range (allow minor and patch updates) - Release version
-{"name": "mod-inventory", "version": "^2.0.0", "preRelease": false}
+// Caret range (allow minor and patch updates) - Release versions only
+{"name": "mod-inventory", "version": "^2.0.0", "preRelease": "false"}
 
-// Tilde range (allow patch updates only) - Release version
-{"name": "mod-users", "version": "~1.5.0", "preRelease": false}
+// Tilde range (allow patch updates only) - Release versions only
+{"name": "mod-users", "version": "~1.5.0", "preRelease": "false"}
 
-// Range constraints - Release version
-{"name": "mod-orders", "version": ">1.0.0 <=2.5.0", "preRelease": false}
+// Range constraints - Release versions only
+{"name": "mod-orders", "version": ">1.0.0 <=2.5.0", "preRelease": "false"}
 
-// Exact version (not recommended for most cases) - Release version
-{"name": "mod-circulation", "version": "3.1.0", "preRelease": false}
+// Exact version (not recommended for most cases) - Release versions only
+{"name": "mod-circulation", "version": "3.1.0", "preRelease": "false"}
 
-// Pre-release versions (for snapshot/development branches)
-{"name": "mod-finance", "version": "^2.0.0-SNAPSHOT", "preRelease": true}
+// Include pre-release/snapshot versions (for snapshot branches)
+{"name": "mod-finance", "version": "^2.0.0", "preRelease": "true"}
+
+// Only pre-release/snapshot versions
+{"name": "mod-data-export", "version": "^1.0.0", "preRelease": "only"}
 ```
 
 ### File Lifecycle
@@ -373,9 +382,9 @@ When `dry_run: true`:
 #### Post-Execution
 - [ ] New release branch created with correct source
 - [ ] `application.template.json` version field preserved (not overwritten)
-- [ ] All module versions set to `^VERSION` with `preRelease: false`
-- [ ] All uiModule versions set to `^VERSION` with `preRelease: false`
-- [ ] All dependency versions set to `^VERSION` with `preRelease: false`
+- [ ] All module versions set to `^VERSION` with `preRelease: "false"`
+- [ ] All uiModule versions set to `^VERSION` with `preRelease: "false"`
+- [ ] All dependency versions set to `^VERSION` with `preRelease: "false"`
 - [ ] `application.lock.json` deleted from release branch
 - [ ] `update-config.yml` created/updated on default branch
 - [ ] pom.xml updated with release version (if applicable)
