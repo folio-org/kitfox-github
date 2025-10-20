@@ -360,6 +360,7 @@ jobs:
       repo: ${{ inputs.repo }}
       branch: ${{ inputs.new_release_branch }}
       artifact_name: "${{ inputs.app_name }}-release-files"
+      use_github_app: true
       commit_message: |
         Prepare ${{ inputs.app_name }} for release. Initial commit.
 
@@ -384,6 +385,7 @@ jobs:
       repo: ${{ inputs.repo }}
       branch: ${{ needs.update-template.outputs.default_branch }}
       artifact_name: "${{ inputs.app_name }}-config-file"
+      use_github_app: true
       commit_message: |
         Add ${{ inputs.new_release_branch }} to update configuration
 
