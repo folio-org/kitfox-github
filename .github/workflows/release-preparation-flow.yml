@@ -248,7 +248,8 @@ jobs:
       - name: Upload Release Branch Files
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ inputs.app_name }}-release-files"
+          name: "${{ inputs.app_name }}-release-files-${{ github.run_id }}"
+          overwrite: true
           path: |
             ${{ env.APPLICATION_TEMPLATE_FILE }}
             pom.xml
@@ -344,7 +345,8 @@ jobs:
         if: steps.update-config.outputs.updated == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ inputs.app_name }}-config-file"
+          name: "${{ inputs.app_name }}-config-file-${{ github.run_id }}"
+          overwrite: true
           path: /tmp/config-artifact/
           include-hidden-files: true
           retention-days: 1
@@ -357,7 +359,7 @@ jobs:
     with:
       repo: ${{ inputs.repo }}
       branch: ${{ inputs.new_release_branch }}
-      artifact_name: "${{ inputs.app_name }}-release-files"
+      artifact_name: "${{ inputs.app_name }}-release-files-${{ github.run_id }}"
       commit_message: |
         Prepare ${{ inputs.app_name }} for release. Initial commit.
 
@@ -381,7 +383,7 @@ jobs:
     with:
       repo: ${{ inputs.repo }}
       branch: ${{ needs.update-template.outputs.default_branch }}
-      artifact_name: "${{ inputs.app_name }}-config-file"
+      artifact_name: "${{ inputs.app_name }}-config-file-${{ github.run_id }}"
       commit_message: |
         Add ${{ inputs.new_release_branch }} to update configuration
 
@@ -445,6 +447,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "result-${{ inputs.app_name }}"
+          name: "result-${{ inputs.app_name }}-${{ github.run_id }}"
+          overwrite: true
           path: "/tmp/results/${{ inputs.app_name }}.json"
           retention-days: 1
