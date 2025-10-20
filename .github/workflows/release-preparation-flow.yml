@@ -238,8 +238,9 @@ jobs:
           set -eo pipefail
 
           if [ -f "pom.xml" ]; then
-            echo "::notice::Updating pom.xml version to $TARGET_VERSION"
+            echo "::group::Updating pom.xml version to $TARGET_VERSION"
             mvn versions:set -DnewVersion="$TARGET_VERSION" -DgenerateBackupPoms=false
+            echo "::endgroup::"
           else
             echo "::notice::No pom.xml found, skipping"
           fi
