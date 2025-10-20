@@ -408,6 +408,7 @@ jobs:
             ${{
                 (needs.update-template.result == 'failure' && 'failed') ||
                 (needs.commit-release-branch.result == 'failure' && 'failed') ||
+                (needs.commit-config.result == 'failure' && 'failed') ||
                 'success'
             }}
           FAILURE_REASON: >-
