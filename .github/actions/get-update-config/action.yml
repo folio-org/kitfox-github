@@ -108,8 +108,8 @@ runs:
         
         if [[ "$ENABLED" == "true" && -n "$FORMAT" && ${#BRANCHES[@]} -gt 0 ]]; then
           for branch in "${BRANCHES[@]}"; do
-            enabled=$(yq eval ".branches[] | select(has(\"$branch\")) | .$branch.enabled // true" "$CONFIG" | tr 'A-Z' 'a-z')
-            
+            enabled=$(yq eval ".branches[] | select(has(\"$branch\")) | .[\"$branch\"].enabled // true" "$CONFIG" | tr 'A-Z' 'a-z')
+
             if [[ "$enabled" != "true" ]]; then
               echo "::warning::Branch $branch is disabled in configuration, skipping"
               continue
@@ -131,10 +131,10 @@ runs:
         EXISTING_JSON=$(printf '%s\n' "${EXISTING[@]}" | jq -R . | jq -cs .)
   
         UPDATE_MAP=$(printf '%s\n' "${EXISTING[@]}" | while read -r branch; do
-          need_pr=$(yq eval ".branches[] | select(has(\"$branch\")) | .$branch.need_pr // true" "$CONFIG" | tr 'A-Z' 'a-z')
-        
+          need_pr=$(yq eval ".branches[] | select(has(\"$branch\")) | .[\"$branch\"].need_pr // true" "$CONFIG" | tr 'A-Z' 'a-z')
+
           [[ "$need_pr" == "true" ]] && head_branch=$(echo "$FORMAT" | sed "s/{0}/$branch/") || head_branch=null
-        
+
           jq -n --arg k "$branch" --arg v "$head_branch" '{($k): $v}'
         done | jq -s 'add // {}')
         
