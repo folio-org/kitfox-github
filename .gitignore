@@ -50,4 +50,8 @@ claude*
 
 ### OS ###
 .DS_Store
-**/.DS_Store 
+**/.DS_Store
+
+### Python ###
+__pycache__/
+*.pyc
