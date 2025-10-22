@@ -74,7 +74,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github_token }}
         REPO: ${{ inputs.repo }}
-        CONFIG: "/tmp/config.yml"
+        CONFIG: "/tmp/update-config.yml"
       run: |
         set -eo pipefail
         
@@ -102,8 +102,8 @@ runs:
         PR_REVIEWERS=$(yq eval -o=json -I=0 '.update_config.pr_reviewers // []' "$CONFIG" | jq -r 'join(",")? // ""')
         PR_LABELS=$(yq eval -o=json -I=0 '.update_config.labels // []' "$CONFIG" | jq -r 'join(",")? // ""')
         FORMAT=$(get_yq '.update_config.update_branch_format // "release-update/{0}"')
-        
-        mapfile -t BRANCHES < <(echo "$BRANCHES_JSON" | jq -r '.[]')
+
+        mapfile -t BRANCHES < <(echo "$BRANCHES" | jq -r '.[]')
         EXISTING=()
         
         if [[ "$ENABLED" == "true" && -n "$FORMAT" && ${#BRANCHES[@]} -gt 0 ]]; then
