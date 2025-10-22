@@ -1,0 +1,159 @@
+name: 'Get Update Configuration'
+
+description: 'Reads and parses update configuration from update-config.yml'
+
+inputs:
+  repo:
+    description: 'Repository (org/repo format)'
+    required: true
+  branch:
+    description: 'Branch where config file resides'
+    required: false
+    default: master
+  config_file:
+    description: 'Path to configuration file'
+    required: false
+    default: '.github/update-config.yml'
+  github_token:
+    description: 'GitHub token for API access'
+    required: false
+    default: ${{ github.token }}
+outputs:
+  enabled:
+    description: 'Whether update scanning is enabled'
+    value: ${{ steps.parse.outputs.enabled }}
+  release_branches:
+    description: 'JSON array of update branches'
+    value: ${{ steps.parse.outputs.branches }}
+  branch_count:
+    description: 'Number of update branches'
+    value: ${{ steps.parse.outputs.branch_count }}
+  pr_reviewers:
+    description: 'Comma-separated list of PR reviewers'
+    value: ${{ steps.parse.outputs.reviewers }}
+  pr_labels:
+    description: 'Comma-separated list of PR labels'
+    value: ${{ steps.parse.outputs.labels }}
+  update_branches_map:
+    description: 'JSON map of base branches to update branches'
+    value: ${{ steps.parse.outputs.map }}
+  config_exists:
+    description: 'Whether configuration file exists'
+    value: ${{ steps.check.outputs.exists }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check Configuration File
+      id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ inputs.repo }}
+        BRANCH: ${{ inputs.branch }}
+        CONFIG_FILE: ${{ inputs.config_file }}
+      run: |
+        set -eo pipefail
+        
+        echo "::notice::Checking for configuration file: $CONFIG_FILE in $REPO on branch $BRANCH"
+        
+        if gh api "repos/$REPO/contents/$CONFIG_FILE?ref=$BRANCH" >/dev/null 2>&1; then
+          echo "::notice::Configuration file exists"
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          
+          gh api "repos/$REPO/contents/$CONFIG_FILE?ref=$BRANCH" \
+            --jq '.content' | base64 -d > /tmp/update-config.yml
+        else
+          echo "::warning::Configuration file not found: $CONFIG_FILE on branch $BRANCH"
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Parse Configuration
+      id: parse
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ inputs.repo }}
+        CONFIG: "/tmp/config.yml"
+      run: |
+        set -eo pipefail
+        
+        get_yq() { yq eval "$1" "$CONFIG" 2>/dev/null | tr -d '\r'; }
+        
+        if [[ "${{ steps.check.outputs.exists }}" != "true" ]]; then
+          echo "::notice::No configuration found; using defaults"
+          {
+            echo "enabled=false"
+            echo "branches=[]"
+            echo "branch_count=0"
+            echo "reviewers="
+            echo "labels="
+            echo "map={}"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        
+        echo "::notice::Parsing configuration from $CONFIG"
+        
+        ENABLED=$(get_yq '.update_config.enabled' | tr 'A-Z' 'a-z')
+        [[ "$ENABLED" != "true" ]] && ENABLED=false
+        
+        BRANCHES=$(yq eval -o=json -I=0 '.branches // [] | map(keys[0])' "$CONFIG")
+        PR_REVIEWERS=$(yq eval -o=json -I=0 '.update_config.pr_reviewers // []' "$CONFIG" | jq -r 'join(",")? // ""')
+        PR_LABELS=$(yq eval -o=json -I=0 '.update_config.labels // []' "$CONFIG" | jq -r 'join(",")? // ""')
+        FORMAT=$(get_yq '.update_config.update_branch_format // "release-update/{0}"')
+        
+        mapfile -t BRANCHES < <(echo "$BRANCHES_JSON" | jq -r '.[]')
+        EXISTING=()
+        
+        if [[ "$ENABLED" == "true" && -n "$FORMAT" && ${#BRANCHES[@]} -gt 0 ]]; then
+          for branch in "${BRANCHES[@]}"; do
+            enabled=$(yq eval ".branches[] | select(has(\"$branch\")) | .$branch.enabled // true" "$CONFIG" | tr 'A-Z' 'a-z')
+            
+            if [[ "$enabled" != "true" ]]; then
+              echo "::warning::Branch $branch is disabled in configuration, skipping"
+              continue
+            fi
+          
+            echo "::notice::Checking branch: $branch"
+            
+            if response=$(gh api "repos/${{ inputs.repo }}/branches/$branch" 2>&1); then
+              echo "::notice::Branch exists and is enabled: $branch"
+              EXISTING+=("$branch")
+            else
+              echo "::warning::Branch not found: $branch"
+              echo "::warning::API response: $response"
+            fi
+          done
+        fi
+        
+        COUNT=${#EXISTING[@]}
+        EXISTING_JSON=$(printf '%s\n' "${EXISTING[@]}" | jq -R . | jq -cs .)
+  
+        UPDATE_MAP=$(printf '%s\n' "${EXISTING[@]}" | while read -r branch; do
+          need_pr=$(yq eval ".branches[] | select(has(\"$branch\")) | .$branch.need_pr // true" "$CONFIG" | tr 'A-Z' 'a-z')
+        
+          [[ "$need_pr" == "true" ]] && head_branch=$(echo "$FORMAT" | sed "s/{0}/$branch/") || head_branch=null
+        
+          jq -n --arg k "$branch" --arg v "$head_branch" '{($k): $v}'
+        done | jq -s 'add // {}')
+        
+        {
+          echo "enabled=$ENABLED"
+          echo "branches=$EXISTING_JSON"
+          echo "branch_count=$COUNT"
+          echo "reviewers=$PR_REVIEWERS"
+          echo "labels=$PR_LABELS"
+          echo "map=$(echo "$UPDATE_MAP" | jq -c .)"
+        } >> "$GITHUB_OUTPUT"
+        
+        echo "::notice::Configuration parsed:"
+        echo "::notice::  Enabled: $ENABLED"
+        echo "::notice::  Existing branches: $COUNT"
+        echo "::notice::  Branches to scan: $EXISTING_JSON"
+        [[ -n "$PR_REVIEWERS" ]] && echo "::notice::  PR Reviewers: $PR_REVIEWERS"
+        [[ -n "$PR_LABELS" ]] && echo "::notice::  PR Labels: $PR_LABELS"
+        [[ "$UPDATE_MAP" != "{}" ]] && echo "::notice::  Update Branches Map: $(echo $UPDATE_MAP | jq -c .)"
+        
+        [[ "$ENABLED" != "true" ]] && echo "::warning::Update scanning is disabled in configuration" || true
+        [[ "$COUNT" -eq 0 ]] && echo "::warning::No existing update branches found to scan" || true

@@ -74,7 +74,7 @@ on:
         value: ${{ jobs.commit-changes.outputs.commit_sha }}
       app_descriptor_url:
         description: 'URL of generated application descriptor'
-        value: ${{ format('{0}/applications/{1}?full=true', vars.FAR_URL, jobs.update-application.outputs.app_descriptor_file_name) }} # TODO: Change to production URL
+        value: ${{ format('{0}/applications/{1}?full=true', vars.FAR_URL, jobs.update-application.outputs.app_descriptor_file_name) }}
       app_descriptor_file_name:
         description: 'Name of generated application descriptor file'
         value: ${{ jobs.update-application.outputs.app_descriptor_file_name }}

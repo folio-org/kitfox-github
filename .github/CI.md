@@ -91,13 +91,18 @@ The workflows follow a layered architecture:
 
 #### Release Preparation
 **File**: [`release-preparation.yml`](workflows/release-preparation.yml)
-**Purpose**: Release branch creation and preparation
+**Purpose**: Release branch creation and preparation with template-based version management
 **Documentation**: [Release Preparation Guide](docs/release-preparation.md)
 
 **Key Features**:
 - Creates new release branches from previous releases or snapshots
-- Updates application versions for release
+- **Template-based approach**: Updates `application.template.json` with `^VERSION` placeholders
+- **State file management**: Deletes generated state files (application.lock.json) for CI regeneration
+- **Update configuration**: Manages `update-config.yml` to track branches for automatic updates
+- **GitHub API integration**: Dynamic default branch detection using GitHub API
 - Handles both snapshot and release version sources
+- Updates Maven pom.xml version if present
+- Separate commits for release branch and configuration updates
 - Comprehensive Git operations with error handling
 - Dry-run support for safe testing
 
@@ -151,6 +156,9 @@ The workflows follow a layered architecture:
 - Atomic Git operations with error handling
 - Standardized commit message formatting
 - Branch management and pushing
+- **File deletion**: Supports deleting specified files before commit (multiline list format)
+- Source branch specification for new branch creation
+- GitHub App or standard token authentication
 - Dry-run support for validation
 - Rollback capabilities
 
@@ -210,20 +218,6 @@ The workflows follow a layered architecture:
 3. **Notifications**: Sends status updates to configured Slack channels
 4. **Summary**: Generates comprehensive workflow summary
 
-### Notification Workflows
-
-#### Release Preparation Notification
-**File**: [`release-preparation-notification.yml`](workflows/release-preparation-notification.yml)
-**Purpose**: Slack notifications for release preparation
-**Documentation**: [Release Preparation Notification Guide](docs/release-preparation-notification.md)
-
-**Key Features**:
-- Rich Slack message formatting
-- Success and failure templates
-- Direct links to branches and commits
-- Error handling for notification failures
-- Output status for tracking
-
 ## 🔧 Universal Actions
 
 ### Core Infrastructure Actions
@@ -274,7 +268,7 @@ Each action includes comprehensive documentation with usage examples, input/outp
 #### Configuration and Security
 
 ##### Get Release Config
-**Documentation**: [`actions/get-release-config/README.md`](actions/get-release-config/README.md)
+**Documentation**: [`actions/get-update-config/README.md`](actions/get-update-config/README.md)
 **Purpose**: Read and validate release configuration from repository files
 **Key Features**: Branch validation, configuration parsing, dynamic workflow configuration
 

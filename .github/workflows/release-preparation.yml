@@ -1,5 +1,7 @@
 name: Release preparation (reusable)
 
+run-name: ${{ inputs.app_name }} release preparation
+
 on:
   workflow_call:
     inputs:
@@ -8,7 +10,7 @@ on:
         required: true
         type: string
       repo:
-        description: 'Application repository name (org/repo format)'
+        description: 'Application repository (org/repo format)'
         required: true
         type: string
       previous_release_branch:
@@ -29,197 +31,270 @@ on:
         required: false
         type: boolean
         default: false
+      need_pr:
+        description: 'Require PR for version updates on this branch'
+        required: false
+        type: boolean
+        default: true
+      prerelease_mode:
+        description: 'PreRelease mode for version updates ("false", "true", or "only")'
+        required: false
+        type: string
+        default: 'false'
       dry_run:
         description: 'Perform dry run without making changes'
         required: false
         type: boolean
         default: false
     outputs:
+      preparation_result:
+        description: 'Result of the preparation (success/failure/skipped)'
+        value: ${{ jobs.prepare.result }}
       app_name:
-        description: 'Application name (passed through from input)'
-        value: ${{ inputs.app_name }}
+        description: 'Application name'
+        value: ${{ jobs.prepare.outputs.app_name }}
       app_version:
-        description: 'Determined application version'
-        value: ${{ jobs.prepare-branch.outputs.app_version }}
+        description: 'Application version'
+        value: ${{ jobs.prepare.outputs.app_version }}
       source_branch:
-        description: 'Source branch'
-        value: ${{ jobs.prepare-branch.outputs.source_branch }}
+        description: 'Source branch used for release'
+        value: ${{ jobs.prepare.outputs.source_branch }}
       commit_sha:
-        description: 'Commit SHA'
-        value: ${{ jobs.commit-changes.outputs.commit_sha }}
+        description: 'Commit SHA of the release'
+        value: ${{ jobs.prepare.outputs.commit_sha }}
+      failure_reason:
+        description: 'Specific failure reason if preparation failed'
+        value: ${{ jobs.prepare.outputs.failure_reason }}
+      notification_outcome:
+        description: 'Outcome of the notification'
+        value: ${{ jobs.notify.outputs.notification_outcome }}
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-preparation-${{ inputs.repo }}
+  cancel-in-progress: false
+
 jobs:
-  prepare-branch:
-    name: Prepare Release Branch
-    runs-on: ubuntu-latest
-
-    outputs:
-      app_version: ${{ steps.determine-new-version.outputs.new_version }}
-      source_branch: ${{ steps.verify-branches.outputs.source_branch }}
-
-    env:
-      PREV_BRANCH: ${{ inputs.previous_release_branch }}
-      NEW_BRANCH: ${{ inputs.new_release_branch }}
-
-    steps:
-      - name: Input parameters
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
-        run: |
-          set -eo pipefail
-
-          echo "::notice::Input parameters"
-          echo ""
-          echo "${{ toJSON(github.event.inputs) }}"
-          echo ""
-
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            echo "::notice::This is a dry run - no actual changes will be made"
-            echo "::notice::Set dry_run=false to apply changes"
-          fi
-
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ inputs.repo }}
-          fetch-depth: 0
-
-      - name: Verify Branches
-        id: verify-branches
-        run: |
-          set -eo pipefail
-          
-          if git ls-remote --exit-code --heads origin "$NEW_BRANCH" >/dev/null 2>&1; then
-            echo "::error::New release branch '$NEW_BRANCH' already exists"
-            exit 1
-          fi
-
-          if git ls-remote --exit-code --heads origin "$PREV_BRANCH" >/dev/null 2>&1; then
-            echo "::notice::Using previous release branch: $PREV_BRANCH"
-            echo "source_branch=$PREV_BRANCH" >> "$GITHUB_OUTPUT"
-            echo "has_previous_branch=true" >> "$GITHUB_OUTPUT"
-
-          elif [[ "${{ inputs.use_snapshot_fallback }}" == "true" ]] \
-              && git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
-
-            echo "::warning::Previous release branch not found, using snapshot branch as fallback"
-            echo "source_branch=snapshot" >> "$GITHUB_OUTPUT"
-            echo "has_previous_branch=false" >> "$GITHUB_OUTPUT"            
-          else
-            echo "::error::Missing branch. Neither previous release branch $PREV_BRANCH nor snapshot branch exists"
-            exit 1
-          fi
-
-          if git ls-remote --exit-code --heads origin "master" >/dev/null 2>&1; then
-            echo "::notice::Master branch exists"
-            echo "default_branch=master" >> "$GITHUB_OUTPUT"
-          elif git ls-remote --exit-code --heads origin "main" >/dev/null 2>&1; then
-            echo "::notice::Main branch exists"
-            echo "default_branch=main" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::Missing branch. Neither master nor main branches exist"
-            exit 1
-          fi
-
-          if ! git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
-            echo "::error::Missing branch. The snapshot branch does not exist"
-            exit 1
-          fi
-
-      - name: Collect Previous Version
-        id: collect-previous-version
-        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
-        with:
-          app_name: ${{ inputs.repo }}
-          branch: ${{ steps.verify-branches.outputs.source_branch }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Collect Default Branch Version
-        id: collect-default-branch-version
-        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
-        if: steps.verify-branches.outputs.has_previous_branch == 'false'
-        with:
-          app_name: ${{ inputs.repo }}
-          branch: ${{ steps.verify-branches.outputs.default_branch }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Determine New Version
-        id: determine-new-version
-        env:
-          HAS_PREV_BRANCH:   ${{ steps.verify-branches.outputs.has_previous_branch }}
-          PREV_VERSION:      ${{ steps.collect-previous-version.outputs.version }}
-          PREV_MAJOR:        ${{ steps.collect-previous-version.outputs.major }}
-          PREV_MINOR:        ${{ steps.collect-previous-version.outputs.minor }}
-          PREV_PATCH:        ${{ steps.collect-previous-version.outputs.patch }}
-          DEFAULT_VERSION:   ${{ steps.collect-default-branch-version.outputs.version }}
-          DEFAULT_MAJOR:     ${{ steps.collect-default-branch-version.outputs.major }}
-          DEFAULT_MINOR:     ${{ steps.collect-default-branch-version.outputs.minor }}
-          DEFAULT_PATCH:     ${{ steps.collect-default-branch-version.outputs.patch }}
-        run: |
-          set -eo pipefail
-
-          if [[ "$HAS_PREV_BRANCH" == 'true' ]]; then
-            new_major=$(( PREV_MAJOR + 1 ))
-            new_minor=0
-            new_patch=0
-          
-            echo "::notice::Previous release has been taken $PREV_VERSION. Incrementing major version from $PREV_MAJOR to $new_major"
-
-          else
-            if (( PREV_MAJOR > DEFAULT_MAJOR )); then
-              new_major=$PREV_MAJOR
-              new_minor=$(( PREV_MINOR + 1 ))
-              new_patch=$PREV_PATCH
-          
-              echo "::notice::Snapshot version has been taken $PREV_VERSION and minor/patch versions have been risen from $PREV_MINOR to $new_minor"
-            else
-              new_major=$(( DEFAULT_MAJOR + 1 ))
-              new_minor=0
-              new_patch=0
-          
-              echo "::notice::Default branch version has been taken $DEFAULT_VERSION and bumped up from $DEFAULT_MAJOR to $new_major"
-            fi
-          fi
-
-          new_version="${new_major}.${new_minor}.${new_patch}"
-
-          echo "::notice::New determined version: $new_version"
-          echo "new_version=$new_version"       >>"$GITHUB_OUTPUT"
-
-  update-application:
-    name: Update Application Files
-    needs: prepare-branch
-    uses: ./.github/workflows/update-application.yml
+  prepare:
+    name: Prepare Release
+    uses: folio-org/kitfox-github/.github/workflows/release-preparation-flow.yml@master
     with:
       app_name: ${{ inputs.app_name }}
       repo: ${{ inputs.repo }}
-      branch: ${{ needs.prepare-branch.outputs.source_branch }}
-      workflow_run_number: ${{ github.run_number }}
-      target_version: ${{ needs.prepare-branch.outputs.app_version }}
-      placeholder_modules: true
-    secrets: inherit
-
-  commit-changes:
-    name: Commit and Push Changes
-    needs: [prepare-branch, update-application]
-    if: needs.update-application.outputs.updated == 'true'
-    uses: ./.github/workflows/commit-and-push-changes.yml
-    with:
-      repo: ${{ inputs.repo }}
-      branch: ${{ inputs.new_release_branch }}
-      artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
-      commit_message: |
-        Prepare ${{ inputs.app_name }} for release. Initial commit.
-
-        Previous release: ${{ inputs.previous_release_branch }}
-        New release: ${{ inputs.new_release_branch }}
-        Source branch: ${{ needs.prepare-branch.outputs.source_branch }}
-        Version: ${{ needs.prepare-branch.outputs.app_version }}
-
-        All module versions set to placeholder <CHANGE_ME> for team updates.
+      previous_release_branch: ${{ inputs.previous_release_branch }}
+      new_release_branch: ${{ inputs.new_release_branch }}
+      use_snapshot_fallback: ${{ inputs.use_snapshot_fallback }}
+      use_snapshot_version: ${{ inputs.use_snapshot_version }}
       dry_run: ${{ inputs.dry_run }}
-      source_branch: ${{ needs.prepare-branch.outputs.source_branch }}
+      need_pr: ${{ inputs.need_pr }}
+      prerelease_mode: ${{ inputs.prerelease_mode }}
     secrets: inherit
+
+  notify:
+    name: Send Notifications
+    needs: prepare
+    if: always() && !cancelled() && !inputs.dry_run
+    runs-on: ubuntu-latest
+    outputs:
+      team_notif_status: ${{ steps.notify-team.outcome }}
+      general_notif_status: ${{ steps.notify-general.outcome }}
+      notification_outcome: ${{ steps.notify-team.outcome || steps.notify-general.outcome }}
+    env:
+      WORKFLOW_RESULT: ${{ needs.prepare.result }}
+      APP_NAME: ${{ inputs.app_name }}
+      REPO: ${{ inputs.repo }}
+      NEW_RELEASE: ${{ inputs.new_release_branch }}
+      SOURCE_BRANCH: ${{ needs.prepare.outputs.source_branch }}
+      APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+      COMMIT_SHA: ${{ needs.prepare.outputs.commit_sha }}
+      TITLE_TEXT: "${{ inputs.app_name }} Release Preparation ${{ needs.prepare.result == 'success' && 'SUCCESS' || 'FAILED' }}"
+      TITLE_BLOCK: |
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*${{ inputs.app_name }} Release Preparation ${{ needs.prepare.result == 'success' && 'SUCCESS' || 'FAILED' }} <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+          }
+        }
+      SUCCESS_ATTACHMENT: |
+        {
+          "color": "good",
+          "fields": [
+            {
+              "title": "New Release",
+              "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.new_release_branch }}|${{ inputs.new_release_branch }}>",
+              "short": true
+            },
+            {
+              "title": "Source Branch",
+              "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ needs.prepare.outputs.source_branch }}|${{ needs.prepare.outputs.source_branch }}>",
+              "short": true
+            },
+            {
+              "title": "New Version",
+              "value": "${{ needs.prepare.outputs.app_version }}",
+              "short": true
+            },
+            {
+              "title": "Commit",
+              "value": "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ needs.prepare.outputs.commit_sha }}|${{ needs.prepare.outputs.commit_sha }}>",
+              "short": true
+            }
+          ],
+          "footer": "Eureka CI/CD"
+        }
+      FAILURE_ATTACHMENT: |
+        {
+          "color": "danger",
+          "fields": [
+            {
+              "title": "New Release",
+              "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.new_release_branch }}|${{ inputs.new_release_branch }}>",
+              "short": true
+            },
+            {
+              "title": "Source Branch",
+              "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ needs.prepare.outputs.source_branch }}|${{ needs.prepare.outputs.source_branch }}>",
+              "short": true
+            },
+            {
+              "title": "Error",
+              "value": "${{ needs.prepare.outputs.failure_reason || 'Check workflow logs for details' }}",
+              "short": false
+            }
+          ],
+          "footer": "Eureka CI/CD"
+        }
+    steps:
+      - name: Send to Team Channel
+        id: notify-team
+        if: vars.SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        env:
+          CHANNEL: ${{ vars.SLACK_NOTIF_CHANNEL }}
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ env.CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ env.WORKFLOW_RESULT == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+              ]
+            }
+
+      - name: Send to General Channel
+        id: notify-general
+        if: vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        env:
+          CHANNEL: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ env.CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ env.WORKFLOW_RESULT == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+              ]
+            }
+
+  summarize:
+    name: Application Summary
+    needs: [prepare, notify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Application Summary
+        env:
+          PREP_RESULT: ${{ needs.prepare.result }}
+          APP_VERSION: ${{ needs.prepare.outputs.app_version }}
+          SOURCE_BRANCH: ${{ needs.prepare.outputs.source_branch }}
+          COMMIT_SHA: ${{ needs.prepare.outputs.commit_sha }}
+          FAILURE_REASON: ${{ needs.prepare.outputs.failure_reason }}
+          TEAM_NOTIF_STATUS: ${{ needs.notify.outputs.team_notif_status || 'skipped' }}
+          TEAM_NOTIF_STATUS_ICON: >-
+            ${{
+              needs.notify.outputs.team_notif_status == 'success' && '✅'
+              || needs.notify.outputs.team_notif_status == 'failure' && '⚠️'
+              || 'ℹ️'
+            }}
+          GENERAL_NOTIF_STATUS: ${{ needs.notify.outputs.general_notif_status || 'skipped' }}
+          GENERAL_NOTIF_STATUS_ICON: >-
+            ${{
+              needs.notify.outputs.general_notif_status == 'success' && '✅'
+              || needs.notify.outputs.general_notif_status == 'failure' && '⚠️'
+              || 'ℹ️'
+            }}
+        run: |
+          {
+            echo "### 🎯 Application: \`${{ inputs.app_name }}\`"
+            echo ""
+
+            if [[ "$PREP_RESULT" == "failure" ]]; then
+              echo "❌ **Preparation Result:** Failed"
+              if [[ -n "$FAILURE_REASON" ]]; then
+                echo "- **Error:** $FAILURE_REASON"
+              else
+                echo "- Check the preparation job logs for details"
+              fi
+              if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+                echo ""
+                echo "_Note: This failure occurred during a dry run._"
+              fi
+            elif [[ "$PREP_RESULT" == "cancelled" ]]; then
+              echo "⚠️ **Preparation Result:** Cancelled"
+            elif [[ "${{ inputs.dry_run }}" == "true" && "$PREP_RESULT" == "success" ]]; then
+              echo "#### 🏃 Dry Run Mode"
+              echo "This was a dry run - no actual changes were made."
+              echo "- Release branch was verified but not created"
+              echo "- Template updates were simulated"
+              echo ""
+            elif [[ "$PREP_RESULT" == "success" ]]; then
+              echo "✅ **Preparation Result:** Release branch created successfully"
+              echo "- **New Release:** [${{ inputs.new_release_branch }}](${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.new_release_branch }})"
+              echo "- **Source Branch:** $SOURCE_BRANCH"
+              echo "- **New Version:** $APP_VERSION"
+              echo "- **Commit SHA:** [$COMMIT_SHA](${{ github.server_url }}/${{ inputs.repo }}/commit/$COMMIT_SHA)"
+            else
+              echo "⏭️ **Preparation Result:** Skipped"
+            fi
+
+            echo ""
+
+            echo "### 📨 Notification Status"
+            echo ""
+
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "ℹ️ Notifications skipped (dry run mode)"
+            else
+              if [[ -n "${{ vars.SLACK_NOTIF_CHANNEL }}" ]]; then
+                echo "$TEAM_NOTIF_STATUS_ICON **Team Channel** (\`${{ vars.SLACK_NOTIF_CHANNEL }}\`): $TEAM_NOTIF_STATUS"
+              else
+                echo "ℹ️ **Team Channel:** Not configured"
+              fi
+
+              if [[ -n "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}" ]]; then
+                echo "$GENERAL_NOTIF_STATUS_ICON **General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): $GENERAL_NOTIF_STATUS"
+              else
+                echo "ℹ️ **General Channel:** Not configured"
+              fi
+            fi
+
+            echo ""
+          } >> $GITHUB_STEP_SUMMARY
