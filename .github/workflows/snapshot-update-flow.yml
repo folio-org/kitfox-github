@@ -182,7 +182,12 @@ jobs:
     name: Cleanup on Failure
     runs-on: ubuntu-latest
     needs: [update-application, verify-application, commit-changes]
-    if: failure() && inputs.dry_run != true && needs.update-application.outputs.app_descriptor_file_name != ''
+    if: >
+      failure() &&
+      inputs.dry_run != true &&
+      needs.verify-application.result == 'success' &&
+      needs.verify-application.outputs.publish_status == 'success' &&
+      needs.update-application.outputs.app_descriptor_file_name != ''
     steps:
       - name: Unpublish Application Descriptor
         id: unpublish
