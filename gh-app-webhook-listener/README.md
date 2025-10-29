@@ -339,7 +339,3 @@ terraform apply -var-file=environments/prod-app.tfvars
 3. Make your changes
 4. Run tests: `python tests/test_local.py`
 5. Submit a pull request
-
-## Support
-
-For issues and questions, please open an issue in the GitHub repository.
