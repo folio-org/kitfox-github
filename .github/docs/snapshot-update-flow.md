@@ -38,18 +38,19 @@ This orchestrator workflow coordinates these components and handles failure scen
 
 ### Outputs
 
-| Output                     | Description                                   |
-|----------------------------|-----------------------------------------------|
-| `app_name`                 | Application name (pass-through)               |
-| `updated`                  | Whether application was updated               |
-| `previous_version`         | Previous application version                  |
-| `new_version`              | New application version if updated            |
-| `updated_cnt`              | Number of updated modules                     |
-| `updated_modules`          | List of updated modules                       |
-| `failure_reason`           | Reason for failure                            |
-| `commit_sha`               | Commit SHA                                    |
-| `app_descriptor_url`       | URL of generated application descriptor       |
-| `app_descriptor_file_name` | Name of generated application descriptor file |
+| Output                     | Description                                                  |
+|----------------------------|--------------------------------------------------------------|
+| `app_name`                 | Application name (pass-through)                              |
+| `skipped`                  | Whether workflow was skipped (e.g., branch does not exist)   |
+| `updated`                  | Whether application was updated                              |
+| `previous_version`         | Previous application version                                 |
+| `new_version`              | New application version if updated                           |
+| `updated_cnt`              | Number of updated modules                                    |
+| `updated_modules`          | List of updated modules                                      |
+| `failure_reason`           | Reason for failure (validation or publishing errors)         |
+| `commit_sha`               | Commit SHA                                                   |
+| `app_descriptor_url`       | URL of generated application descriptor                      |
+| `app_descriptor_file_name` | Name of generated application descriptor file                |
 
 ### Secrets
 
@@ -275,6 +276,17 @@ Solution: Verify module versions exist in Docker Hub/NPM registry
 ```
 Error: Module interface integrity validation request failed (HTTP 400)
 Solution: Check application descriptor format and module compatibility
+```
+
+**FAR Publishing Failed**:
+```
+Error: Failed to publish application descriptor to FAR (HTTP 400)
+Behavior: Workflow fails, no commit is made, notification is sent with failure details
+Common Causes:
+  - Duplicate interface declarations (same interface marked as both REQUIRED and OPTIONAL)
+  - Malformed module descriptors in upstream modules
+  - Invalid descriptor format
+Solution: Check the error message for specific module/interface issues. May require fixing upstream module descriptors.
 ```
 
 **Git Permission Denied**:

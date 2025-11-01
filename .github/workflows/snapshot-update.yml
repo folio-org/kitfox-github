@@ -32,6 +32,9 @@ on:
       update_result:
         description: 'Result of the update (success/failure/skipped)'
         value: ${{ jobs.update.result }}
+      skipped:
+        description: 'Whether workflow was skipped (e.g., branch does not exist)'
+        value: ${{ jobs.update.outputs.skipped }}
       updated:
         description: 'Whether modules were updated'
         value: ${{ jobs.update.outputs.updated }}
@@ -102,10 +105,10 @@ jobs:
     name: Send Notifications
     needs: update
     if: >
-      always() && !cancelled() && !inputs.dry_run &&
+      always() && !cancelled() && !inputs.dry_run && needs.update.outputs.skipped != 'true' &&
       (
-        (needs.update.result != 'success' && needs.update.outputs.failure_reason != '' && !contains(needs.update.outputs.failure_reason, 'does not exist')) ||
-        (needs.update.result == 'success' && needs.update.outputs.updated == 'true')
+        needs.update.result != 'success' ||
+        needs.update.outputs.updated == 'true'
       )
     runs-on: ubuntu-latest
     outputs:
@@ -113,13 +116,13 @@ jobs:
       general_notif_status: ${{ steps.notify-general.outcome }}
       notification_outcome: ${{ steps.notify-team.outcome || steps.notify-general.outcome }}
     env:
-      TITLE_TEXT: "${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && (needs.update.outputs.updated == 'true' && 'updated' || 'unchanged') || contains(needs.update.outputs.failure_reason, 'does not exist') && 'skipped' || 'failed' }} #${{ github.run_number }}"
+      TITLE_TEXT: "${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && 'updated' || 'failed' }} #${{ github.run_number }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && (needs.update.outputs.updated == 'true' && 'updated' || 'unchanged') || contains(needs.update.outputs.failure_reason, 'does not exist') && 'skipped' || 'failed' }} <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.app_name }} snapshot ${{ needs.update.result == 'success' && 'updated' || 'failed' }} <${{ github.server_url }}/${{ inputs.repo }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
         }
       SUCCESS_ATTACHMENT: |
@@ -222,6 +225,7 @@ jobs:
       - name: Generate Application Summary
         env:
           UPDATE_RESULT: ${{ needs.update.result }}
+          SKIPPED: ${{ needs.update.outputs.skipped }}
           UPDATED: ${{ needs.update.outputs.updated }}
           NEW_VERSION: ${{ needs.update.outputs.new_version }}
           PREVIOUS_VERSION: ${{ needs.update.outputs.previous_version }}
@@ -274,18 +278,15 @@ jobs:
                 echo "- All modules are up to date"
                 echo "- **Current Version:** $PREVIOUS_VERSION"
               fi
+            elif [[ "$SKIPPED" == "true" ]]; then
+              echo "⏭️ **Update Result:** Skipped (Branch does not exist)"
+              echo "- This is expected for new applications without a snapshot branch"
             elif [[ "$UPDATE_RESULT" == "failure" ]]; then
-              if [[ "$FAILURE_REASON" == *"does not exist"* ]]; then
-                echo "⏭️ **Update Result:** Skipped (Branch does not exist)"
+              echo "❌ **Update Result:** Failed"
+              if [[ -n "$FAILURE_REASON" ]]; then
                 echo "- **Reason:** $FAILURE_REASON"
-                echo "- This is expected for new applications without a snapshot branch"
               else
-                echo "❌ **Update Result:** Failed"
-                if [[ -n "$FAILURE_REASON" ]]; then
-                  echo "- **Reason:** $FAILURE_REASON"
-                else
-                  echo "- Check the update job logs for details"
-                fi
+                echo "- Check the update job logs for details"
               fi
             elif [[ "$UPDATE_RESULT" == "cancelled" ]]; then
               echo "⚠️ **Update Result:** Cancelled"

@@ -49,6 +49,9 @@ on:
       app_name:
         description: 'Application name'
         value: ${{ inputs.app_name }}
+      skipped:
+        description: 'Whether workflow was skipped (e.g., branch does not exist)'
+        value: ${{ jobs.check-branch.outputs.branch_exists == 'false' }}
       updated:
         description: 'Whether application was updated'
         value: ${{ jobs.check-branch.outputs.branch_exists == 'true' && jobs.update-application.outputs.updated || 'false' }}
@@ -66,7 +69,7 @@ on:
         value: ${{ jobs.update-application.outputs.updated_modules }}
       failure_reason:
         description: 'Reason for failure'
-        value: ${{ jobs.check-branch.outputs.branch_exists == 'false' && format('Branch {0} does not exist', inputs.branch) || jobs.update-application.outputs.failure_reason ||
+        value: ${{ jobs.update-application.outputs.failure_reason ||
           jobs.verify-application.outputs.failure_reason ||
           jobs.commit-changes.outputs.failure_reason || '' }}
       commit_sha:
@@ -136,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       validation_passed: ${{ steps.validate.outputs.validation_passed }}
-      failure_reason: ${{ steps.validate.outputs.failure_reason }}
+      failure_reason: ${{ steps.validate.outputs.failure_reason || (steps.publish.outputs.publish-status == 'failure' && format('Failed to publish application descriptor to FAR (HTTP {0})', steps.publish.outputs.http-code) || '') }}
       publish_status: ${{ steps.publish.outputs.publish-status }}
       descriptor_url: ${{ steps.publish.outputs.descriptor-url }}
     steps:

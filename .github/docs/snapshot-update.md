@@ -36,17 +36,18 @@ This high-level orchestrator workflow:
 
 ## Outputs
 
-| Output                 | Description                                    |
-|------------------------|------------------------------------------------|
-| `update_result`        | Result of the update (success/failure/skipped) |
-| `updated`              | Whether modules were updated                   |
-| `new_version`          | New application version                        |
-| `previous_version`     | Previous application version                   |
-| `updated_cnt`          | Number of updated modules                      |
-| `updated_modules`      | List of updated modules                        |
-| `commit_sha`           | Commit SHA of the update                       |
-| `failure_reason`       | Reason for failure if any                      |
-| `notification_outcome` | Outcome of the notification                    |
+| Output                 | Description                                                  |
+|------------------------|--------------------------------------------------------------|
+| `update_result`        | Result of the update (success/failure/skipped)               |
+| `skipped`              | Whether workflow was skipped (e.g., branch does not exist)   |
+| `updated`              | Whether modules were updated                                 |
+| `new_version`          | New application version                                      |
+| `previous_version`     | Previous application version                                 |
+| `updated_cnt`          | Number of updated modules                                    |
+| `updated_modules`      | List of updated modules                                      |
+| `commit_sha`           | Commit SHA of the update                                     |
+| `failure_reason`       | Reason for failure (validation or publishing errors)         |
+| `notification_outcome` | Outcome of the notification                                  |
 
 ## Workflow Jobs
 
@@ -62,12 +63,13 @@ This high-level orchestrator workflow:
 
 ### 3. notify
 - **Purpose**: Sends Slack notifications
-- **Condition**: Runs on failures or when updates are made
+- **Condition**: Runs on failures or when updates are made (skips if workflow was skipped due to missing branch)
 - **Channels**: Team and general Slack channels
 - **Features**:
   - Rich message formatting
-  - Success/failure templates
+  - Success/failure templates with detailed failure reasons
   - Non-blocking failures
+  - Proper handling of validation and publishing errors
 
 ### 4. summarize
 - **Purpose**: Generates GitHub Actions summary
