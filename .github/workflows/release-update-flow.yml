@@ -289,4 +289,119 @@ jobs:
           pr_reviewers: ${{ inputs.pr_reviewers }}
           github_token: ${{ steps.app-token.outputs.token || github.token }}
 
+  upload-results:
+    name: Upload Results
+    runs-on: ubuntu-latest
+    needs:
+      - determine-source-branch
+      - update-application
+      - commit-changes
+      - manage-pr
+    if: always()
+    steps:
+      - name: Prepare Output Artifact
+        id: prepare-artifact
+        env:
+          APPLICATION: ${{ inputs.app_name }}
+          REPO: ${{ inputs.repo }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          UPDATE_BRANCH: ${{ inputs.update_branch }}
+          NEED_PR: ${{ needs.determine-source-branch.outputs.need_pr || 'false' }}
+          SOURCE_BRANCH: ${{ needs.determine-source-branch.outputs.source_branch || inputs.release_branch }}
+          WORKFLOW_STATUS: >-
+            ${{
+              (needs.determine-source-branch.result == 'failure' && 'failure') ||
+              (needs.update-application.result == 'failure' && 'failure') ||
+              (needs.commit-changes.result == 'failure' && 'failure') ||
+              (needs.manage-pr.result == 'failure' && 'failure') ||
+              (needs.update-application.result == 'cancelled' && 'failure') ||
+              'success'
+            }}
+          FAILURE_REASON: >-
+            ${{
+              (needs.determine-source-branch.result == 'failure' && 'Failed to determine source branch') ||
+              (needs.update-application.result == 'failure' && (needs.update-application.outputs.failure_reason || 'Failed to update application modules')) ||
+              (needs.commit-changes.result == 'failure' && (needs.commit-changes.outputs.failure_reason || 'Failed to commit changes to branch')) ||
+              (needs.manage-pr.result == 'failure' && 'Failed to manage pull request') ||
+              ''
+            }}
+          UPDATED: ${{ needs.update-application.outputs.updated || 'false' }}
+          UPDATED_CNT: ${{ needs.update-application.outputs.updates_cnt || '0' }}
+          UPDATED_MODULES: ${{ needs.update-application.outputs.updated_modules }}
+          PREVIOUS_VERSION: ${{ needs.update-application.outputs.previous_version }}
+          NEW_VERSION: ${{ needs.update-application.outputs.new_version }}
+          COMMIT_SHA: ${{ needs.commit-changes.outputs.commit_sha || '' }}
+          PR_CREATED: ${{ needs.manage-pr.outputs.pr_created || 'false' }}
+          PR_URL: ${{ needs.manage-pr.outputs.pr_url || '' }}
+          PR_NUMBER: ${{ needs.manage-pr.outputs.pr_number || '' }}
+        run: |
+          set -eo pipefail
+
+          results_dir="/tmp/results"
+          mkdir -p "$results_dir"
+
+          updated_modules_file="$results_dir/updated_modules.txt"
+          printf '%s' "$UPDATED_MODULES" > "$updated_modules_file"
+
+          failure_reason_file="$results_dir/failure_reason.txt"
+          printf '%s' "$FAILURE_REASON" > "$failure_reason_file"
+
+          sanitized_branch=$(printf '%s' "$RELEASE_BRANCH" | tr '/ ' '--')
+          result_file="$results_dir/${APPLICATION}_${sanitized_branch}.json"
+
+          jq -n \
+            --arg application "$APPLICATION" \
+            --arg repo "$REPO" \
+            --arg release_branch "$RELEASE_BRANCH" \
+            --arg update_branch "$UPDATE_BRANCH" \
+            --arg source_branch "$SOURCE_BRANCH" \
+            --arg workflow_status "$WORKFLOW_STATUS" \
+            --rawfile updated_modules "$updated_modules_file" \
+            --rawfile failure_reason "$failure_reason_file" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg pr_url "$PR_URL" \
+            --arg pr_number "$PR_NUMBER" \
+            --arg need_pr "$NEED_PR" \
+            --arg previous_version "$PREVIOUS_VERSION" \
+            --arg new_version "$NEW_VERSION" \
+            --arg matrix_key "${APPLICATION}_${RELEASE_BRANCH}" \
+            --argjson updated $([[ "$UPDATED" == "true" ]] && echo true || echo false) \
+            --argjson updated_cnt ${UPDATED_CNT:-0} \
+            --argjson pr_created $([[ "$PR_CREATED" == "true" ]] && echo true || echo false) \
+            '{
+              application: $application,
+              repo: $repo,
+              release_branch: $release_branch,
+              update_branch: $update_branch,
+              source_branch: $source_branch,
+              need_pr: ($need_pr == "true"),
+              workflow_status: $workflow_status,
+              status: ($workflow_status == "success" ? "success" : "failed"),
+              updated: $updated,
+              updates_cnt: $updated_cnt,
+              updated_modules: $updated_modules,
+              previous_version: $previous_version,
+              new_version: $new_version,
+              failure_reason: $failure_reason,
+              commit_sha: $commit_sha,
+              pr_created: $pr_created,
+              pr_url: $pr_url,
+              pr_number: $pr_number,
+              matrix_key: $matrix_key
+            }' > "$result_file"
+
+          echo "::group::Release update result"
+          cat "$result_file"
+          echo "::endgroup::"
+
+          echo "result_file=$result_file" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=result-${APPLICATION}-${sanitized_branch}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Result Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare-artifact.outputs.artifact_name }}
+          path: ${{ steps.prepare-artifact.outputs.result_file }}
+          retention-days: 1
+
 
