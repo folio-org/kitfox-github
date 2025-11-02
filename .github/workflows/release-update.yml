@@ -29,6 +29,16 @@ on:
         required: false
         type: string
         default: ''
+      pre_release:
+        description: 'pre_release mode indicator from configuration (e.g., only, false)'
+        required: false
+        type: string
+        default: ''
+      need_pr:
+        description: 'Whether updates should go through a PR (overrides update_branch heuristic)'
+        required: false
+        type: boolean
+        default: false
     outputs:
       scan_result:
         description: 'Result of the scan (success/failure/skipped)'
@@ -67,6 +77,8 @@ jobs:
       repo: ${{ github.repository }}
       release_branch: ${{ inputs.release_branch }}
       update_branch: ${{ inputs.update_branch }}
+      need_pr: ${{ inputs.need_pr || (inputs.update_branch != '') }}
+      pre_release: ${{ inputs.pre_release }}
       workflow_run_number: ${{ github.run_number }}
       dry_run: ${{ inputs.dry_run }}
       pr_reviewers: ${{ inputs.pr_reviewers }}
