@@ -91,14 +91,16 @@ jobs:
     name: Update Application
     needs: fetch-descriptor
     if: always() && (needs.fetch-descriptor.result == 'success' || needs.fetch-descriptor.result == 'skipped')
-    uses: folio-org/kitfox-github/.github/workflows/snapshot-update-flow.yml@master
+    uses: ./.github/workflows/snapshot-update-flow.yml
     with:
       app_name: ${{ inputs.app_name }}
       repo: ${{ inputs.repo }}
+      branch: snapshot
       workflow_run_number: ${{ github.run_number }}
       descriptor_build_offset: ${{ inputs.descriptor_build_offset }}
       rely_on_FAR: ${{ inputs.rely_on_FAR }}
       dry_run: ${{ inputs.dry_run }}
+      use_github_app: false
     secrets: inherit
 
   notify:
