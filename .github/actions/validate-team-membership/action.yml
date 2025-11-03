@@ -38,7 +38,7 @@ runs:
           echo "::notice::Authorization successful. User '${{ inputs.username }}' is authorized - '${{ inputs.team }}' team member"
           echo "authorized=true" >> "$GITHUB_OUTPUT"
         else
-          echo "::error::Authorization failed. User '${{ inputs.username }}' is not authorized - '${{ inputs.team }}' team membership required"
+          echo "::warning::Authorization failed. User '${{ inputs.username }}' is not authorized - '${{ inputs.team }}' team membership required"
           echo "authorized=false" >> "$GITHUB_OUTPUT"
         fi
         echo "::endgroup::"
