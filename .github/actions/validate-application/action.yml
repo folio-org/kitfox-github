@@ -10,6 +10,9 @@ inputs:
   app_descriptor_artifact_name:
     description: 'Application descriptor file name without extension'
     required: false
+  platform_descriptor_path:
+    description: 'Path to platform descriptor file in workspace'
+    required: false
   platform_descriptor_artifact_name:
     description: 'Name of the platform descriptor artifact to download'
     required: false
@@ -53,7 +56,7 @@ runs:
 
     - name: Download Platform Descriptor
       id: download-platform-descriptor
-      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true'
+      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true' && inputs.platform_descriptor_path == ''
       uses: actions/download-artifact@v4
       with:
         name: ${{ inputs.platform_descriptor_artifact_name }}
@@ -61,24 +64,25 @@ runs:
 
     - name: Fetch Application Descriptors from FAR
       id: fetch-app-descriptors
-      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true' && steps.download-platform-descriptor.outcome == 'success'
+      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true' && (inputs.platform_descriptor_path != '' || steps.download-platform-descriptor.outcome == 'success')
       shell: bash
       env:
         APP_NAME: ${{ inputs.app_name }}
         FAR_API_URL: "${{ inputs.far_url }}/applications"
-        PLATFORM_DESCRIPTOR: "platform-descriptor"
+        PLATFORM_DESCRIPTOR_PATH: ${{ inputs.platform_descriptor_path }}
       run: |
         set -eo pipefail
         echo "::notice::Fetch application descriptors from FAR for validation"
 
-        if [ ! -f "/tmp/$PLATFORM_DESCRIPTOR/$PLATFORM_DESCRIPTOR.json" ]; then
-          echo "::warning::Platform descriptor artifact not found, skipping FAR descriptors fetch"
+        src_path="${PLATFORM_DESCRIPTOR_PATH:-/tmp/platform-descriptor/platform-descriptor.json}"
+        if [ ! -f "$src_path" ]; then
+          echo "::warning::Platform descriptor not found at $src_path, skipping FAR fetch"
           echo "skip_far_fetch=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
-        cp /tmp/$PLATFORM_DESCRIPTOR/$PLATFORM_DESCRIPTOR.json ./$PLATFORM_DESCRIPTOR.json
-        echo "::notice::Platform descriptor loaded successfully"
+        cp "$src_path" ./platform-descriptor.json
+        echo "::notice::Platform descriptor loaded successfully from $src_path"
 
         mkdir -p /tmp/app-descriptors
         platform_apps=$(jq -c '
@@ -147,7 +151,7 @@ runs:
 
     - name: Validate Application Dependencies Integrity
       id: validate-dependencies
-      if: (inputs.use_platform_descriptor == 'true' && steps.download-platform-descriptor.outcome == 'success') || inputs.rely_on_FAR == 'true'
+      if: (inputs.use_platform_descriptor == 'true' && steps.fetch-app-descriptors.outcome == 'success') || inputs.rely_on_FAR == 'true'
       shell: bash
       env:
         RELY_ON_FAR: ${{ inputs.rely_on_FAR }}
