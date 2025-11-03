@@ -1,0 +1,61 @@
+name: 'Fetch Platform Descriptor'
+
+description: 'Fetches platform descriptor from platform-lsp repository'
+
+inputs:
+  branch:
+    description: 'Branch to fetch platform descriptor from'
+    required: true
+  upload_artifact:
+    description: 'Whether to upload descriptor as artifact'
+    required: false
+    default: 'false'
+
+outputs:
+  platform_found:
+    description: 'Whether platform descriptor was found'
+    value: ${{ steps.fetch.outputs.platform_found }}
+  descriptor_path:
+    description: 'Path to the fetched platform descriptor'
+    value: ${{ steps.fetch.outputs.descriptor_path }}
+  artifact_name:
+    description: 'Name of the uploaded artifact (if upload_artifact is true)'
+    value: ${{ steps.upload.outputs.artifact_name }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Fetch Platform Descriptor
+      id: fetch
+      shell: bash
+      env:
+        BRANCH: ${{ inputs.branch }}
+      run: |
+        set -eo pipefail
+
+        PLATFORM_DIR=$(mktemp -d)
+        DESCRIPTOR_FILE="$PLATFORM_DIR/platform-descriptor.json"
+
+        echo "::notice::Fetching platform descriptor from platform-lsp branch: $BRANCH"
+
+        http_code=$(curl -sS -w "%{http_code}" -o "$DESCRIPTOR_FILE" \
+          "https://raw.githubusercontent.com/folio-org/platform-lsp/$BRANCH/platform-descriptor.json")
+
+        if [ "$http_code" = "200" ]; then
+          echo "::notice::Platform descriptor fetched successfully to $DESCRIPTOR_FILE"
+          echo "platform_found=true" >> "$GITHUB_OUTPUT"
+          echo "descriptor_path=$DESCRIPTOR_FILE" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::Platform descriptor not found (HTTP $http_code)"
+          echo "platform_found=false" >> "$GITHUB_OUTPUT"
+          echo "descriptor_path=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload Platform Descriptor
+      id: upload
+      if: inputs.upload_artifact == 'true' && steps.fetch.outputs.platform_found == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: platform-descriptor
+        path: ${{ steps.fetch.outputs.descriptor_path }}
+        retention-days: 1
