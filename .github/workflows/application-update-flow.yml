@@ -39,11 +39,11 @@ on:
         required: false
         type: boolean
         default: false
-      mode:
-        description: 'Update mode (snapshot | release)'
+      pre_release:
+        description: 'Pre-release mode (true = snapshot and release, only = snapshot-only, false = release only)'
         required: false
         type: string
-        default: 'snapshot'
+        default: 'false'
       dry_run:
         description: 'Perform dry run without making changes'
         required: false
@@ -65,12 +65,9 @@ on:
         type: string
         default: ''
     outputs:
-      skipped:
-        description: 'Whether the workflow was skipped (e.g., branch missing)'
-        value: ${{ jobs.prepare-context.outputs.branch_exists == 'false' }}
       updated:
         description: 'Whether the application was updated'
-        value: ${{ jobs.prepare-context.outputs.branch_exists == 'true' && jobs.update-application.outputs.updated || 'false' }}
+        value: ${{ jobs.update-application.outputs.updated || 'false' }}
       updated_modules:
         description: 'List of updated modules'
         value: ${{ jobs.update-application.outputs.updated_modules }}
@@ -112,10 +109,16 @@ on:
         value: ${{ jobs.update-application.outputs.app_descriptor_file_name }}
       workflow_status:
         description: 'Overall workflow status'
-        value: ${{ jobs.prepare-context.outputs.branch_exists == 'false' && 'skipped' || (jobs.update-application.result == 'failure' && 'failure' || (jobs.verify-application.result == 'failure' && 'failure' || (jobs.commit-changes.result == 'failure' && 'failure' || (jobs.manage-pr.result == 'failure' && 'failure' || 'success')))) }}
+        value: ${{ 
+          jobs.update-application.result == 'failure' && 'failure' || 
+          (jobs.verify-application.result == 'failure' && 'failure' || 
+          (jobs.commit-changes.result == 'failure' && 'failure' || 
+          (jobs.manage-pr.result == 'failure' && 'failure' ||
+          'success'))) 
+          }}
       failure_reason:
         description: 'Reason for workflow failure if any'
-        value: ${{ jobs.prepare-context.outputs.branch_exists == 'false' && format('Branch {0} does not exist', jobs.prepare-context.outputs.target_branch) ||
+        value: ${{
           (jobs.update-application.outputs.failure_reason != '' && jobs.update-application.outputs.failure_reason) ||
           (jobs.verify-application.outputs.failure_reason != '' && jobs.verify-application.outputs.failure_reason) ||
           (jobs.commit-changes.outputs.failure_reason != '' && jobs.commit-changes.outputs.failure_reason) ||
@@ -138,7 +141,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       target_branch: ${{ steps.determine.outputs.target_branch }}
-      branch_exists: ${{ steps.determine.outputs.branch_exists }}
       need_pr: ${{ steps.determine.outputs.need_pr }}
       base_branch: ${{ steps.determine.outputs.base_branch }}
       update_branch_exists: ${{ steps.determine.outputs.update_branch_exists }}
@@ -181,18 +183,8 @@ jobs:
             update_branch=""
           fi
 
-          echo "::notice::Checking if target branch '$target_branch' exists"
-          if gh api "repos/$REPO/git/refs/heads/$target_branch" --silent >/dev/null 2>&1; then
-            branch_exists="true"
-            echo "::notice::✓ Branch '$target_branch' exists"
-          else
-            branch_exists="false"
-            echo "::warning::Branch '$target_branch' does not exist in repository '$REPO'"
-          fi
-
           {
             echo "target_branch=$target_branch"
-            echo "branch_exists=$branch_exists"
             echo "need_pr=$need_pr"
             echo "base_branch=$base_branch"
             echo "update_branch_exists=$update_branch_exists"
@@ -234,7 +226,6 @@ jobs:
   update-application:
     name: Update Application
     needs: prepare-context
-    if: needs.prepare-context.outputs.branch_exists == 'true'
     uses: ./.github/workflows/update-application.yml
     with:
       app_name: ${{ inputs.app_name }}
@@ -242,7 +233,7 @@ jobs:
       branch: ${{ needs.prepare-context.outputs.target_branch }}
       workflow_run_number: ${{ inputs.workflow_run_number }}
       descriptor_build_offset: ${{ inputs.descriptor_build_offset }}
-      mode: ${{ inputs.mode }}
+      pre_release: ${{ inputs.pre_release }}
     secrets: inherit
 
   verify-application:
@@ -255,6 +246,14 @@ jobs:
       failure_reason: ${{ steps.validate.outputs.failure_reason }}
       publish_status: ${{ steps.publish.outputs.publish-status }}
     steps:
+      - name: Fetch Platform Descriptor
+        id: fetch-platform
+        if: ${{ !inputs.rely_on_FAR }}
+        uses: folio-org/kitfox-github/.github/actions/fetch-platform-descriptor@master
+        with:
+          branch: ${{ inputs.branch }}
+          upload_artifact: 'false'
+
       - name: Validate Application
         id: validate
         uses: folio-org/kitfox-github/.github/actions/validate-application@master
@@ -262,6 +261,7 @@ jobs:
           app_name: ${{ inputs.app_name }}
           app_descriptor_file: ${{ needs.update-application.outputs.app_descriptor_file }}
           app_descriptor_artifact_name: ${{ needs.update-application.outputs.artifact_name }}
+          platform_descriptor_path: ${{ steps.fetch-platform.outputs.descriptor_path }}
           rely_on_FAR: ${{ inputs.rely_on_FAR }}
           far_url: ${{ vars.FAR_URL }}
 
@@ -430,7 +430,6 @@ jobs:
           NEED_PR: ${{ needs.prepare-context.outputs.need_pr || 'false' }}
           WORKFLOW_STATUS: >-
             ${{
-              (needs.prepare-context.outputs.branch_exists == 'false' && 'skipped') ||
               (needs.update-application.result == 'failure' && 'failure') ||
               (needs.verify-application.result == 'failure' && 'failure') ||
               (needs.commit-changes.result == 'failure' && 'failure') ||
@@ -439,7 +438,6 @@ jobs:
             }}
           FAILURE_REASON: >-
             ${{
-              (needs.prepare-context.outputs.branch_exists == 'false' && format('Branch {0} does not exist', needs.prepare-context.outputs.target_branch)) ||
               needs.update-application.outputs.failure_reason ||
               needs.verify-application.outputs.failure_reason ||
               needs.commit-changes.outputs.failure_reason ||
