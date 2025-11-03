@@ -18,6 +18,7 @@ This action performs comprehensive validation of application descriptors includi
 | `app_name`                          | Application name                                                           | **Yes**   | -                     |
 | `app_descriptor_file`               | Application descriptor file name                                           | **Yes**   | -                     |
 | `app_descriptor_artifact_name`      | Application descriptor artifact name (defaults to `{app_name}-descriptor`) | No        | -                     |
+| `platform_descriptor_path`          | Path to platform descriptor file in workspace                              | No        | -                     |
 | `platform_descriptor_artifact_name` | Name of the platform descriptor artifact to download                       | No        | `platform-descriptor` |
 | `use_platform_descriptor`           | Whether platform descriptor should be used for dependency validation       | No        | `true`                |
 | `rely_on_FAR`                       | Whether to rely on FAR for application descriptor dependencies             | No        | `false`               |
@@ -35,8 +36,10 @@ This action performs comprehensive validation of application descriptors includi
 The action adapts its validation behavior based on input availability:
 
 1. **Application Descriptor Artifact Not Provided**: Validates descriptor from the repository
-2. **Platform Descriptor Artifact Not Provided**: Validates application descriptor only (skips dependency validation)
-3. **Neither Descriptor Provided**: Fails validation with a clear error message
+2. **Platform Descriptor Provided via Path**: Uses workspace file (recommended for same-job usage)
+3. **Platform Descriptor Provided via Artifact**: Downloads artifact (for cross-job usage)
+4. **Neither Platform Descriptor Provided**: Validates application descriptor only (skips dependency validation)
+5. **Rely on FAR**: Fetches all dependencies from FAR instead of platform descriptor
 
 This allows for flexible validation scenarios, from simple interface validation to full dependency checks.
 
@@ -71,7 +74,32 @@ steps:
       far_url: ${{ vars.FAR_URL }}
 ```
 
-### With Custom Platform Descriptor
+### With Platform Descriptor from Workspace (Recommended)
+
+When using `fetch-platform-descriptor` action in the same job:
+
+```yaml
+steps:
+  - name: Fetch Platform Descriptor
+    id: fetch-platform
+    uses: folio-org/kitfox-github/.github/actions/fetch-platform-descriptor@master
+    with:
+      branch: 'snapshot'
+      upload_artifact: 'false'
+
+  - name: Validate with Platform
+    uses: folio-org/kitfox-github/.github/actions/validate-application@master
+    with:
+      app_name: my-application
+      app_descriptor_file: app-descriptor.json
+      app_descriptor_artifact_name: my-app-descriptor
+      platform_descriptor_path: ${{ steps.fetch-platform.outputs.descriptor_path }}
+      far_url: ${{ vars.FAR_URL }}
+```
+
+### With Platform Descriptor from Artifact
+
+For cross-job usage:
 
 ```yaml
 steps:

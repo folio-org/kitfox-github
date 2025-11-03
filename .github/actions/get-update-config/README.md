@@ -56,43 +56,75 @@ A GitHub Action that reads and parses update configuration from an `update-confi
 
 ## Outputs
 
-| Output                | Description                                                              |
-|-----------------------|--------------------------------------------------------------------------|
-| `enabled`             | Whether update scanning is enabled (`true`/`false`)                     |
-| `release_branches`    | JSON array of existing update branches (e.g., `["r1.0", "r2.0"]`)       |
-| `branch_count`        | Number of existing update branches (integer)                            |
-| `pr_reviewers`        | Comma-separated list of PR reviewers                                     |
-| `pr_labels`           | Comma-separated list of PR labels                                        |
-| `update_branches_map` | JSON map of update branches to their corresponding update branches (or `null` for direct updates) |
-| `config_exists`       | Whether the configuration file exists in the repository (`true`/`false`) |
+| Output          | Description                                                                                       |
+|-----------------|---------------------------------------------------------------------------------------------------|
+| `enabled`       | Whether update scanning is enabled (`true`/`false`)                                              |
+| `branches`      | JSON array of enabled branch names (e.g., `["snapshot", "R1-2025"]`)                             |
+| `branch_count`  | Number of enabled branches (integer)                                                              |
+| `pr_reviewers`  | Comma-separated list of PR reviewers                                                              |
+| `pr_labels`     | Comma-separated list of PR labels                                                                 |
+| `branch_config` | JSON array of branch configuration objects with all branch-specific settings                     |
+| `config_exists` | Whether the configuration file exists in the repository (`true`/`false`)                          |
+
+### `branch_config` Structure
+
+The `branch_config` output provides a JSON array of objects, each containing:
+
+```json
+[
+  {
+    "branch": "snapshot",
+    "update_branch": null,
+    "need_pr": false,
+    "pre_release": "only",
+    "descriptor_build_offset": "100100000000000",
+    "rely_on_FAR": false
+  },
+  {
+    "branch": "R1-2025",
+    "update_branch": "version-update/R1-2025",
+    "need_pr": true,
+    "pre_release": "false",
+    "descriptor_build_offset": "",
+    "rely_on_FAR": false
+  }
+]
+```
 
 ## Configuration File Format
 
 The `update-config.yml` file should follow this structure:
 
 ```yaml
-# Platform version update configuration
+# Application version update configuration
 update_config:
   enabled: true
   pr_reviewers:
     - "org/team-name"
     - "username"
   labels:
-    - "label1"
-    - "label2"
-  update_branch_format: "update/{0}"
+    - "version-update"
+    - "automated"
+  update_branch_format: "version-update/{0}"
 
-# List of branches to monitor (releases, snapshots, etc.)
+# List of branches to monitor with branch-specific settings
 branches:
-  - branch1:
-      enabled: false      # Skip this branch
-      need_pr: false      # Not applicable when disabled
-  - branch2:
-      enabled: true       # Monitor this branch
-      need_pr: true       # Create PR for updates
-  - branch3:
-      enabled: true       # Monitor this branch
-      need_pr: false      # Update directly without PR
+  - snapshot:
+      enabled: true
+      need_pr: false
+      pre_release: "only"
+      descriptor_build_offset: "100100000000000"
+      rely_on_FAR: false
+  - R1-2025:
+      enabled: true
+      need_pr: true
+      pre_release: "false"
+      descriptor_build_offset: ""
+      rely_on_FAR: false
+  - R2-2025:
+      enabled: false
+      need_pr: true
+      pre_release: "false"
 ```
 
 ### Configuration Options
@@ -112,6 +144,12 @@ branches:
   - **`need_pr`**: Whether to create a PR or update directly (default: `true`)
     - When `true`: Creates update branch and PR
     - When `false`: Commits directly to the branch (no PR)
+  - **`pre_release`**: Module version filter mode (default: `"false"`)
+    - `"only"`: Snapshot-only modules (e.g., `1.2.3-SNAPSHOT`)
+    - `"true"`: Both release and snapshot modules
+    - `"false"`: Release-only modules (e.g., `1.2.3`)
+  - **`descriptor_build_offset`**: Offset for application artifact version (default: `""`)
+  - **`rely_on_FAR`**: Whether to rely on FAR for validation dependencies (default: `false`)
 - Only existing and enabled branches will be included in outputs
 - Disabled or non-existent branches are logged as warnings
 
@@ -141,20 +179,22 @@ jobs:
           repo: ${{ github.repository }}
           branch: ${{ github.ref_name }}
 
-      - name: Process Release Branches
+      - name: Process Branches
         if: steps.config.outputs.enabled == 'true' && steps.config.outputs.branch_count > 0
         env:
-          RELEASE_BRANCHES: ${{ steps.config.outputs.release_branches }}
-          UPDATE_BRANCHES_MAP: ${{ steps.config.outputs.update_branches_map }}
+          BRANCHES: ${{ steps.config.outputs.branches }}
+          BRANCH_CONFIG: ${{ steps.config.outputs.branch_config }}
         run: |
-          echo "Found ${{ steps.config.outputs.branch_count }} update branches to process"
-          echo "Update branches: $RELEASE_BRANCHES"
-          echo "Update branches mapping: $UPDATE_BRANCHES_MAP"
+          echo "Found ${{ steps.config.outputs.branch_count }} branches to process"
+          echo "Branches: $BRANCHES"
+          echo "Branch configuration: $BRANCH_CONFIG"
 
-          # Process each release branch
-          for branch in $(echo '${{ steps.config.outputs.release_branches }}' | jq -r '.[]'); do
-            echo "Processing release branch: $branch"
-            # Add your release processing logic here
+          # Process each branch with its configuration
+          echo "$BRANCH_CONFIG" | jq -c '.[]' | while read -r branch_cfg; do
+            branch=$(echo "$branch_cfg" | jq -r '.branch')
+            pre_release=$(echo "$branch_cfg" | jq -r '.pre_release')
+            echo "Processing branch: $branch (pre_release=$pre_release)"
+            # Add your processing logic here
           done
 
       - name: Handle Disabled or Missing Configuration
@@ -170,54 +210,37 @@ jobs:
 ### Matrix Strategy Example
 
 ```yaml
-strategy:
-  matrix:
-    include: ${{ fromJson(steps.config.outputs.release_branches) }}
+jobs:
+  get-config:
+    runs-on: ubuntu-latest
+    outputs:
+      branch_config: ${{ steps.config.outputs.branch_config }}
+      branch_count: ${{ steps.config.outputs.branch_count }}
+      pr_reviewers: ${{ steps.config.outputs.pr_reviewers }}
+      pr_labels: ${{ steps.config.outputs.pr_labels }}
+    steps:
+      - name: Get Update Configuration
+        id: config
+        uses: ./.github/actions/get-update-config
+        with:
+          repo: ${{ github.repository }}
 
-steps:
-  - name: Get Update Configuration
-    id: config
-    uses: ./.github/actions/get-update-config
-    with:
-      repo: ${{ github.repository }}
-
-  - name: Process Branch
-    env:
-      RELEASE_BRANCH: ${{ matrix }}
-      UPDATE_BRANCHES_MAP: ${{ steps.config.outputs.update_branches_map }}
-    run: |
-      update_branch=$(echo '${{ steps.config.outputs.update_branches_map }}' | jq -r '.["${{ matrix }}"]')
-      echo "Processing: $RELEASE_BRANCH -> $update_branch"
-```
-
-### Conditional PR Creation Example
-
-```yaml
-- name: Get Update Configuration
-  id: config
-  uses: ./.github/actions/get-update-config
-  with:
-    repo: ${{ github.repository }}
-
-- name: Create Release Update PR
-  if: steps.config.outputs.enabled == 'true' && steps.config.outputs.branch_count > 0
-  uses: ./.github/actions/create-pr
-  with:
-    source_branch: 'release-updates'
-    target_branch: ${{ github.ref_name }}
-    pr_title: 'Release Updates for Multiple Branches'
-    pr_body: |
-      ## Automated Release Updates
-
-      This PR contains updates for the following update branches:
-      ${{ steps.config.outputs.release_branches }}
-
-      **Configuration Details:**
-      - Total branches: ${{ steps.config.outputs.branch_count }}
-      - Auto-reviewers: ${{ steps.config.outputs.pr_reviewers }}
-      - Labels: ${{ steps.config.outputs.pr_labels }}
-    pr_reviewers: ${{ steps.config.outputs.pr_reviewers }}
-    pr_labels: ${{ steps.config.outputs.pr_labels }}
+  update-branches:
+    needs: get-config
+    if: needs.get-config.outputs.branch_count > 0
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.get-config.outputs.branch_config) }}
+      fail-fast: false
+      max-parallel: 3
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process Branch
+        run: |
+          echo "Branch: ${{ matrix.branch }}"
+          echo "Pre-release: ${{ matrix.pre_release }}"
+          echo "Need PR: ${{ matrix.need_pr }}"
+          echo "Update branch: ${{ matrix.update_branch }}"
 ```
 
 ## Behavior
@@ -248,11 +271,11 @@ steps:
 When no configuration file exists or values are missing:
 
 - `enabled`: `false`
-- `release_branches`: `[]` (empty array)
+- `branches`: `[]` (empty array)
 - `branch_count`: `0`
 - `pr_reviewers`: `""` (empty string)
 - `pr_labels`: `""` (empty string)
-- `update_branches_map`: `{}` (empty object)
+- `branch_config`: `[]` (empty array)
 
 ## Requirements
 
@@ -359,21 +382,6 @@ branches:
   - branch2: true  # Should have enabled/need_pr properties
 ```
 
-### Update Branches Map
-
-The `update_branches_map` output is generated based on the `need_pr` setting:
-
-```json
-{
-  "branch1": "update/branch1",  // need_pr: true
-  "branch2": null               // need_pr: false
-}
-```
-
-When consuming this map:
-- **Non-null value**: Create/update a PR from the update branch
-- **Null value**: Commit directly to the branch (no PR needed)
-
 ## Related Actions
 
 - **[create-pr](../create-pr/README.md)**: Create pull requests using the configuration outputs
@@ -382,31 +390,56 @@ When consuming this map:
 
 ## Integration Examples
 
-### With Release Automation
+### With Unified Application Update Workflow
 
 ```yaml
-- name: Get Update Configuration
-  id: config
-  uses: ./.github/actions/get-update-config
-  with:
-    repo: ${{ github.repository }}
+jobs:
+  get-config:
+    runs-on: ubuntu-latest
+    outputs:
+      branch_config: ${{ steps.get-update-config.outputs.branch_config }}
+      branch_count: ${{ steps.get-update-config.outputs.branch_count }}
+      pr_reviewers: ${{ steps.get-update-config.outputs.pr_reviewers }}
+      pr_labels: ${{ steps.get-update-config.outputs.pr_labels }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get Update Configuration
+        id: get-update-config
+        uses: folio-org/kitfox-github/.github/actions/get-update-config@master
+        with:
+          repo: ${{ github.repository }}
+          github_token: ${{ github.token }}
 
-- name: Generate Matrix
-  id: matrix
-  if: steps.config.outputs.enabled == 'true'
-  run: |
-    echo "matrix=$(echo '${{ steps.config.outputs.release_branches }}' | jq -c '{branch: .}')" >> "$GITHUB_OUTPUT"
-
-  # Use in a matrix strategy
-strategy:
-  matrix: ${{ fromJson(steps.matrix.outputs.matrix) }}
+  update-branches:
+    name: Update ${{ matrix.branch }}
+    needs: get-config
+    if: needs.get-config.outputs.branch_count > 0
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.get-config.outputs.branch_config) }}
+      fail-fast: false
+      max-parallel: 3
+    uses: folio-org/kitfox-github/.github/workflows/application-update.yml@master
+    with:
+      app_name: ${{ github.event.repository.name }}
+      repo: ${{ github.repository }}
+      branch: ${{ matrix.branch }}
+      update_branch: ${{ matrix.update_branch }}
+      need_pr: ${{ matrix.need_pr }}
+      pre_release: ${{ matrix.pre_release }}
+      workflow_run_number: ${{ github.run_number }}
+      descriptor_build_offset: ${{ matrix.descriptor_build_offset }}
+      rely_on_FAR: ${{ matrix.rely_on_FAR }}
+      pr_reviewers: ${{ needs.get-config.outputs.pr_reviewers }}
+      pr_labels: ${{ needs.get-config.outputs.pr_labels }}
+    secrets: inherit
 ```
 
 ### With Multi-Repository Workflows
 
 ```yaml
 - name: Get Template Configuration
-  uses: ./.github/actions/get-update-config
+  uses: folio-org/kitfox-github/.github/actions/get-update-config@master
   with:
     repo: 'folio-org/platform-template'
     branch: 'main'
