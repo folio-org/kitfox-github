@@ -103,7 +103,9 @@ runs:
         PR_LABELS=$(yq eval -o=json -I=0 '.update_config.labels // []' "$CONFIG" | jq -r 'join(",")? // ""')
         FORMAT=$(get_yq '.update_config.update_branch_format // "version-update/{0}"')
 
-        mapfile -t BRANCHES < <(echo "$BRANCH_OBJECTS" | jq -r 'map(keys[0])[]')
+        mapfile -t BRANCHES < <(
+          echo "$BRANCH_OBJECTS" | jq -r 'map(keys[0]) | unique[]'
+        )
         BRANCH_CONFIG="[]"
 
         if [[ "$ENABLED" == "true" && -n "$FORMAT" && ${#BRANCHES[@]} -gt 0 ]]; then
@@ -113,6 +115,8 @@ runs:
             enabled=$(echo "$branch_config" | jq -r '.enabled // false' | tr 'A-Z' 'a-z')
             need_pr=$(echo "$branch_config" | jq -r '.need_pr // false' | tr 'A-Z' 'a-z')
             pre_release=$(echo "$branch_config" | jq -r '.pre_release // ""' | tr -d '\r')
+            descriptor_build_offset=$(echo "$branch_config" | jq -r '.descriptor_build_offset // ""' | tr -d '\r')
+            rely_on_FAR=$(echo "$branch_config" | jq -r '.rely_on_FAR // false' | tr 'A-Z' 'a-z')
             [[ "$need_pr" == "true" ]] && update_branch=$(echo "$FORMAT" | sed "s/{0}/$branch/") || update_branch=""
 
             if [[ "$enabled" != "true" ]]; then
@@ -130,11 +134,15 @@ runs:
                 --argjson need_pr "$([ "$need_pr" = "true" ] && echo true || echo false)" \
                 --arg pre_release "$pre_release" \
                 --arg update_branch "$update_branch" \
+                --arg descriptor_build_offset "$descriptor_build_offset" \
+                --argjson rely_on_FAR "$([ "$rely_on_FAR" = "true" ] && echo true || echo false)" \
                 '. += [{
                   branch: $branch,
                   update_branch: ($update_branch | select(. != "")),
                   need_pr: $need_pr,
-                  pre_release: $pre_release
+                  pre_release: $pre_release,
+                  descriptor_build_offset: $descriptor_build_offset,
+                  rely_on_FAR: $rely_on_FAR
                 }]')
             else
               echo "::warning::Branch not found: $branch"
