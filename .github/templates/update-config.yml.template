@@ -11,3 +11,4 @@ branches:
       enabled: false
       need_pr: false
       pre_release: "only"
+      descriptor_build_offset: "100100000000000"
