@@ -479,9 +479,9 @@ jobs:
             --arg need_pr "$NEED_PR" \
             --arg previous_version "$PREVIOUS_VERSION" \
             --arg new_version "$NEW_VERSION" \
-            --argjson updated $([[ "$UPDATED" == "true" ]] && echo true || echo false) \
-            --argjson updated_cnt ${UPDATED_CNT:-0} \
-            --argjson pr_created $([[ "$PR_CREATED" == "true" ]] && echo true || echo false) \
+            --argjson updated "$([[ "$UPDATED" == "true" ]] && echo true || echo false)" \
+            --argjson updated_cnt "${UPDATED_CNT:-0}" \
+            --argjson pr_created "$([[ "$PR_CREATED" == "true" ]] && echo true || echo false)" \
             '{
               application: $application,
               repo: $repo,
