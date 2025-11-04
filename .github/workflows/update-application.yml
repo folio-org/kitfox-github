@@ -24,7 +24,7 @@ on:
         description: 'Offset to apply to application artifact version'
         required: false
         type: string
-        default: '100100000000000'
+        default: ''
       pre_release:
         description: 'Pre-release mode (true = snapshot and release, only = snapshot-only, false = release only)'
         required: false

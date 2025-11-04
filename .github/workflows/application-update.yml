@@ -41,7 +41,7 @@ on:
         description: 'Offset to apply to application artifact version (snapshot only)'
         required: false
         type: string
-        default: '100100000000000'
+        default: ''
       rely_on_FAR:
         description: 'Whether to rely on FAR for application descriptor dependencies'
         required: false
