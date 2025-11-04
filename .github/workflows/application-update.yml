@@ -66,9 +66,6 @@ on:
       update_result:
         description: 'Result of the update (success/failure/skipped)'
         value: ${{ jobs.update.result }}
-      skipped:
-        description: 'Whether workflow was skipped'
-        value: ${{ jobs.update.outputs.skipped }}
       updated:
         description: 'Whether modules were updated'
         value: ${{ jobs.update.outputs.updated }}
@@ -131,7 +128,7 @@ jobs:
   notify:
     name: Send Notifications
     needs: [update]
-    if: always() && !cancelled() && needs.update.outputs.skipped == 'false' && !inputs.dry_run
+    if: always() && !cancelled() && !inputs.dry_run
     runs-on: ubuntu-latest
     outputs:
       team_notif_status: ${{ steps.notify-team.outcome }}
@@ -230,7 +227,6 @@ jobs:
       APP_NAME: ${{ inputs.app_name }}
       BRANCH: ${{ inputs.branch }}
       UPDATE_RESULT: ${{ needs.update.result }}
-      SKIPPED: ${{ needs.update.outputs.skipped }}
       UPDATED: ${{ needs.update.outputs.updated }}
       UPDATES_CNT: ${{ needs.update.outputs.updated_cnt }}
       UPDATED_MODULES: ${{ needs.update.outputs.updated_modules }}
@@ -265,11 +261,7 @@ jobs:
             echo "**Workflow Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
             echo ""
 
-            if [[ "$SKIPPED" == "true" ]]; then
-              echo "### ⏭️ Update Skipped"
-              echo "The update was skipped (branch may not exist or other conditional logic)"
-              echo ""
-            elif [[ "$UPDATE_RESULT" == "success" ]]; then
+            if [[ "$UPDATE_RESULT" == "success" ]]; then
               if [[ "$UPDATED" == "true" ]]; then
                 echo "### ✅ Update Successful"
                 echo ""
