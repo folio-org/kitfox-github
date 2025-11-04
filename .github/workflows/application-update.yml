@@ -135,16 +135,16 @@ jobs:
       general_notif_status: ${{ steps.notify-general.outcome }}
       notification_outcome: ${{ steps.notify-team.outcome || steps.notify-general.outcome }}
     env:
-      TITLE_TEXT: "${{ inputs.app_name }} ${{ inputs.branch }} updated #${{ github.run_number }}"
+      TITLE_TEXT: "${{ inputs.app_name }} ${{ inputs.branch }} ${{ needs.update.result == 'success' && 'updated' || 'failed' }} #${{ github.run_number }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.app_name }} `${{ inputs.branch }}` updated* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>"
+            "text": "*${{ inputs.app_name }} `${{ inputs.branch }}` ${{ needs.update.result == 'success' && 'updated' || 'failed' }}* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>"
           }
         }
-      SUCCESS_ATTACHMENT: |
+      SUCCESS_ATTACHMENT_NON_PR: |
         {
           "color": "good",
           "fields": [
@@ -170,8 +170,8 @@ jobs:
             },
             {
               "title": "Commit",
-              "value": "${{ needs.update.outputs.commit_sha != '' && format('<https://github.com/{0}/commit/{1}|{1}>', inputs.repo, needs.update.outputs.commit_sha) || 'No commit' }}",
-              "short": false
+              "value": "<${{ github.server_url }}/${{ inputs.repo }}/commit/${{ needs.update.outputs.commit_sha }}|${{ needs.update.outputs.commit_sha }}>",
+              "short": true
             }
           ]
         },
@@ -179,6 +179,49 @@ jobs:
           "color": "good",
           "mrkdwn_in": ["text"],
           "text": ${{ toJSON(needs.update.outputs.updated_modules) }},
+          "footer": "Eureka CI/CD"
+        }
+      SUCCESS_ATTACHMENT_PR: |
+        {
+          "color": "good",
+          "fields": [
+            {
+              "title": "Branch",
+              "value": "<${{ github.server_url }}/${{ inputs.repo }}/tree/${{ inputs.branch }}|${{ inputs.branch }}>",
+              "short": true
+            },
+            {
+              "title": "New Version",
+              "value": "${{ needs.update.outputs.new_version }}",
+              "short": true
+            },
+            {
+              "title": "Previous Version",
+              "value": "${{ needs.update.outputs.previous_version }}",
+              "short": true
+            },
+            {
+              "title": "Updated",
+              "value": "${{ needs.update.outputs.updated_cnt }}",
+              "short": true
+            },
+            {
+              "title": "Pull Request",
+              "value": "${{ needs.update.outputs.pr_url != '' && format('<{0}|#{1}>', needs.update.outputs.pr_url, needs.update.outputs.pr_number) || 'PR creation failed' }}",
+              "short": true
+            }
+          ]
+        },
+        {
+          "color": "good",
+          "mrkdwn_in": ["text"],
+          "text": ${{ toJSON(needs.update.outputs.updated_modules) }}
+        },
+        {
+          "color": "${{ needs.update.outputs.failed_reviewers != '' && 'warning' || 'good' }}",
+          "mrkdwn_in": ["text"],
+          "title": "${{ needs.update.outputs.failed_reviewers != '' && 'Reviewers (failed)' || (needs.update.outputs.successful_reviewers != '' && 'Reviewers (added)' || 'Reviewers') }}",
+          "text": ${{ toJSON(needs.update.outputs.failed_reviewers || needs.update.outputs.successful_reviewers || 'No reviewers configured') }},
           "footer": "Eureka CI/CD"
         }
       FAILURE_ATTACHMENT: |
@@ -218,7 +261,7 @@ jobs:
                 ${{ env.TITLE_BLOCK }}
               ],
               "attachments": [
-                ${{ needs.update.result == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+                ${{ needs.update.result != 'success' && env.FAILURE_ATTACHMENT || (needs.update.outputs.pr_created == 'true' && env.SUCCESS_ATTACHMENT_PR || env.SUCCESS_ATTACHMENT_NON_PR) }}
               ]
             }
 
@@ -241,7 +284,7 @@ jobs:
                 ${{ env.TITLE_BLOCK }}
               ],
               "attachments": [
-                ${{ needs.update.result == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+                ${{ needs.update.result != 'success' && env.FAILURE_ATTACHMENT || (needs.update.outputs.pr_created == 'true' && env.SUCCESS_ATTACHMENT_PR || env.SUCCESS_ATTACHMENT_NON_PR) }}
               ]
             }
 
