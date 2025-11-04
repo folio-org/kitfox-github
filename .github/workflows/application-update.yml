@@ -149,11 +149,6 @@ jobs:
           "color": "good",
           "fields": [
             {
-              "title": "Branch",
-              "value": "${{ inputs.branch }}",
-              "short": true
-            },
-            {
               "title": "New Version",
               "value": "${{ needs.update.outputs.new_version }}",
               "short": true
@@ -193,11 +188,6 @@ jobs:
             {
               "title": "New Version",
               "value": "${{ needs.update.outputs.new_version }}",
-              "short": true
-            },
-            {
-              "title": "Previous Version",
-              "value": "${{ needs.update.outputs.previous_version }}",
               "short": true
             },
             {
