@@ -24,16 +24,14 @@ The workflows follow a layered architecture:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                   High-Level Orchestrators                  │
-│  • snapshot-update.yml                                      │
-│  • release-update.yml                                       │
+│  • application-update.yml (unified)                         │
 │  • release-preparation.yml                                  │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   Mid-Level Orchestrators                   │
-│  • snapshot-update-flow.yml                                 │
-│  • release-update-flow.yml                                  │
+│                        Flow Layer                           │
+│  • application-update-flow.yml                              │
 │  • release-pr-check.yml                                     │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -41,7 +39,7 @@ The workflows follow a layered architecture:
 ┌─────────────────────────────────────────────────────────────┐
 │                      Core Utilities                         │
 │  • update-application.yml                                   │
-│  • commit-application-changes.yml                           │
+│  • commit-and-push-changes.yml                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -62,32 +60,21 @@ The workflows follow a layered architecture:
 
 ### High-Level Orchestrators
 
-#### Snapshot Update
-**File**: [`snapshot-update.yml`](workflows/snapshot-update.yml)
-**Purpose**: Complete snapshot update workflow with integrated notifications
-**Documentation**: [Snapshot Update Guide](docs/snapshot-update.md)
+#### Application Update
+**File**: [`application-update.yml`](workflows/application-update.yml)
+**Purpose**: Unified configuration-driven orchestrator for updating FOLIO application module dependencies across all branch types
+**Documentation**: [Application Update Guide](docs/application-update.md)
 
 **Key Features**:
-- Orchestrates the complete snapshot update process
-- Integrates platform descriptor fetching
+- Configuration-driven behavior from `update-config.yml`
+- Supports all branch types (snapshot, release, custom)
+- Handles both direct commits and PR-based updates
+- Flexible pre-release mode (true/false/only)
 - Built-in Slack notifications (team and general channels)
 - Comprehensive workflow summary generation
-- Notification status tracking and reporting
-- Support for scheduled and manual triggers
+- Platform descriptor integration
 - FAR registry support
-
-#### Release Update
-**File**: [`release-update.yml`](workflows/release-update.yml)
-**Purpose**: Release branch scanning and update orchestration
-**Documentation**: [Release Update Guide](docs/release-update.md)
-
-**Key Features**:
-- Scans release branches for required updates
-- Creates pull requests for module updates
-- Integrated Slack notifications with status tracking
-- Comprehensive summary generation
-- Support for dry-run mode
-- Reviewer and label management for PRs
+- Dry-run mode for testing
 
 #### Release Preparation
 **File**: [`release-preparation.yml`](workflows/release-preparation.yml)
@@ -106,32 +93,22 @@ The workflows follow a layered architecture:
 - Comprehensive Git operations with error handling
 - Dry-run support for safe testing
 
-### Mid-Level Orchestrators
+### Flow Layer
 
-#### Snapshot Update Flow
-**File**: [`snapshot-update-flow.yml`](workflows/snapshot-update-flow.yml)
-**Purpose**: Snapshot update flow orchestration
-**Documentation**: [Snapshot Update Flow Guide](docs/snapshot-update-flow.md)
+#### Application Update Flow
+**File**: [`application-update-flow.yml`](workflows/application-update-flow.yml)
+**Purpose**: Core application update flow implementation for all branch types
+**Documentation**: [Application Update Flow Guide](docs/application-update-flow.md)
 
 **Key Features**:
 - Coordinates update, verification, and commit operations
 - Module version discovery from FOLIO registry
+- Supports both direct commits and PR-based updates
 - Application descriptor generation and validation
 - FAR registry integration
+- Platform descriptor fetching and validation
 - Rollback handling on failures
 - Comprehensive output for upstream workflows
-
-#### Release Update Flow
-**File**: [`release-update-flow.yml`](workflows/release-update-flow.yml)
-**Purpose**: Release branch update workflow implementation
-**Documentation**: [Release Update Flow Guide](docs/release-update-flow.md)
-
-**Key Features**:
-- Manages the complete release update flow
-- Version comparison between branches
-- Pull request creation and management
-- Reviewer assignment with fallback handling
-- Label management for PRs
 
 ### Core Utility Workflows
 
@@ -283,11 +260,14 @@ Each action includes comprehensive documentation with usage examples, input/outp
 
 ```yaml
 jobs:
-  update-snapshot:
-    uses: folio-org/kitfox-github/.github/workflows/snapshot-update.yml@master
+  update-application:
+    uses: folio-org/kitfox-github/.github/workflows/application-update.yml@master
     with:
       app_name: ${{ github.event.repository.name }}
       repo: ${{ github.repository }}
+      branch: 'snapshot'
+      pre_release: 'only'
+      workflow_run_number: ${{ github.run_number }}
       descriptor_build_offset: '100100000000000'
       rely_on_FAR: false
       dry_run: false
@@ -347,13 +327,11 @@ Workflows implement comprehensive error handling:
 ### Workflow Documentation
 
 #### High-Level Orchestrators
-- **[Snapshot Update](docs/snapshot-update.md)**: Complete snapshot update process with notifications
-- **[Release Update](docs/release-update.md)**: Release branch update management
+- **[Application Update](docs/application-update.md)**: Unified configuration-driven application update orchestrator
 - **[Release Preparation](docs/release-preparation.md)**: Release branch creation and setup
 
-#### Mid-Level Orchestrators
-- **[Snapshot Update Flow](docs/snapshot-update-flow.md)**: Snapshot update flow orchestration
-- **[Release Update Flow](docs/release-update-flow.md)**: Comprehensive release update implementation
+#### Flow Layer
+- **[Application Update Flow](docs/application-update-flow.md)**: Core application update flow implementation
 
 #### Core Utilities
 - **[Update Application](docs/update-application.md)**: Application descriptor update logic

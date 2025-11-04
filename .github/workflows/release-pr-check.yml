@@ -90,7 +90,7 @@ jobs:
           PR_LABELS: ${{ steps.pr-info.outputs.labels }}
           CONFIG_EXISTS: ${{ steps.get-config.outputs.config_exists }}
           ENABLED: ${{ steps.get-config.outputs.enabled }}
-          RELEASE_BRANCHES: ${{ steps.get-config.outputs.release_branches }}
+          RELEASE_BRANCHES: ${{ steps.get-config.outputs.branches }}
           REQUIRED_LABELS: ${{ steps.get-config.outputs.pr_labels }}
         run: |
           echo "::notice::Validating configuration for branch $TARGET_BRANCH"

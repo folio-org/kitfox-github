@@ -1,0 +1,330 @@
+name: Application Update (Orchestrator)
+
+run-name: ${{ inputs.app_name }} update on ${{ inputs.branch }}
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository (org/repo format)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to update (can be snapshot or release branch)'
+        required: true
+        type: string
+      update_branch:
+        description: 'Update branch name (used when need_pr = true)'
+        required: false
+        type: string
+        default: ''
+      need_pr:
+        description: 'Whether the update should be performed through a PR'
+        required: false
+        type: boolean
+        default: false
+      pre_release:
+        description: 'Pre-release mode (true = snapshot and release, only = snapshot-only, false = release only)'
+        required: false
+        type: string
+        default: 'false'
+      workflow_run_number:
+        description: 'Workflow run number for display'
+        required: false
+        type: string
+        default: ''
+      descriptor_build_offset:
+        description: 'Offset to apply to application artifact version (snapshot only)'
+        required: false
+        type: string
+        default: '100100000000000'
+      rely_on_FAR:
+        description: 'Whether to rely on FAR for application descriptor dependencies'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Perform dry run without making changes'
+        required: false
+        type: boolean
+        default: false
+      pr_reviewers:
+        description: 'Comma-separated list of reviewers (users or teams with org/ prefix)'
+        required: false
+        type: string
+        default: ''
+      pr_labels:
+        description: 'Comma-separated list of labels to add to PR'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      update_result:
+        description: 'Result of the update (success/failure/skipped)'
+        value: ${{ jobs.update.result }}
+      skipped:
+        description: 'Whether workflow was skipped'
+        value: ${{ jobs.update.outputs.skipped }}
+      updated:
+        description: 'Whether modules were updated'
+        value: ${{ jobs.update.outputs.updated }}
+      new_version:
+        description: 'New application version'
+        value: ${{ jobs.update.outputs.new_version }}
+      previous_version:
+        description: 'Previous application version'
+        value: ${{ jobs.update.outputs.previous_version }}
+      updated_cnt:
+        description: 'Number of updated modules'
+        value: ${{ jobs.update.outputs.updated_cnt }}
+      updated_modules:
+        description: 'List of updated modules'
+        value: ${{ jobs.update.outputs.updated_modules }}
+      pr_created:
+        description: 'Whether a PR was created'
+        value: ${{ jobs.update.outputs.pr_created }}
+      pr_url:
+        description: 'URL of the created PR'
+        value: ${{ jobs.update.outputs.pr_url }}
+      commit_sha:
+        description: 'Commit SHA of the update'
+        value: ${{ jobs.update.outputs.commit_sha }}
+      failure_reason:
+        description: 'Reason for failure if any'
+        value: ${{ jobs.update.outputs.failure_reason }}
+      notification_outcome:
+        description: 'Outcome of the notification'
+        value: ${{ jobs.notify.outputs.notification_outcome }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: app-update-${{ inputs.repo }}-${{ inputs.branch }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update Application
+    uses: ./.github/workflows/application-update-flow.yml
+    with:
+      app_name: ${{ inputs.app_name }}
+      repo: ${{ inputs.repo }}
+      branch: ${{ inputs.branch }}
+      update_branch: ${{ inputs.update_branch }}
+      need_pr: ${{ inputs.need_pr }}
+      pre_release: ${{ inputs.pre_release }}
+      workflow_run_number: ${{ inputs.workflow_run_number || github.run_number }}
+      descriptor_build_offset: ${{ inputs.descriptor_build_offset }}
+      rely_on_FAR: ${{ inputs.rely_on_FAR }}
+      dry_run: ${{ inputs.dry_run }}
+      pr_reviewers: ${{ inputs.pr_reviewers }}
+      pr_labels: ${{ inputs.pr_labels }}
+    secrets: inherit
+
+  notify:
+    name: Send Notifications
+    needs: [update]
+    if: always() && !cancelled() && needs.update.outputs.skipped == 'false' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    outputs:
+      team_notif_status: ${{ steps.notify-team.outcome }}
+      general_notif_status: ${{ steps.notify-general.outcome }}
+      notification_outcome: ${{ steps.notify-team.outcome || steps.notify-general.outcome }}
+    env:
+      APP_NAME: ${{ inputs.app_name }}
+      BRANCH: ${{ inputs.branch }}
+      UPDATED: ${{ needs.update.outputs.updated }}
+      UPDATES_CNT: ${{ needs.update.outputs.updated_cnt }}
+      PR_CREATED: ${{ needs.update.outputs.pr_created }}
+      PR_URL: ${{ needs.update.outputs.pr_url }}
+      FAILURE_REASON: ${{ needs.update.outputs.failure_reason }}
+      SUCCESS: ${{ needs.update.result == 'success' && needs.update.outputs.updated == 'true' }}
+    steps:
+      - name: Notify Team Channel
+        id: notify-team
+        if: vars.SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        env:
+          CHANNEL: ${{ vars.SLACK_NOTIF_CHANNEL }}
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            channel: "${{ env.CHANNEL }}"
+            text: "${{ env.APP_NAME }} ${{ env.BRANCH }} update ${{ env.SUCCESS == 'true' && 'succeeded' || 'failed' }}"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ env.APP_NAME }}* update on `${{ env.BRANCH }}` ${{ env.SUCCESS == 'true' && ':white_check_mark:' || ':x:' }}"
+            attachments:
+              - color: "${{ env.SUCCESS == 'true' && 'good' || 'danger' }}"
+                fields:
+                  - title: "Branch"
+                    value: "${{ env.BRANCH }}"
+                    short: true
+                  - title: "Updated"
+                    value: "${{ env.UPDATED }}"
+                    short: true
+                  - title: "Updates Count"
+                    value: "${{ env.UPDATES_CNT }}"
+                    short: true
+                  - title: "PR Created"
+                    value: "${{ env.PR_CREATED }}"
+                    short: true
+                  ${{ env.PR_URL != '' && format('- title: "PR URL"\n  value: "{0}"\n  short: false', env.PR_URL) || '' }}
+                  ${{ env.FAILURE_REASON != '' && format('- title: "Failure Reason"\n  value: "{0}"\n  short: false', env.FAILURE_REASON) || '' }}
+
+      - name: Notify General Channel
+        id: notify-general
+        if: vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        env:
+          CHANNEL: ${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            channel: "${{ env.CHANNEL }}"
+            text: "${{ env.APP_NAME }} ${{ env.BRANCH }} update ${{ env.SUCCESS == 'true' && 'succeeded' || 'failed' }}"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*${{ env.APP_NAME }}* update on `${{ env.BRANCH }}` ${{ env.SUCCESS == 'true' && ':white_check_mark:' || ':x:' }}"
+            attachments:
+              - color: "${{ env.SUCCESS == 'true' && 'good' || 'danger' }}"
+                fields:
+                  - title: "Branch"
+                    value: "${{ env.BRANCH }}"
+                    short: true
+                  - title: "Updated"
+                    value: "${{ env.UPDATED }}"
+                    short: true
+                  - title: "Updates Count"
+                    value: "${{ env.UPDATES_CNT }}"
+                    short: true
+                  - title: "PR Created"
+                    value: "${{ env.PR_CREATED }}"
+                    short: true
+                  ${{ env.PR_URL != '' && format('- title: "PR URL"\n  value: "{0}"\n  short: false', env.PR_URL) || '' }}
+                  ${{ env.FAILURE_REASON != '' && format('- title: "Failure Reason"\n  value: "{0}"\n  short: false', env.FAILURE_REASON) || '' }}
+
+  summarize:
+    name: Workflow Summary
+    needs: [update, notify]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: ${{ inputs.app_name }}
+      BRANCH: ${{ inputs.branch }}
+      UPDATE_RESULT: ${{ needs.update.result }}
+      SKIPPED: ${{ needs.update.outputs.skipped }}
+      UPDATED: ${{ needs.update.outputs.updated }}
+      UPDATES_CNT: ${{ needs.update.outputs.updated_cnt }}
+      UPDATED_MODULES: ${{ needs.update.outputs.updated_modules }}
+      PREVIOUS_VERSION: ${{ needs.update.outputs.previous_version }}
+      NEW_VERSION: ${{ needs.update.outputs.new_version }}
+      PR_CREATED: ${{ needs.update.outputs.pr_created }}
+      PR_URL: ${{ needs.update.outputs.pr_url }}
+      COMMIT_SHA: ${{ needs.update.outputs.commit_sha }}
+      FAILURE_REASON: ${{ needs.update.outputs.failure_reason }}
+      TEAM_NOTIF_STATUS: ${{ needs.notify.outputs.team_notif_status || 'skipped' }}
+      TEAM_NOTIF_STATUS_ICON: >-
+        ${{
+          needs.notify.outputs.team_notif_status == 'success' && '✅'
+          || needs.notify.outputs.team_notif_status == 'failure' && '⚠️'
+          || 'ℹ️'
+        }}
+      GENERAL_NOTIF_STATUS: ${{ needs.notify.outputs.general_notif_status || 'skipped' }}
+      GENERAL_NOTIF_STATUS_ICON: >-
+        ${{
+          needs.notify.outputs.general_notif_status == 'success' && '✅'
+          || needs.notify.outputs.general_notif_status == 'failure' && '⚠️'
+          || 'ℹ️'
+        }}
+    steps:
+      - name: Generate Summary
+        run: |
+          {
+            echo "## 🎯 Application Update Summary"
+            echo ""
+            echo "**Application:** \`$APP_NAME\`"
+            echo "**Branch:** \`$BRANCH\`"
+            echo "**Workflow Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo ""
+
+            if [[ "$SKIPPED" == "true" ]]; then
+              echo "### ⏭️ Update Skipped"
+              echo "The update was skipped (branch may not exist or other conditional logic)"
+              echo ""
+            elif [[ "$UPDATE_RESULT" == "success" ]]; then
+              if [[ "$UPDATED" == "true" ]]; then
+                echo "### ✅ Update Successful"
+                echo ""
+                echo "- **Previous Version:** \`$PREVIOUS_VERSION\`"
+                echo "- **New Version:** \`$NEW_VERSION\`"
+                echo "- **Modules Updated:** $UPDATES_CNT"
+                echo ""
+                if [[ -n "$UPDATED_MODULES" ]]; then
+                  echo "**Updated Modules:**"
+                  echo "\`\`\`"
+                  echo "$UPDATED_MODULES"
+                  echo "\`\`\`"
+                  echo ""
+                fi
+                if [[ "$PR_CREATED" == "true" && -n "$PR_URL" ]]; then
+                  echo "**Pull Request:** $PR_URL"
+                  echo ""
+                elif [[ -n "$COMMIT_SHA" ]]; then
+                  echo "**Commit:** [\`$COMMIT_SHA\`](https://github.com/${{ inputs.repo }}/commit/$COMMIT_SHA)"
+                  echo ""
+                fi
+              else
+                echo "### ✨ No Updates Needed"
+                echo "All modules are already up to date"
+                echo ""
+              fi
+            else
+              echo "### ❌ Update Failed"
+              echo ""
+              if [[ -n "$FAILURE_REASON" ]]; then
+                echo "**Failure Reason:**"
+                echo "\`\`\`"
+                echo "$FAILURE_REASON"
+                echo "\`\`\`"
+                echo ""
+              fi
+            fi
+
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "### 🏃 Dry Run Mode"
+              echo "This was a dry run - no changes were committed or PRs created"
+              echo ""
+            fi
+
+            echo "### 📨 Notification Status"
+            echo ""
+            if [[ -n "${{ vars.SLACK_NOTIF_CHANNEL }}" ]]; then
+              echo "$TEAM_NOTIF_STATUS_ICON **Team Channel** (\`${{ vars.SLACK_NOTIF_CHANNEL }}\`): $TEAM_NOTIF_STATUS"
+            else
+              echo "ℹ️ **Team Channel:** Not configured"
+            fi
+            echo ""
+            if [[ -n "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}" ]]; then
+              echo "$GENERAL_NOTIF_STATUS_ICON **General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): $GENERAL_NOTIF_STATUS"
+            else
+              echo "ℹ️ **General Channel:** Not configured"
+            fi
+          } >> $GITHUB_STEP_SUMMARY

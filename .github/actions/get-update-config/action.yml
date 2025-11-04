@@ -22,7 +22,7 @@ outputs:
   enabled:
     description: 'Whether update scanning is enabled'
     value: ${{ steps.parse.outputs.enabled }}
-  release_branches:
+  branches:
     description: 'JSON array of update branches'
     value: ${{ steps.parse.outputs.branches }}
   branch_count:
@@ -34,9 +34,9 @@ outputs:
   pr_labels:
     description: 'Comma-separated list of PR labels'
     value: ${{ steps.parse.outputs.labels }}
-  update_branches_map:
-    description: 'JSON map of base branches to update branches'
-    value: ${{ steps.parse.outputs.map }}
+  branch_config:
+    description: 'JSON array of branch descriptors (branch, update_branch, need_pr, pre_release)'
+    value: ${{ steps.parse.outputs.branch_config }}
   config_exists:
     description: 'Whether configuration file exists'
     value: ${{ steps.check.outputs.exists }}
@@ -88,7 +88,7 @@ runs:
             echo "branch_count=0"
             echo "reviewers="
             echo "labels="
-            echo "map={}"
+            echo "branch_config=[]"
           } >> "$GITHUB_OUTPUT"
           exit 0
         fi
@@ -98,62 +98,76 @@ runs:
         ENABLED=$(get_yq '.update_config.enabled' | tr 'A-Z' 'a-z')
         [[ "$ENABLED" != "true" ]] && ENABLED=false
         
-        BRANCHES=$(yq eval -o=json -I=0 '.branches // [] | map(keys[0])' "$CONFIG")
+        BRANCH_OBJECTS=$(yq eval -o=json -I=0 '.branches // []' "$CONFIG")
         PR_REVIEWERS=$(yq eval -o=json -I=0 '.update_config.pr_reviewers // []' "$CONFIG" | jq -r 'join(",")? // ""')
         PR_LABELS=$(yq eval -o=json -I=0 '.update_config.labels // []' "$CONFIG" | jq -r 'join(",")? // ""')
-        FORMAT=$(get_yq '.update_config.update_branch_format // "release-update/{0}"')
+        FORMAT=$(get_yq '.update_config.update_branch_format // "version-update/{0}"')
 
-        mapfile -t BRANCHES < <(echo "$BRANCHES" | jq -r '.[]')
-        EXISTING=()
-        
+        mapfile -t BRANCHES < <(
+          echo "$BRANCH_OBJECTS" | jq -r 'map(keys[0]) | unique[]'
+        )
+        BRANCH_CONFIG="[]"
+
         if [[ "$ENABLED" == "true" && -n "$FORMAT" && ${#BRANCHES[@]} -gt 0 ]]; then
           for branch in "${BRANCHES[@]}"; do
-            enabled=$(yq eval ".branches[] | select(has(\"$branch\")) | .[\"$branch\"].enabled" "$CONFIG" | tr 'A-Z' 'a-z')
+            branch_config=$(echo "$BRANCH_OBJECTS" | jq -c ".[] | select(has(\"$branch\")) | .[\"$branch\"]")
+
+            enabled=$(echo "$branch_config" | jq -r '.enabled // false' | tr 'A-Z' 'a-z')
+            need_pr=$(echo "$branch_config" | jq -r '.need_pr // false' | tr 'A-Z' 'a-z')
+            pre_release=$(echo "$branch_config" | jq -r '.pre_release // ""' | tr -d '\r')
+            descriptor_build_offset=$(echo "$branch_config" | jq -r '.descriptor_build_offset // ""' | tr -d '\r')
+            rely_on_FAR=$(echo "$branch_config" | jq -r '.rely_on_FAR // false' | tr 'A-Z' 'a-z')
+            [[ "$need_pr" == "true" ]] && update_branch=$(echo "$FORMAT" | sed "s/{0}/$branch/") || update_branch=""
 
             if [[ "$enabled" != "true" ]]; then
               echo "::warning::Branch $branch is disabled in configuration, skipping"
               continue
             fi
-          
+
             echo "::notice::Checking branch: $branch"
-            
-            if response=$(gh api "repos/${{ inputs.repo }}/branches/$branch" 2>&1); then
+
+            if gh api "repos/${{ inputs.repo }}/branches/$branch" >/dev/null 2>&1; then
               echo "::notice::Branch exists and is enabled: $branch"
-              EXISTING+=("$branch")
+
+              BRANCH_CONFIG=$(echo "$BRANCH_CONFIG" | jq -c \
+                --arg branch "$branch" \
+                --argjson need_pr "$([ "$need_pr" = "true" ] && echo true || echo false)" \
+                --arg pre_release "$pre_release" \
+                --arg update_branch "$update_branch" \
+                --arg descriptor_build_offset "$descriptor_build_offset" \
+                --argjson rely_on_FAR "$([ "$rely_on_FAR" = "true" ] && echo true || echo false)" \
+                '. += [{
+                  branch: $branch,
+                  update_branch: ($update_branch | select(. != "")),
+                  need_pr: $need_pr,
+                  pre_release: $pre_release,
+                  descriptor_build_offset: $descriptor_build_offset,
+                  rely_on_FAR: $rely_on_FAR
+                }]')
             else
               echo "::warning::Branch not found: $branch"
-              echo "::warning::API response: $response"
             fi
           done
         fi
-        
-        COUNT=${#EXISTING[@]}
-        EXISTING_JSON=$(printf '%s\n' "${EXISTING[@]}" | jq -R . | jq -cs .)
-  
-        UPDATE_MAP=$(printf '%s\n' "${EXISTING[@]}" | while read -r branch; do
-          need_pr=$(yq eval ".branches[] | select(has(\"$branch\")) | .[\"$branch\"].need_pr" "$CONFIG" | tr 'A-Z' 'a-z')
 
-          [[ "$need_pr" == "true" ]] && head_branch=$(echo "$FORMAT" | sed "s/{0}/$branch/") || head_branch=null
+        COUNT=$(echo "$BRANCH_CONFIG" | jq 'length')
+        BRANCHES=$(echo "$BRANCH_CONFIG" | jq '[.[].branch]')
 
-          jq -n --arg k "$branch" --arg v "$head_branch" '{($k): $v}'
-        done | jq -s 'add // {}')
-        
         {
           echo "enabled=$ENABLED"
-          echo "branches=$EXISTING_JSON"
+          echo "branches=$BRANCHES"
           echo "branch_count=$COUNT"
           echo "reviewers=$PR_REVIEWERS"
           echo "labels=$PR_LABELS"
-          echo "map=$(echo "$UPDATE_MAP" | jq -c .)"
+          echo "branch_config=$(echo "$BRANCH_CONFIG" | jq -c .)"
         } >> "$GITHUB_OUTPUT"
-        
+
         echo "::notice::Configuration parsed:"
         echo "::notice::  Enabled: $ENABLED"
-        echo "::notice::  Existing branches: $COUNT"
-        echo "::notice::  Branches to scan: $EXISTING_JSON"
+        echo "::notice::  Branches to scan: $BRANCHES"
         [[ -n "$PR_REVIEWERS" ]] && echo "::notice::  PR Reviewers: $PR_REVIEWERS"
         [[ -n "$PR_LABELS" ]] && echo "::notice::  PR Labels: $PR_LABELS"
-        [[ "$UPDATE_MAP" != "{}" ]] && echo "::notice::  Update Branches Map: $(echo $UPDATE_MAP | jq -c .)"
-        
+        [[ "$BRANCH_CONFIG" != "[]" ]] && echo "::notice::  Branch Config: $(echo $BRANCH_CONFIG | jq -c .)"
+
         [[ "$ENABLED" != "true" ]] && echo "::warning::Update scanning is disabled in configuration" || true
         [[ "$COUNT" -eq 0 ]] && echo "::warning::No existing update branches found to scan" || true

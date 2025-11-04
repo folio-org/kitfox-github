@@ -19,7 +19,7 @@ This workflow handles the core logic for checking module versions and updating a
 | `branch`                  | Branch to update                                | No       | string  | `'snapshot'`        |
 | `workflow_run_number`     | GitHub run number for display                   | Yes      | string  | -                   |
 | `descriptor_build_offset` | Offset for application artifact version         | No       | string  | `'100100000000000'` |
-| `mode`                    | Update mode: 'snapshot' or 'release'            | No       | string  | `'snapshot'`        |
+| `pre_release`             | Pre-release mode: 'only', 'true', or 'false'    | No       | string  | `'false'`           |
 | `target_version`          | Specific version to set (overrides calculation) | No       | string  | `''`                |
 | `placeholder_modules`     | Set module versions to `<CHANGE_ME>`            | No       | boolean | `false`             |
 
@@ -51,9 +51,10 @@ This workflow handles the core logic for checking module versions and updating a
 
 ### 3. Module Version Discovery
 - Query FOLIO registry for latest module versions
-- Apply mode filters:
-  - **Snapshot mode**: `preRelease=only`, `npmSnapshot=only`
-  - **Release mode**: `preRelease=false`, `npmSnapshot=false`
+- Apply pre-release filters based on `pre_release` parameter:
+  - **`pre_release: 'only'`**: `preRelease=only`, `npmSnapshot=only`
+  - **`pre_release: 'false'`**: `preRelease=false`, `npmSnapshot=false`
+  - **`pre_release: 'true'`**: `preRelease=true`, `npmSnapshot=true`
 - Validate artifact availability in Docker Hub/NPM
 
 ### 4. Version Comparison and Updates
@@ -69,8 +70,8 @@ This workflow handles the core logic for checking module versions and updating a
 
 ### 6. Application Version Calculation
 - If `target_version` provided: Use specified version
-- If release mode with updates: Increment patch version
-- If snapshot mode: Generate build number with offset
+- If `pre_release: 'false'` (release mode) with updates: Increment patch version
+- If `pre_release: 'only'` or `'true'` (snapshot mode): Generate build number with offset
 
 ### 7. POM Version Update
 - Update `pom.xml` when:
@@ -89,19 +90,28 @@ This workflow handles the core logic for checking module versions and updating a
   - `pom.xml`
 - Artifacts retained for downstream workflows
 
-## 🔧 Mode-Specific Behavior
+## 🔧 Pre-Release Mode Behavior
 
-### Snapshot Mode (`mode: 'snapshot'`)
-- Fetches latest snapshot/pre-release module versions
+### Snapshot-Only Mode (`pre_release: 'only'`)
+- Fetches latest snapshot/pre-release module versions ONLY
+- Registry Query: `preRelease=only`, `npmSnapshot=only`
 - Generates version with build number: `X.Y.Z-SNAPSHOT.BUILD`
 - Updates only application-descriptor.json (not pom.xml)
-- Used for continuous integration builds
+- Used for continuous integration on snapshot branches
 
-### Release Mode (`mode: 'release'`)
-- Fetches stable release module versions
+### Release-Only Mode (`pre_release: 'false'`)
+- Fetches stable release module versions ONLY
+- Registry Query: `preRelease=false`, `npmSnapshot=false`
 - Increments patch version: `X.Y.(Z+1)`
 - Updates both application-descriptor.json and pom.xml
 - Used for release preparation and tagging
+- Filters out any SNAPSHOT or pre-release versions
+
+### Include Pre-Release Mode (`pre_release: 'true'`)
+- Fetches BOTH release AND pre-release module versions
+- Registry Query: `preRelease=true`, `npmSnapshot=true`
+- Allows mixing of stable and development versions
+- Used for development branches that accept either version type
 
 ### Placeholder Mode (`placeholder_modules: true`)
 - Sets all modules to `<CHANGE_ME>` version
@@ -111,22 +121,26 @@ This workflow handles the core logic for checking module versions and updating a
 
 ## 📊 Usage Examples
 
-### Basic Snapshot Update
+### Snapshot-Only Update
 ```yaml
 - uses: ./.github/workflows/update-application.yml
   with:
     app_name: ${{ inputs.app_name }}
     repo: ${{ inputs.repo }}
+    branch: 'snapshot'
+    pre_release: 'only'
     workflow_run_number: ${{ github.run_number }}
+    descriptor_build_offset: '100100000000000'
 ```
 
-### Release Mode Update
+### Release-Only Update
 ```yaml
 - uses: ./.github/workflows/update-application.yml
   with:
     app_name: ${{ inputs.app_name }}
     repo: ${{ inputs.repo }}
-    mode: 'release'
+    branch: 'R1-2025'
+    pre_release: 'false'
     workflow_run_number: ${{ github.run_number }}
 ```
 
@@ -136,7 +150,8 @@ This workflow handles the core logic for checking module versions and updating a
   with:
     app_name: ${{ inputs.app_name }}
     repo: ${{ inputs.repo }}
-    mode: 'release'
+    branch: 'R2-2025'
+    pre_release: 'false'
     target_version: '2.0.0'
     placeholder_modules: true
 ```
@@ -159,14 +174,19 @@ This workflow handles the core logic for checking module versions and updating a
 - **NPM Registry**: NPM repository for UI modules
 
 ### Version Filtering
+
 ```bash
-# Snapshot mode
+# Snapshot-only mode (pre_release: 'only')
 preRelease=only     # Backend modules
 npmSnapshot=only    # UI modules
 
-# Release mode  
+# Release-only mode (pre_release: 'false')
 preRelease=false    # Backend modules
 npmSnapshot=false   # UI modules
+
+# Include pre-release mode (pre_release: 'true')
+preRelease=true     # Backend modules
+npmSnapshot=true    # UI modules
 ```
 
 ## 🛡️ Error Handling

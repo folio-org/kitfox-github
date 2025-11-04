@@ -25,11 +25,11 @@ on:
         required: false
         type: string
         default: '100100000000000'
-      mode:
-        description: 'Update mode (snapshot | release)'
+      pre_release:
+        description: 'Pre-release mode (true = snapshot and release, only = snapshot-only, false = release only)'
         required: false
         type: string
-        default: 'snapshot'
+        default: 'false'
       target_version:
         description: 'Target version to set (overrides calculated version)'
         required: false
@@ -121,9 +121,9 @@ jobs:
           DOCKER_REGISTRY: "https://hub.docker.com/v2/repositories"
           NPM_REGISTRY: "https://repository.folio.org/repository"
           FOLIO_REGISTRY: "https://folio-registry.dev.folio.org/_/proxy/modules?latest=20&order=desc&orderBy=id&filter="
-          MODE: ${{ inputs.mode }}
-          BACKEND_PRE_RELEASE: ${{ inputs.mode == 'snapshot' && 'preRelease=only' || 'preRelease=false' }}
-          UI_PRE_RELEASE: ${{ inputs.mode == 'snapshot' && 'npmSnapshot=only' || 'npmSnapshot=false' }}
+          PRE_RELEASE: ${{ inputs.pre_release }}
+          BACKEND_PRE_RELEASE: preRelease=${{ inputs.pre_release }}
+          UI_PRE_RELEASE: npmSnapshot=${{ inputs.pre_release }}
         run: |
           set -eo pipefail
           echo "::notice::Check for newer module versions"
@@ -145,8 +145,8 @@ jobs:
               echo "::endgroup::"
               continue
             fi
-          
-            if [[ "$MODE" == "release" ]] && ! [[ "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]{1,3}$ ]]; then
+
+            if [[ "$PRE_RELEASE" == "false" ]] && ! [[ "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]{1,3}$ ]]; then
               echo "::warning::The current version '$current_version' is not a release version; skipping $module_name"
               echo "::endgroup::"
               continue
@@ -275,7 +275,7 @@ jobs:
 
       - name: Update POM Version
         id: update-pom-version
-        if: inputs.target_version != '' || (inputs.mode == 'release' && steps.update-module-versions.outputs.updated == 'true')
+        if: inputs.target_version != '' || (inputs.pre_release == 'false' && steps.update-module-versions.outputs.updated == 'true')
         env:
           NEW_VERSION: ${{ inputs.target_version || steps.calculate-new-version.outputs.new_version }}
         run: |
@@ -283,15 +283,15 @@ jobs:
 
           if [[ -n "$NEW_VERSION" && -f "pom.xml" ]]; then
             CURRENT_POM_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-            
+
             if [[ "$CURRENT_POM_VERSION" != "$NEW_VERSION" ]]; then
-              echo "::notice::Updating pom.xml for ${{ inputs.mode == 'release' && 'release' || 'explicit version' }}"
+              echo "::notice::Updating pom.xml for ${{ inputs.pre_release == 'false' && 'release' || 'explicit version' }}"
               echo "::group::Updating pom.xml version from $CURRENT_POM_VERSION to $NEW_VERSION"
               mvn versions:set \
                   -DnewVersion="$NEW_VERSION" \
                   -DgenerateBackupPoms=false
               echo "::endgroup::"
-              
+
               echo "::notice::Successfully updated pom.xml version to $NEW_VERSION"
             else
               echo "::notice::POM version already matches target version: $NEW_VERSION"
