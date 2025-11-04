@@ -138,7 +138,7 @@ runs:
                 --argjson rely_on_FAR "$([ "$rely_on_FAR" = "true" ] && echo true || echo false)" \
                 '. += [{
                   branch: $branch,
-                  update_branch: ($update_branch | select(. != "")),
+                  update_branch: (if $update_branch != "" then $update_branch else null end),
                   need_pr: $need_pr,
                   pre_release: $pre_release,
                   descriptor_build_offset: $descriptor_build_offset,
