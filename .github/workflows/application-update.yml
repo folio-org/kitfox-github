@@ -128,21 +128,76 @@ jobs:
   notify:
     name: Send Notifications
     needs: [update]
-    if: always() && !cancelled() && !inputs.dry_run
+    if: always() && !cancelled() && needs.update.outputs.updated == 'true' && !inputs.dry_run
     runs-on: ubuntu-latest
     outputs:
       team_notif_status: ${{ steps.notify-team.outcome }}
       general_notif_status: ${{ steps.notify-general.outcome }}
       notification_outcome: ${{ steps.notify-team.outcome || steps.notify-general.outcome }}
     env:
-      APP_NAME: ${{ inputs.app_name }}
-      BRANCH: ${{ inputs.branch }}
-      UPDATED: ${{ needs.update.outputs.updated }}
-      UPDATES_CNT: ${{ needs.update.outputs.updated_cnt }}
-      PR_CREATED: ${{ needs.update.outputs.pr_created }}
-      PR_URL: ${{ needs.update.outputs.pr_url }}
-      FAILURE_REASON: ${{ needs.update.outputs.failure_reason }}
-      SUCCESS: ${{ needs.update.result == 'success' && needs.update.outputs.updated == 'true' }}
+      TITLE_TEXT: "${{ inputs.app_name }} ${{ inputs.branch }} updated #${{ github.run_number }}"
+      TITLE_BLOCK: |
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*${{ inputs.app_name }} `${{ inputs.branch }}` updated* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>"
+          }
+        }
+      SUCCESS_ATTACHMENT: |
+        {
+          "color": "good",
+          "fields": [
+            {
+              "title": "Branch",
+              "value": "${{ inputs.branch }}",
+              "short": true
+            },
+            {
+              "title": "New Version",
+              "value": "${{ needs.update.outputs.new_version }}",
+              "short": true
+            },
+            {
+              "title": "Previous Version",
+              "value": "${{ needs.update.outputs.previous_version }}",
+              "short": true
+            },
+            {
+              "title": "Updated Modules",
+              "value": "${{ needs.update.outputs.updated_cnt }}",
+              "short": true
+            },
+            {
+              "title": "Commit",
+              "value": "${{ needs.update.outputs.commit_sha != '' && format('<https://github.com/{0}/commit/{1}|{1}>', inputs.repo, needs.update.outputs.commit_sha) || 'No commit' }}",
+              "short": false
+            }
+          ]
+        },
+        {
+          "color": "good",
+          "mrkdwn_in": ["text"],
+          "text": ${{ toJSON(needs.update.outputs.updated_modules) }},
+          "footer": "Eureka CI/CD"
+        }
+      FAILURE_ATTACHMENT: |
+        {
+          "color": "danger",
+          "fields": [
+            {
+              "title": "Branch",
+              "value": "${{ inputs.branch }}",
+              "short": true
+            },
+            {
+              "title": "Failure Reason",
+              "value": "${{ needs.update.outputs.failure_reason || 'Check workflow logs for details' }}",
+              "short": false
+            }
+          ],
+          "footer": "Eureka CI/CD"
+        }
     steps:
       - name: Notify Team Channel
         id: notify-team
@@ -156,30 +211,16 @@ jobs:
           token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
           errors: false
           payload: |
-            channel: "${{ env.CHANNEL }}"
-            text: "${{ env.APP_NAME }} ${{ env.BRANCH }} update ${{ env.SUCCESS == 'true' && 'succeeded' || 'failed' }}"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*${{ env.APP_NAME }}* update on `${{ env.BRANCH }}` ${{ env.SUCCESS == 'true' && ':white_check_mark:' || ':x:' }}"
-            attachments:
-              - color: "${{ env.SUCCESS == 'true' && 'good' || 'danger' }}"
-                fields:
-                  - title: "Branch"
-                    value: "${{ env.BRANCH }}"
-                    short: true
-                  - title: "Updated"
-                    value: "${{ env.UPDATED }}"
-                    short: true
-                  - title: "Updates Count"
-                    value: "${{ env.UPDATES_CNT }}"
-                    short: true
-                  - title: "PR Created"
-                    value: "${{ env.PR_CREATED }}"
-                    short: true
-                  ${{ env.PR_URL != '' && format('- title: "PR URL"\n  value: "{0}"\n  short: false', env.PR_URL) || '' }}
-                  ${{ env.FAILURE_REASON != '' && format('- title: "Failure Reason"\n  value: "{0}"\n  short: false', env.FAILURE_REASON) || '' }}
+            {
+              "channel": "${{ env.CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ needs.update.result == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+              ]
+            }
 
       - name: Notify General Channel
         id: notify-general
@@ -193,30 +234,16 @@ jobs:
           token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
           errors: false
           payload: |
-            channel: "${{ env.CHANNEL }}"
-            text: "${{ env.APP_NAME }} ${{ env.BRANCH }} update ${{ env.SUCCESS == 'true' && 'succeeded' || 'failed' }}"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*${{ env.APP_NAME }}* update on `${{ env.BRANCH }}` ${{ env.SUCCESS == 'true' && ':white_check_mark:' || ':x:' }}"
-            attachments:
-              - color: "${{ env.SUCCESS == 'true' && 'good' || 'danger' }}"
-                fields:
-                  - title: "Branch"
-                    value: "${{ env.BRANCH }}"
-                    short: true
-                  - title: "Updated"
-                    value: "${{ env.UPDATED }}"
-                    short: true
-                  - title: "Updates Count"
-                    value: "${{ env.UPDATES_CNT }}"
-                    short: true
-                  - title: "PR Created"
-                    value: "${{ env.PR_CREATED }}"
-                    short: true
-                  ${{ env.PR_URL != '' && format('- title: "PR URL"\n  value: "{0}"\n  short: false', env.PR_URL) || '' }}
-                  ${{ env.FAILURE_REASON != '' && format('- title: "Failure Reason"\n  value: "{0}"\n  short: false', env.FAILURE_REASON) || '' }}
+            {
+              "channel": "${{ env.CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ needs.update.result == 'success' && env.SUCCESS_ATTACHMENT || env.FAILURE_ATTACHMENT }}
+              ]
+            }
 
   summarize:
     name: Workflow Summary
