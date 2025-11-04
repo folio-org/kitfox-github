@@ -151,7 +151,7 @@ runs:
         fi
 
         COUNT=$(echo "$BRANCH_CONFIG" | jq 'length')
-        BRANCHES=$(echo "$BRANCH_CONFIG" | jq '[.[].branch]')
+        BRANCHES=$(echo "$BRANCH_CONFIG" | jq -c '[.[].branch]')
 
         {
           echo "enabled=$ENABLED"
