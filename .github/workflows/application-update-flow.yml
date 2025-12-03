@@ -226,15 +226,61 @@ jobs:
   update-application:
     name: Update Application
     needs: prepare-context
-    uses: ./.github/workflows/update-application.yml
-    with:
-      app_name: ${{ inputs.app_name }}
-      repo: ${{ inputs.repo }}
-      branch: ${{ needs.prepare-context.outputs.target_branch }}
-      workflow_run_number: ${{ inputs.workflow_run_number }}
-      descriptor_build_offset: ${{ inputs.descriptor_build_offset }}
-      pre_release: ${{ inputs.pre_release }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    outputs:
+      updated: ${{ steps.generate.outputs.updated }}
+      updates_cnt: ${{ steps.generate.outputs.updates_cnt }}
+      updated_modules: ${{ steps.generate.outputs.updated_modules }}
+      previous_version: ${{ steps.collect-previous-version.outputs.version }}
+      new_version: ${{ steps.collect-new-version.outputs.version }}
+      app_descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
+      app_descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
+      artifact_name: ${{ steps.generate.outputs.artifact_name }}
+      update_files_artifact_name: ${{ format('{0}-update-files', inputs.app_name) }}
+      failure_reason: ${{ steps.generate.outputs.failure_reason || '' }}
+    steps:
+      - name: Checkout Application Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ needs.prepare-context.outputs.target_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect Previous Version
+        id: collect-previous-version
+        run: |
+          if [[ -f "application.lock.json" ]]; then
+            version=$(jq -r '.version' application.lock.json)
+          else
+            version=$(grep -m1 '<version>' pom.xml | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Update and Generate Descriptor
+        id: generate
+        uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
+        with:
+          app_name: ${{ inputs.app_name }}
+          build_number: ${{ inputs.descriptor_build_offset != '' && format('{0}', fromJSON(inputs.descriptor_build_offset) + fromJSON(inputs.workflow_run_number)) || inputs.workflow_run_number }}
+
+      - name: Update Lock File
+        if: steps.generate.outputs.updated == 'true'
+        run: cp "target/${{ steps.generate.outputs.descriptor_file }}" application.lock.json
+
+      - name: Collect New Version
+        id: collect-new-version
+        if: steps.generate.outputs.updated == 'true'
+        run: echo "version=$(jq -r '.version' application.lock.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Update Files
+        if: steps.generate.outputs.updated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ inputs.app_name }}-update-files"
+          path: |
+            application.lock.json
+            pom.xml
+          retention-days: 1
 
   verify-application:
     name: Verify Application
