@@ -106,21 +106,23 @@ runs:
           exit 1
         fi
 
-        SEMVER_PATTERN='^(\^|~|>=|>|<=|<|=)?v?[0-9]+(\.[0-9]+)?(\.[0-9]+)?(-[a-zA-Z0-9._-]+)?(\+[a-zA-Z0-9._-]+)?( (>=|>|<=|<)?[0-9]+(\.[0-9]+)?(\.[0-9]+)?(-[a-zA-Z0-9._-]+)?)?$'
+        SEMVER_PATTERN='^(latest|(\^|~|>=|>|<=|<|=)?v?[0-9]+(\.[0-9]+)?(\.[0-9]+)?(-[a-zA-Z0-9._-]+)?(\+[a-zA-Z0-9._-]+)?( (>=|>|<=|<)?[0-9]+(\.[0-9]+)?(\.[0-9]+)?(-[a-zA-Z0-9._-]+)?)?)$'
 
-        invalid_versions=""
-        while IFS= read -r version; do
+        invalid_modules=""
+        while IFS= read -r line; do
+          name=$(echo "$line" | cut -d'|' -f1)
+          version=$(echo "$line" | cut -d'|' -f2)
           if [[ -n "$version" && ! "$version" =~ $SEMVER_PATTERN ]]; then
-            invalid_versions+="$version"$'\n'
+            invalid_modules+="$name: $version"$'\n'
           fi
-        done < <(jq -r '[(.modules[]?.version), (.uiModules[]?.version)] | map(select(. != null)) | .[]' "$TEMPLATE_FILE")
+        done < <(jq -r '([.modules[]? | "\(.name)|\(.version)"], [.uiModules[]? | "\(.name)|\(.version)"]) | .[]' "$TEMPLATE_FILE")
 
-        if [[ -n "$invalid_versions" ]]; then
-          echo "::error::Invalid module versions in template (must be semver or semver range):"
-          echo "$invalid_versions" | while read -r v; do
-            [[ -n "$v" ]] && echo "::error::  - '$v'"
+        if [[ -n "$invalid_modules" ]]; then
+          echo "::error::Invalid module versions in template (must be semver, semver range, or 'latest'):"
+          echo "$invalid_modules" | while read -r m; do
+            [[ -n "$m" ]] && echo "::error::  - $m"
           done
-          echo "failure_reason=Invalid module versions in template: $(echo "$invalid_versions" | tr '\n' ', ' | sed 's/, $//')" >> "$GITHUB_OUTPUT"
+          echo "failure_reason=Invalid module versions in template: $(echo "$invalid_modules" | tr '\n' ', ' | sed 's/, $//')" >> "$GITHUB_OUTPUT"
           exit 1
         fi
 
