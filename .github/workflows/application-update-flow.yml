@@ -131,7 +131,6 @@ permissions:
 
 env:
   APP_NAME: ${{ inputs.app_name }}
-  STATE_FILE: "application-descriptor.json"
   GH_TOKEN: ${{ github.token }}
   FAR_API_URL: "https://far.ci.folio.org/applications"
 
@@ -375,14 +374,13 @@ jobs:
     steps:
       - name: Compare Application Versions
         id: compare
-        uses: folio-org/kitfox-github/.github/actions/compare-state-files@master
+        uses: folio-org/kitfox-github/.github/actions/compare-state-files@RANCHER-2520-test # TODO: Change tp master
         with:
           repo: ${{ inputs.repo }}
           base-source-type: 'branch'
           base-source: ${{ inputs.branch }}
           head-source-type: 'branch'
           head-source: ${{ inputs.update_branch }}
-          state-file: 'application-descriptor.json'
           github-token: ${{ github.token }}
 
       - name: Generate App Token
