@@ -325,7 +325,10 @@ jobs:
   commit-changes:
     name: Commit Changes
     needs: [prepare-context, update-application, verify-application]
-    if: needs.update-application.outputs.updated == 'true'
+    if: |
+      always() &&
+      !cancelled() &&
+      needs.update-application.outputs.updated == 'true'
     uses: ./.github/workflows/commit-and-push-changes.yml
     with:
       repo: ${{ inputs.repo }}
