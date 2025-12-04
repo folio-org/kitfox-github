@@ -116,9 +116,11 @@ runs:
 
         if [[ -n "$invalid_modules" ]]; then
           echo "::warning::Invalid module versions in template (must be semver, semver range, or 'latest') - skipping update:"
-          echo "$invalid_modules" | while read -r m; do
-            [[ -n "$m" ]] && echo "::warning::  - $m"
-          done
+          while IFS= read -r m; do
+            if [[ -n "$m" ]]; then
+              echo "::warning::  - $m"
+            fi
+          done <<< "$invalid_modules"
           echo "valid=false" >> "$GITHUB_OUTPUT"
           echo "failure_reason=Invalid module versions in template: $(echo "$invalid_modules" | tr '\n' ', ' | sed 's/, $//')" >> "$GITHUB_OUTPUT"
           exit 0
