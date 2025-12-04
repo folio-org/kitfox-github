@@ -308,7 +308,7 @@ jobs:
         if: ${{ !inputs.rely_on_FAR }}
         uses: folio-org/kitfox-github/.github/actions/fetch-platform-descriptor@master
         with:
-          branch: ${{ inputs.branch }}
+          branch: snapshot #${{ inputs.branch }} TODO: switch back
           upload_artifact: 'false'
 
       - name: Validate Application
