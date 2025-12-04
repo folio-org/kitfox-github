@@ -39,7 +39,7 @@ inputs:
 
 outputs:
   generated:
-    description: 'Whether descriptor was generated successfully'
+    description: 'Whether descriptor was generated with changes (true only when new descriptor file was created)'
     value: ${{ steps.generate.outputs.generated }}
   descriptor_file:
     description: 'Name of generated descriptor file'
@@ -53,9 +53,6 @@ outputs:
   failure_reason:
     description: 'Reason for failure if generation failed'
     value: ${{ steps.validate-template.outputs.failure_reason || steps.generate.outputs.failure_reason }}
-  updated:
-    description: 'Whether any module changes were made (update mode only)'
-    value: ${{ steps.parse-results.outputs.updated }}
   updates_cnt:
     description: 'Total number of module changes (update mode only)'
     value: ${{ steps.parse-results.outputs.updates_cnt }}
@@ -190,13 +187,19 @@ runs:
         mvn $SUPPRESS_LOGS clean $COMMAND -U -e $EXTRA_PARAMS
         echo "::endgroup::"
 
+        if [[ ! -d "target" ]]; then
+          echo "::notice::No changes detected - target directory was not created by Maven"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
         echo "::group::Debug - Check target directory contents"
-        ls -la target/ || echo "Target directory does not exist"
+        ls -la target/
         echo "::endgroup::"
 
-        APP_DESCRIPTOR_FILE=$(compgen -G "target/${APP_NAME}*.json" | grep -v "update-result" | head -n 1)
+        APP_DESCRIPTOR_FILE=$(compgen -G "target/${APP_NAME}*.json" | grep -v "update-result" | head -n 1 || true)
         if [[ -z "$APP_DESCRIPTOR_FILE" ]]; then
-          echo "::error::Generated application descriptor not found"
+          echo "::error::Generated application descriptor not found in target directory"
           echo "generated=false" >> "$GITHUB_OUTPUT"
           exit 1
         fi
