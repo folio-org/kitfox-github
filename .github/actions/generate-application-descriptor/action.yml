@@ -115,14 +115,16 @@ runs:
         done < <(jq -r '([.modules[]? | "\(.name)|\(.version)"], [.uiModules[]? | "\(.name)|\(.version)"]) | .[]' "$TEMPLATE_FILE")
 
         if [[ -n "$invalid_modules" ]]; then
-          echo "::error::Invalid module versions in template (must be semver, semver range, or 'latest'):"
+          echo "::warning::Invalid module versions in template (must be semver, semver range, or 'latest') - skipping update:"
           echo "$invalid_modules" | while read -r m; do
-            [[ -n "$m" ]] && echo "::error::  - $m"
+            [[ -n "$m" ]] && echo "::warning::  - $m"
           done
+          echo "valid=false" >> "$GITHUB_OUTPUT"
           echo "failure_reason=Invalid module versions in template: $(echo "$invalid_modules" | tr '\n' ', ' | sed 's/, $//')" >> "$GITHUB_OUTPUT"
-          exit 1
+          exit 0
         fi
 
+        echo "valid=true" >> "$GITHUB_OUTPUT"
         echo "::notice::All module versions are valid semver/semver range"
 
     - name: Determine Generation Mode
@@ -141,6 +143,7 @@ runs:
 
     - name: Generate Application Descriptor
       id: generate
+      if: steps.validate-template.outputs.valid == 'true'
       shell: bash
       env:
         APP_NAME: ${{ inputs.app_name }}
