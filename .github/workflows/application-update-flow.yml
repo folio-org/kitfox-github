@@ -227,7 +227,7 @@ jobs:
     needs: prepare-context
     runs-on: ubuntu-latest
     outputs:
-      updated: ${{ steps.generate.outputs.updated }}
+      updated: ${{ steps.generate.outputs.generated }}
       updates_cnt: ${{ steps.generate.outputs.updates_cnt }}
       updated_modules: ${{ steps.generate.outputs.updated_modules }}
       previous_version: ${{ steps.collect-previous-version.outputs.version }}
@@ -275,16 +275,16 @@ jobs:
           build_number: ${{ steps.build-number.outputs.value }}
 
       - name: Update Lock File
-        if: steps.generate.outputs.updated == 'true'
+        if: steps.generate.outputs.generated == 'true'
         run: cp "target/${{ steps.generate.outputs.descriptor_file }}" application.lock.json
 
       - name: Collect New Version
         id: collect-new-version
-        if: steps.generate.outputs.updated == 'true'
+        if: steps.generate.outputs.generated == 'true'
         run: echo "version=$(jq -r '.version' application.lock.json)" >> "$GITHUB_OUTPUT"
 
       - name: Upload Update Files
-        if: steps.generate.outputs.updated == 'true'
+        if: steps.generate.outputs.generated == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: "${{ inputs.app_name }}-update-files"
