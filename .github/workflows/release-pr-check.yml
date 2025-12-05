@@ -217,6 +217,7 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
         with:
           app_name: ${{ inputs.repo_name }}
+          state_file: 'application.lock.json' #TODO Remove later
 
       - name: Fetch Platform Descriptor
         id: fetch-platform
