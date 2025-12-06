@@ -217,7 +217,6 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
         with:
           app_name: ${{ inputs.repo_name }}
-          upload_artifact: 'true'
 
       - name: Fetch Platform Descriptor
         id: fetch-platform
