@@ -79,7 +79,7 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/get-update-config@master
         with:
           repo: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
-          branch: master
+          branch: RANCHER-2520-test # TODO: Switch to master
           github_token: ${{ steps.app-token.outputs.token }}
 
       - name: Validate Configuration
