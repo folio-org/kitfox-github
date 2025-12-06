@@ -267,7 +267,7 @@ jobs:
             echo "value=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Update and Generate Descriptor
+      - name: Generate Descriptor
         id: generate
         uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@RANCHER-2520-test #TODO: switch back to master
         with:
