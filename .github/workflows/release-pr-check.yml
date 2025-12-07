@@ -266,7 +266,7 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/validate-application@RANCHER-2520-test # TODO: Rollback to master
         with:
           app_name: ${{ inputs.repo_name }}
-          app_descriptor_file: ${{ steps.check-descriptor.outputs.descriptor_file }}
+          app_descriptor_path: ${{ steps.check-descriptor.outputs.descriptor_file }}
           platform_descriptor_path: ${{ steps.fetch-platform.outputs.platform_descriptor_path }}
           use_platform_descriptor: ${{ steps.fetch-platform.outputs.platform_found == 'true' && 'true' || 'false' }}
           rely_on_FAR: 'false'
