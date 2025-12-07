@@ -313,7 +313,7 @@ jobs:
 
       - name: Validate Application
         id: validate
-        uses: folio-org/kitfox-github/.github/actions/validate-application@master
+        uses: folio-org/kitfox-github/.github/actions/validate-application@RANCHER-2520-test # TODO: Rollback to master
         with:
           app_name: ${{ inputs.app_name }}
           app_descriptor_artifact_file_name: ${{ needs.update-application.outputs.app_descriptor_file }}
