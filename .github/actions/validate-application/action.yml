@@ -122,7 +122,7 @@ runs:
       id: validate-interfaces
       shell: bash
       env:
-        APP_DESCRIPTOR_FILE: ${{ inputs.app_descriptor_path != "" && inputs.app_descriptor_path || "/tmp/app-descriptors/${{ inputs.app_descriptor_artifact_file_name }}"
+        APP_DESCRIPTOR_FILE: ${{ inputs.app_descriptor_path != '' && inputs.app_descriptor_path || format('/tmp/app-descriptors/{0}', inputs.app_descriptor_artifact_file_name) }}
         FAR_API_URL: "${{ inputs.far_url }}/applications"
       run: |
         set -eo pipefail
