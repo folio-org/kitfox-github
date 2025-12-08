@@ -131,7 +131,6 @@ permissions:
 
 env:
   APP_NAME: ${{ inputs.app_name }}
-  STATE_FILE: "application-descriptor.json"
   GH_TOKEN: ${{ github.token }}
   FAR_API_URL: "https://far.ci.folio.org/applications"
 
@@ -228,7 +227,7 @@ jobs:
     needs: prepare-context
     runs-on: ubuntu-latest
     outputs:
-      updated: ${{ steps.generate.outputs.updated }}
+      updated: ${{ steps.generate.outputs.generated }}
       updates_cnt: ${{ steps.generate.outputs.updates_cnt }}
       updated_modules: ${{ steps.generate.outputs.updated_modules }}
       previous_version: ${{ steps.collect-previous-version.outputs.version }}
@@ -236,7 +235,7 @@ jobs:
       app_descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
       app_descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
       artifact_name: ${{ steps.generate.outputs.artifact_name }}
-      update_files_artifact_name: ${{ format('{0}-update-files', inputs.app_name) }}
+      state_file_artifact_name: ${{ steps.generate.outputs.state_file_artifact_name }}
       failure_reason: ${{ steps.generate.outputs.failure_reason || '' }}
     steps:
       - name: Checkout Application Repository
@@ -245,6 +244,24 @@ jobs:
           repository: ${{ inputs.repo }}
           ref: ${{ needs.prepare-context.outputs.target_branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch Template from Base Branch
+        if: |
+          needs.prepare-context.outputs.need_pr == 'true' &&
+          needs.prepare-context.outputs.update_branch_exists == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ inputs.branch }}
+          REPO: ${{ inputs.repo }}
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Fetching template from base branch: $BASE_BRANCH"
+
+          gh api "repos/$REPO/contents/application.template.json?ref=$BASE_BRANCH" \
+            --jq '.content' | base64 -d > application.template.json
+
+          echo "::notice::Template file sourced from base branch"
 
       - name: Collect Previous Version
         id: collect-previous-version
@@ -256,31 +273,30 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Update and Generate Descriptor
+      - name: Calculate Build Number
+        id: build-number
+        env:
+          OFFSET: ${{ inputs.descriptor_build_offset }}
+          RUN_NUMBER: ${{ inputs.workflow_run_number }}
+        run: |
+          if [[ -n "$OFFSET" ]]; then
+            echo "value=$((OFFSET + RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate Descriptor
         id: generate
         uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
         with:
           app_name: ${{ inputs.app_name }}
-          build_number: ${{ inputs.descriptor_build_offset != '' && format('{0}', fromJSON(inputs.descriptor_build_offset) + fromJSON(inputs.workflow_run_number)) || inputs.workflow_run_number }}
-
-      - name: Update Lock File
-        if: steps.generate.outputs.updated == 'true'
-        run: cp "target/${{ steps.generate.outputs.descriptor_file }}" application.lock.json
+          build_number: ${{ steps.build-number.outputs.value }}
+          use_input_generator_version: true #TODO: remove sometime later
 
       - name: Collect New Version
         id: collect-new-version
-        if: steps.generate.outputs.updated == 'true'
-        run: echo "version=$(jq -r '.version' application.lock.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload Update Files
-        if: steps.generate.outputs.updated == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: "${{ inputs.app_name }}-update-files"
-          path: |
-            application.lock.json
-            pom.xml
-          retention-days: 1
+        if: steps.generate.outputs.generated == 'true'
+        run: echo "version=$(jq -r '.version' target/${{ steps.generate.outputs.descriptor_file }})" >> "$GITHUB_OUTPUT"
 
   verify-application:
     name: Verify Application
@@ -305,7 +321,7 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/validate-application@master
         with:
           app_name: ${{ inputs.app_name }}
-          app_descriptor_file: ${{ needs.update-application.outputs.app_descriptor_file }}
+          app_descriptor_artifact_file_name: ${{ needs.update-application.outputs.app_descriptor_file }}
           app_descriptor_artifact_name: ${{ needs.update-application.outputs.artifact_name }}
           platform_descriptor_path: ${{ steps.fetch-platform.outputs.descriptor_path }}
           rely_on_FAR: ${{ inputs.rely_on_FAR }}
@@ -323,12 +339,15 @@ jobs:
   commit-changes:
     name: Commit Changes
     needs: [prepare-context, update-application, verify-application]
-    if: needs.update-application.outputs.updated == 'true'
+    if: |
+      always() &&
+      !cancelled() &&
+      needs.update-application.outputs.updated == 'true'
     uses: ./.github/workflows/commit-and-push-changes.yml
     with:
       repo: ${{ inputs.repo }}
       branch: ${{ needs.prepare-context.outputs.need_pr == 'true' && inputs.update_branch || inputs.branch }}
-      artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
+      artifact_name: ${{ needs.update-application.outputs.state_file_artifact_name }}
       commit_message: |
         Update modules to ${{ needs.update-application.outputs.new_version }}.
 
@@ -370,7 +389,6 @@ jobs:
           base-source: ${{ inputs.branch }}
           head-source-type: 'branch'
           head-source: ${{ inputs.update_branch }}
-          state-file: 'application-descriptor.json'
           github-token: ${{ github.token }}
 
       - name: Generate App Token
