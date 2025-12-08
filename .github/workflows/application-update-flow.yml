@@ -291,6 +291,7 @@ jobs:
         with:
           app_name: ${{ inputs.app_name }}
           build_number: ${{ steps.build-number.outputs.value }}
+          use_input_generator_version: true #TODO: remove sometime later
 
       - name: Collect New Version
         id: collect-new-version
