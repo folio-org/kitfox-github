@@ -245,6 +245,24 @@ jobs:
           ref: ${{ needs.prepare-context.outputs.target_branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Fetch Template from Base Branch
+        if: |
+          needs.prepare-context.outputs.need_pr == 'true' &&
+          needs.prepare-context.outputs.update_branch_exists == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ inputs.branch }}
+          REPO: ${{ inputs.repo }}
+        run: |
+          set -eo pipefail
+
+          echo "::notice::Fetching template from base branch: $BASE_BRANCH"
+
+          gh api "repos/$REPO/contents/application.template.json?ref=$BASE_BRANCH" \
+            --jq '.content' | base64 -d > application.template.json
+
+          echo "::notice::Template file sourced from base branch"
+
       - name: Collect Previous Version
         id: collect-previous-version
         run: |
