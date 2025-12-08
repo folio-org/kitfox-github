@@ -47,6 +47,14 @@ inputs:
   state_file_artifact_name:
     description: 'Name for the state file artifact (defaults to app_name-state-file)'
     required: false
+  generator_version:
+    description: 'Version of folio-application-generator Maven plugin to use'
+    required: false
+    default: '1.3.0-SNAPSHOT'
+  use_input_generator_version:
+    description: 'When true, uses generator_version input; when false, uses version from pom.xml'
+    required: false
+    default: 'false'
 
 outputs:
   generated:
@@ -169,6 +177,8 @@ runs:
         VALIDATE_ARTIFACTS: ${{ inputs.validate_artifacts }}
         BUILD_NUMBER: ${{ inputs.build_number }}
         USE_PROJECT_VERSION: ${{ inputs.use_project_version }}
+        GENERATOR_VERSION: ${{ inputs.generator_version }}
+        USE_INPUT_GENERATOR_VERSION: ${{ inputs.use_input_generator_version }}
         SUPPRESS_LOGS: "-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
       run: |
         set -eo pipefail
@@ -185,11 +195,17 @@ runs:
           exit 1
         fi
 
+        if [[ "$USE_INPUT_GENERATOR_VERSION" == "true" ]]; then
+          PLUGIN_COORD="org.folio:folio-application-generator:${GENERATOR_VERSION}"
+        else
+          PLUGIN_COORD="org.folio:folio-application-generator"
+        fi
+
         if [[ "$GENERATION_MODE" == "update" ]]; then
-          COMMAND="org.folio:folio-application-generator:updateFromTemplate"
+          COMMAND="${PLUGIN_COORD}:updateFromTemplate"
           EXTRA_PARAMS="-DappDescriptorPath=$STATE_FILE -DtemplatePath=$TEMPLATE_FILE"
         else
-          COMMAND="org.folio:folio-application-generator:generateFromJson"
+          COMMAND="${PLUGIN_COORD}:generateFromJson"
           EXTRA_PARAMS="-DtemplatePath=$TEMPLATE_FILE"
         fi
 
