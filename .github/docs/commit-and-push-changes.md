@@ -376,7 +376,7 @@ Solution:
 
 ## 📚 Related Documentation
 
-- **[update-application.md](update-application.md)**: Module update workflow
+- **[Application Update Flow](application-update-flow.md)**: Core flow implementation
 - **[Validate Application Action](../actions/validate-application/README.md)**: Application descriptor validation
 - **[Publish Application Descriptor](../actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR
 - **[snapshot-update-flow.md](snapshot-update-flow.md)**: Orchestrator workflow

@@ -1,83 +1,167 @@
 # Generate Application Descriptor Action
 
-A GitHub Action that generates FOLIO application descriptors from application state files (JSON format). This action validates the state file for placeholder values, generates the descriptor using Maven, and optionally uploads it as a build artifact.
+A GitHub Action that generates or updates FOLIO application descriptors. This action supports two modes:
+
+- **Generate Mode**: Creates descriptors from template files
+- **Update Mode**: Synchronizes module versions from template to state file using version constraint resolution
 
 ## Features
 
-- **Placeholder Validation**: Automatically checks for `<CHANGE_ME>` placeholders in module versions
+- **Template-Driven Updates**: Resolves version constraints (`^2.0.0`, `~1.2.3`) to actual versions
+- **Full Module Synchronization**: Adds new modules, removes unlisted modules, upgrades/downgrades versions
+- **Artifact Validation**: Validates Docker images and NPM packages exist before resolution
+- **Template Validation**: Validates all module versions are valid semver or semver range format
 - **Maven Integration**: Uses the FOLIO application generator Maven plugin
 - **Artifact Upload**: Optionally uploads generated descriptors as GitHub artifacts
-- **Error Handling**: Comprehensive validation and error reporting
-- **Flexible Configuration**: Customizable state file paths and artifact settings
+- **Detailed Change Tracking**: Outputs detailed information about module changes
 
 ## Usage
 
-### Basic Usage
+### Generate Mode (Default)
 
 ```yaml
 - name: Generate Application Descriptor
-  uses: ./.github/actions/generate-application-descriptor
+  uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
   with:
     app_name: 'my-folio-app'
-    state_file: 'application-descriptor.json'
+    template_file: 'application.template.json'
 ```
 
-### With Custom Configuration
+### Update Mode (Template-Driven State Management)
 
 ```yaml
-- name: Generate Application Descriptor
-  uses: ./.github/actions/generate-application-descriptor
+- name: Update Application from Template
+  uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
   with:
-    app_name: 'platform-complete'
-    state_file: 'config/platform-state.json'
-    upload_artifact: 'true'
-    artifact_retention_days: '7'
-```
-
-### Skip Artifact Upload
-
-```yaml
-- name: Generate Application Descriptor
-  uses: ./.github/actions/generate-application-descriptor
-  with:
-    app_name: 'my-app'
-    state_file: 'app-state.json'
-    upload_artifact: 'false'
+    app_name: 'my-folio-app'
+    generation_mode: 'update'
+    state_file: 'application.lock.json'
+    template_file: 'application.template.json'
+    validate_artifacts: 'true'
+    pre_release: 'true'
+    build_number: '1002000000000125'
 ```
 
 ## Inputs
 
-| Input                     | Required  | Default                       | Description                                                     |
-|---------------------------|-----------|-------------------------------|-----------------------------------------------------------------|
-| `app_name`                | Yes       | -                             | Application name used for naming the generated descriptor file  |
-| `state_file`              | No        | `application-descriptor.json` | Path to the application state file (JSON format)                |
-| `upload_artifact`         | No        | `true`                        | Whether to upload the generated descriptor as a GitHub artifact |
-| `artifact_retention_days` | No        | `1`                           | Number of days to retain the uploaded artifact                  |
+| Input                     | Required | Default                       | Description                                                              |
+|---------------------------|----------|-------------------------------|--------------------------------------------------------------------------|
+| `app_name`                | Yes      | -                             | Application name used for naming the generated descriptor file           |
+| `state_file`              | No       | `application-descriptor.json` | Path to the application state file (JSON format)                         |
+| `generation_mode`         | No       | `generate`                    | Mode: `generate` (from template) or `update` (sync from template)        |
+| `template_file`           | No       | `application.template.json`   | Path to template file                                                    |
+| `validate_artifacts`      | No       | `true`                        | Validate Docker/NPM artifacts exist before resolution                    |
+| `build_number`            | No       | -                             | Build number for snapshot versions                                       |
+| `pre_release`             | No       | `true`                        | Pre-release filter: `true` (include), `false` (release only), `only`     |
+| `upload_artifact`         | No       | `true`                        | Whether to upload the generated descriptor as a GitHub artifact          |
+| `artifact_name`           | No       | `{app_name}-descriptor`       | Name for the uploaded artifact                                           |
+| `artifact_retention_days` | No       | `1`                           | Number of days to retain the uploaded artifact                           |
 
 ## Outputs
 
-| Output                 | Description                                                                       |
-|------------------------|-----------------------------------------------------------------------------------|
-| `generated`            | Whether the descriptor was generated successfully (`true`/`false`)                |
-| `descriptor_file`      | Name of the generated descriptor file (e.g., `my-app-1.0.0.json`)                 |
-| `descriptor_file_name` | Name of the descriptor file without extension (e.g., `my-app-1.0.0`)              |
-| `has_placeholders`     | Whether the state file contains `<CHANGE_ME>` placeholder values (`true`/`false`) |
+### Core Outputs
+
+| Output                 | Description                                                                            |
+|------------------------|----------------------------------------------------------------------------------------|
+| `generated`            | Whether the descriptor was generated with changes (`true` only when new descriptor file was created) |
+| `descriptor_file`      | Name of the generated descriptor file (e.g., `my-app-1.0.0.json`)                      |
+| `descriptor_file_name` | Name of the descriptor file without extension (e.g., `my-app-1.0.0`)                   |
+| `artifact_name`        | Name of the uploaded artifact                                                          |
+| `failure_reason`       | Reason for failure if generation failed (e.g., invalid template versions)              |
+
+### Update Mode Outputs
+
+| Output             | Description                                            |
+|--------------------|--------------------------------------------------------|
+| `updates_cnt`      | Total number of module changes                         |
+| `be_added`         | Backend modules added (comma-separated)                |
+| `be_upgraded`      | Backend modules upgraded (comma-separated)             |
+| `be_downgraded`    | Backend modules downgraded (comma-separated)           |
+| `be_removed`       | Backend modules removed (comma-separated)              |
+| `ui_added`         | UI modules added (comma-separated)                     |
+| `ui_upgraded`      | UI modules upgraded (comma-separated)                  |
+| `ui_downgraded`    | UI modules downgraded (comma-separated)                |
+| `ui_removed`       | UI modules removed (comma-separated)                   |
+| `updated_modules`  | Summary of all module changes (multiline)              |
+
+## Generation Modes
+
+### Generate Mode (`generation_mode: generate`)
+
+Creates a new application descriptor from the template file using the `generateFromJson` Maven goal.
+
+```bash
+mvn org.folio:folio-application-generator:generateFromJson \
+  -DtemplatePath=application.template.json
+```
+
+**Use Cases**:
+- Initial descriptor generation
+- Rebuilding descriptors from templates
+- CI/CD pipelines that need fresh descriptors
+
+### Update Mode (`generation_mode: update`)
+
+Synchronizes module versions from template to state file using the `updateFromTemplate` Maven goal. Supports version constraint resolution.
+
+```bash
+mvn org.folio:folio-application-generator:updateFromTemplate \
+  -DappDescriptorPath=application.lock.json \
+  -DtemplatePath=application.template.json \
+  -DvalidateArtifacts=true \
+  -DbuildNumber=1002000000000125
+```
+
+**Capabilities**:
+- **Version Constraint Resolution**: `^2.0.0` resolves to latest compatible version (e.g., `2.3.1`)
+- **Module Synchronization**: Adds modules in template, removes modules not in template
+- **Artifact Validation**: Validates Docker images and NPM packages exist
+- **Pre-release Filtering**: Respects `preRelease` setting per module
+
+**Output File** (`target/update-result.json`):
+```json
+{
+  "beAdded": ["mod-new-1.0.0"],
+  "beUpgraded": ["mod-core (2.0.0 -> 2.1.0)"],
+  "beDowngraded": [],
+  "beRemoved": ["mod-old-1.0.0"],
+  "uiAdded": [],
+  "uiUpgraded": ["folio_test (2.0.0 -> 2.1.0)"],
+  "uiDowngraded": [],
+  "uiRemoved": []
+}
+```
+
+## Version Constraint Support
+
+The update mode supports semver version constraints in the template file:
+
+| Constraint  | Description                                  | Example Resolution |
+|-------------|----------------------------------------------|-------------------|
+| `^2.0.0`    | Compatible with 2.x.x (>=2.0.0 <3.0.0)      | `2.3.1`           |
+| `~1.2.3`    | Patch-level changes (>=1.2.3 <1.3.0)        | `1.2.9`           |
+| `>=1.0.0`   | Greater than or equal                        | `2.5.0`           |
+| `1.0.0`     | Exact version                                | `1.0.0`           |
+
+## Artifact Validation
+
+When `validate_artifacts: true`, the action validates that module artifacts exist before resolution:
+
+**Default Registries**:
+- **Backend (Docker)**:
+  - Release: DockerHub `folioorg`
+  - Pre-release: DockerHub `folioci`
+- **UI (NPM)**:
+  - Release: `npm-folio`
+  - Pre-release: `npm-folioci`
 
 ## Examples
 
-### Complete Workflow Example
+### Complete Update Workflow
 
 ```yaml
-name: Build Application Descriptor
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
 jobs:
-  generate-descriptor:
+  update-application:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -89,126 +173,119 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Generate Application Descriptor
-        id: generate
-        uses: ./.github/actions/generate-application-descriptor
+      - name: Update Application from Template
+        id: update
+        uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
         with:
-          app_name: 'platform-complete'
-          state_file: 'application-state.json'
-          upload_artifact: 'true'
-          artifact_retention_days: '30'
+          app_name: 'app-platform'
+          generation_mode: 'update'
+          state_file: 'application.lock.json'
+          template_file: 'application.template.json'
+          validate_artifacts: 'true'
+          pre_release: 'true'
+          build_number: '${{ github.run_number }}'
 
-      - name: Check Generation Status
+      - name: Check for Updates
+        if: steps.update.outputs.generated == 'true'
         run: |
-          if [ "${{ steps.generate.outputs.generated }}" == "true" ]; then
-            echo "✅ Descriptor generated: ${{ steps.generate.outputs.descriptor_file }}"
-          else
-            echo "❌ Descriptor generation failed"
-            exit 1
-          fi
+          echo "Found ${{ steps.update.outputs.updates_cnt }} module updates"
+          echo "Changes:"
+          echo "${{ steps.update.outputs.updated_modules }}"
 ```
 
-### Conditional Processing Example
+### Snapshot Branch Update
 
 ```yaml
-- name: Generate Application Descriptor
-  id: generate
-  uses: ./.github/actions/generate-application-descriptor
+- name: Update Snapshot Application
+  uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
   with:
-    app_name: 'my-folio-app'
-    state_file: 'config/app-state.json'
-
-- name: Process Generated Descriptor
-  if: steps.generate.outputs.generated == 'true' && steps.generate.outputs.has_placeholders == 'false'
-  run: |
-    echo "Processing descriptor: ${{ steps.generate.outputs.descriptor_file }}"
-    # Additional processing steps here
-
-- name: Handle Placeholders
-  if: steps.generate.outputs.has_placeholders == 'true'
-  run: |
-    echo "⚠️ State file contains placeholders - descriptor generation skipped"
-    echo "Please replace all <CHANGE_ME> values in the state file"
+    app_name: 'app-platform'
+    generation_mode: 'update'
+    state_file: 'application.lock.json'
+    template_file: 'application.template.json'
+    pre_release: 'only'
+    build_number: '${{ vars.BUILD_OFFSET }}${{ github.run_number }}'
 ```
 
-### Matrix Build Example
+### Release Branch Update
 
 ```yaml
-strategy:
-  matrix:
-    platform:
-      - name: 'platform-minimal'
-        state_file: 'states/minimal.json'
-      - name: 'platform-complete'
-        state_file: 'states/complete.json'
-
-steps:
-  - name: Generate Descriptor for ${{ matrix.platform.name }}
-    uses: ./.github/actions/generate-application-descriptor
-    with:
-      app_name: ${{ matrix.platform.name }}
-      state_file: ${{ matrix.platform.state_file }}
-      artifact_retention_days: '14'
+- name: Update Release Application
+  uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
+  with:
+    app_name: 'app-platform'
+    generation_mode: 'update'
+    state_file: 'application.lock.json'
+    template_file: 'application.template.json'
+    pre_release: 'false'
+    validate_artifacts: 'true'
 ```
 
-## Behavior
+## File Structure
 
-### Placeholder Validation
-
-The action first validates the state file for placeholder values:
-
-1. **Checks for `<CHANGE_ME>` values** in `modules[].version` and `uiModules[].version` fields
-2. **If placeholders found**: Skips descriptor generation and sets `has_placeholders=true`
-3. **If no placeholders**: Proceeds with descriptor generation
-
-### Maven Descriptor Generation
-
-When no placeholders are detected:
-
-1. **Validates Prerequisites**: Checks for `pom.xml` and state file existence
-2. **Executes Maven Command**: Runs `folio-application-generator:generateFromJson`
-3. **Locates Generated File**: Finds the generated descriptor in the `target/` directory
-4. **Sets Outputs**: Provides file names and success status
-
-### Artifact Upload
-
-When `upload_artifact` is enabled:
-
-1. **Uploads Generated Descriptor**: Uses `actions/upload-artifact@v4`
-2. **Names Artifact**: Uses format `{app_name}-descriptor`
-3. **Includes All Matching Files**: Uploads all `target/{app_name}*.json` files
-4. **Applies Retention**: Respects the configured retention period
-
-## Requirements
-
-### Repository Structure
-
-- **Maven Project**: Must contain a valid `pom.xml` file in the repository root
-- **State File**: Application state file must be in valid JSON format
-- **Build Environment**: Java and Maven must be available in the runner
-
-### State File Format
-
-The state file should follow the FOLIO application descriptor format:
+### Template File (`application.template.json`)
 
 ```json
 {
+  "name": "app-platform",
+  "version": "1.0.0",
   "modules": [
     {
-      "name": "mod-example",
-      "version": "1.0.0"
+      "name": "mod-users",
+      "version": "^19.0.0",
+      "preRelease": "true"
+    },
+    {
+      "name": "mod-inventory",
+      "version": "~20.1.0",
+      "preRelease": "false"
     }
   ],
   "uiModules": [
     {
-      "name": "ui-example",
-      "version": "1.0.0"
+      "name": "folio_users",
+      "version": "^10.0.0",
+      "preRelease": "true"
     }
   ]
 }
 ```
 
-**Important**: All version fields must contain actual version numbers, not `<CHANGE_ME>` placeholders.
+### State File (`application.lock.json`)
+
+Generated/updated by this action with resolved versions:
+
+```json
+{
+  "name": "app-platform",
+  "version": "1.0.0-SNAPSHOT.125",
+  "modules": [
+    {
+      "name": "mod-users",
+      "version": "19.2.1"
+    },
+    {
+      "name": "mod-inventory",
+      "version": "20.1.5"
+    }
+  ],
+  "uiModules": [
+    {
+      "name": "folio_users",
+      "version": "10.1.0"
+    }
+  ]
+}
+```
+
+## Requirements
+
+### Repository Structure
+
+- **Maven Project**: Must contain a valid `pom.xml` file
+- **Template File**: Application template in valid JSON format
+- **State File**: Required for update mode
+- **Build Environment**: Java and Maven must be available
 
 ### Maven Configuration
 
@@ -218,7 +295,7 @@ Your `pom.xml` should include the FOLIO application generator plugin:
 <plugin>
   <groupId>org.folio</groupId>
   <artifactId>folio-application-generator</artifactId>
-  <version><!-- latest version --></version>
+  <version>1.2.0</version>
 </plugin>
 ```
 
@@ -226,100 +303,37 @@ Your `pom.xml` should include the FOLIO application generator plugin:
 
 ### Common Issues
 
-#### Descriptor Generation Failed
+#### Invalid Module Versions in Template
 ```
-::error::Generated application descriptor not found
+::error::Invalid module versions in template (must be semver or semver range):
+::error::  - '<CHANGE_ME>'
 ```
-**Solutions**:
-- Verify the state file format is valid JSON
-- Check that all module versions are properly specified
-- Ensure Maven can resolve the FOLIO application generator plugin
-- Verify the application name matches the expected output pattern
+**Solution**: Ensure all module versions in the template are valid semver (`1.0.0`) or semver range (`^2.0.0`, `~1.2.3`, `>=1.0.0`).
 
-#### State File Not Found
+#### Artifact Validation Failed
 ```
-::error::State file not found: application-descriptor.json
+::error::Failed to validate artifact for mod-example version 1.0.0
 ```
-**Solutions**:
-- Check the `state_file` input path is correct
-- Ensure the file exists in the repository
-- Verify the file is committed and available in the workflow
+**Solution**: Ensure the module version exists in Docker Hub or NPM registry.
 
-#### Placeholder Values Detected
+#### State File Not Found (Update Mode)
 ```
-::warning::Found <CHANGE_ME> placeholders in module versions. Skipping descriptor generation.
+::error::State file not found: application.lock.json
 ```
-**Solutions**:
-- Replace all `<CHANGE_ME>` values with actual version numbers
-- Use the `has_placeholders` output to conditionally handle this case
-- Implement a separate workflow step to update placeholder values
+**Solution**: Ensure the state file exists. For new applications, use `generate` mode first.
 
-#### Maven Build Failure
+#### Template File Not Found
 ```
-::error::pom.xml not found
+::error::Template file not found: application.template.json
 ```
-**Solutions**:
-- Ensure the repository contains a valid `pom.xml` file
-- Verify Maven and Java are properly set up in the workflow
-- Check that the FOLIO application generator plugin is configured
+**Solution**: Verify the template file path is correct.
 
-### Debug Information
+## Related Documentation
 
-The action provides detailed logging:
+- **[Application Update Flow](../../docs/application-update-flow.md)**: Workflow that uses this action
+- **[folio-application-generator](https://github.com/folio-org/folio-application-generator)**: Maven plugin documentation
 
-- **Placeholder Check**: Shows which fields contain placeholders
-- **Maven Command**: Displays the full Maven command being executed
-- **Target Directory**: Lists contents of the target directory for debugging
-- **File Discovery**: Shows the process of locating generated files
+---
 
-## Related Actions
-
-- **[create-pr](../create-pr/README.md)**: Create pull requests with generated descriptors
-- **[update-pr](../update-pr/README.md)**: Update existing pull requests with new descriptors
-- **[get-release-config](../get-update-config/README.md)**: Get configuration for release workflows
-
-## Integration Examples
-
-### With Release Workflows
-
-```yaml
-- name: Generate Descriptor
-  id: generate
-  uses: ./.github/actions/generate-application-descriptor
-  with:
-    app_name: ${{ matrix.platform }}
-    state_file: 'states/${{ matrix.platform }}.json'
-
-- name: Create Release PR
-  if: steps.generate.outputs.generated == 'true'
-  uses: ./.github/actions/create-pr
-  with:
-    source_branch: ${{ github.ref_name }}
-    target_branch: 'main'
-    pr_title: 'Release: ${{ steps.generate.outputs.descriptor_file_name }}'
-    pr_body: |
-      ## Generated Application Descriptor
-
-      - **Application**: ${{ matrix.platform }}
-      - **Descriptor**: ${{ steps.generate.outputs.descriptor_file }}
-      - **Generated**: ${{ steps.generate.outputs.generated }}
-```
-
-### With Artifact Processing
-
-```yaml
-- name: Generate Descriptor
-  id: generate
-  uses: ./.github/actions/generate-application-descriptor
-  with:
-    app_name: 'platform'
-    upload_artifact: 'true'
-    artifact_retention_days: '90'
-
-- name: Download and Process
-  if: steps.generate.outputs.generated == 'true'
-  run: |
-    # Download the artifact in a subsequent job
-    # Process the descriptor file
-    # Deploy or publish as needed
-```
+**Last Updated**: December 2025
+**Action Version**: 2.0 (Template-Driven Update Support)

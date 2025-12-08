@@ -371,7 +371,7 @@ jobs:
 ## 📚 Related Documentation
 
 - **[Application Update Flow](application-update-flow.md)**: Core flow implementation
-- **[Update Application](update-application.md)**: Module update mechanics
+- **[Generate Application Descriptor Action](../actions/generate-application-descriptor/README.md)**: Template-based descriptor generation and update
 - **[Get Update Config Action](../actions/get-update-config/README.md)**: Configuration parsing
 - **[Validate Application Action](../actions/validate-application/README.md)**: Descriptor validation
 - **[Fetch Platform Descriptor Action](../actions/fetch-platform-descriptor/README.md)**: Platform descriptor fetching

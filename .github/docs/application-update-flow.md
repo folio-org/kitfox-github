@@ -70,12 +70,14 @@ Determines the source branch and checks for existing PRs:
 ### 2. Update Application
 **Job**: `update-application`
 
-Delegates to `update-application.yml` workflow:
+Uses the `generate-application-descriptor` action with `generation_mode: update`:
 
 **Process**:
-- Queries FOLIO registry for latest module versions
-- Compares current vs. available versions
-- Updates application-descriptor.json with new module versions
+- Resolves version constraints from `application.template.json` (^2.0.0 → 2.3.1)
+- Full module synchronization (add/remove/upgrade/downgrade)
+- Validates Docker images and NPM packages exist
+- Updates `application.lock.json` with resolved versions
+- Generates `update-result.json` with detailed change tracking
 - Creates state files for downstream processing
 - Generates artifacts for validation
 
@@ -158,20 +160,24 @@ Delegates to `update-application.yml` workflow:
 
 ## 🔍 Module Version Discovery
 
-### Registry Integration
+### Template-Driven Version Resolution
 
-The workflow uses multiple sources for module version discovery:
+The workflow uses the `folio-application-generator` Maven plugin for version resolution:
 
-**FOLIO Registry** (Primary):
-- **Endpoint**: `https://folio-registry.dev.folio.org/_/proxy/modules`
-- **Backend Modules**: Queries with `preRelease=only/true/false`
-- **UI Modules**: Queries with `npmSnapshot=only/true/false`
-- **Version Filtering**: Processes latest versions with artifact validation
+**Template File** (`application.template.json`):
+- Contains version constraints (e.g., `^2.0.0`, `~1.2.3`, `>=1.0.0`)
+- Supports semver constraint resolution
+- Defines module list and pre-release preferences per module
 
-**Artifact Validation**:
-- **Docker Registry**: Validates backend module artifacts
-- **NPM Registry**: Validates UI module artifacts
-- **Existence Checking**: Ensures versions are actually available
+**Version Resolution**:
+- **Constraint Resolution**: `^2.0.0` resolves to latest compatible version (e.g., `2.3.1`)
+- **Pre-release Filtering**: Respects `preRelease` setting per module
+- **Module Synchronization**: Adds new modules, removes unlisted modules
+
+**Artifact Validation** (default registries):
+- **Docker Registry**: DockerHub `folioorg` (release), `folioci` (pre-release)
+- **NPM Registry**: `npm-folio` (release), `npm-folioci` (pre-release)
+- **Existence Checking**: Validates Docker images and NPM packages exist before resolution
 
 ## 🏗️ Application Descriptor Management
 
@@ -391,7 +397,7 @@ When `dry_run: true`:
 ## 📚 Related Documentation
 
 - **[Application Update](application-update.md)**: High-level orchestrator
-- **[Update Application](update-application.md)**: Module update mechanics
+- **[Generate Application Descriptor Action](../actions/generate-application-descriptor/README.md)**: Template-based descriptor generation and update
 - **[Commit and Push Changes](commit-and-push-changes.md)**: Git operations workflow
 - **[Validate Application Action](../actions/validate-application/README.md)**: Descriptor validation
 - **[Fetch Platform Descriptor Action](../actions/fetch-platform-descriptor/README.md)**: Platform descriptor fetching
