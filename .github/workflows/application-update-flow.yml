@@ -235,7 +235,7 @@ jobs:
       app_descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
       app_descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
       artifact_name: ${{ steps.generate.outputs.artifact_name }}
-      update_files_artifact_name: ${{ format('{0}-update-files', inputs.app_name) }}
+      state_file_artifact_name: ${{ steps.generate.outputs.state_file_artifact_name }}
       failure_reason: ${{ steps.generate.outputs.failure_reason || '' }}
     steps:
       - name: Checkout Application Repository
@@ -274,24 +274,10 @@ jobs:
           app_name: ${{ inputs.app_name }}
           build_number: ${{ steps.build-number.outputs.value }}
 
-      - name: Update Lock File
-        if: steps.generate.outputs.generated == 'true'
-        run: cp "target/${{ steps.generate.outputs.descriptor_file }}" application.lock.json
-
       - name: Collect New Version
         id: collect-new-version
         if: steps.generate.outputs.generated == 'true'
-        run: echo "version=$(jq -r '.version' application.lock.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload Update Files
-        if: steps.generate.outputs.generated == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: "${{ inputs.app_name }}-update-files"
-          path: |
-            application.lock.json
-            pom.xml
-          retention-days: 1
+        run: echo "version=$(jq -r '.version' target/${{ steps.generate.outputs.descriptor_file }})" >> "$GITHUB_OUTPUT"
 
   verify-application:
     name: Verify Application
@@ -343,7 +329,7 @@ jobs:
     with:
       repo: ${{ inputs.repo }}
       branch: ${{ needs.prepare-context.outputs.need_pr == 'true' && inputs.update_branch || inputs.branch }}
-      artifact_name: ${{ needs.update-application.outputs.update_files_artifact_name }}
+      artifact_name: ${{ needs.update-application.outputs.state_file_artifact_name }}
       commit_message: |
         Update modules to ${{ needs.update-application.outputs.new_version }}.
 
