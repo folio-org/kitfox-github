@@ -271,20 +271,20 @@ runs:
           echo "::group::Update Results"
           cat "$RESULT_FILE"
           echo "::endgroup::"
-          be_added=$(jq -r '.beAdded // [] | join(", ")' "$RESULT_FILE")
-          be_upgraded=$(jq -r '.beUpgraded // [] | join(", ")' "$RESULT_FILE")
-          be_downgraded=$(jq -r '.beDowngraded // [] | join(", ")' "$RESULT_FILE")
-          be_removed=$(jq -r '.beRemoved // [] | join(", ")' "$RESULT_FILE")
-          ui_added=$(jq -r '.uiAdded // [] | join(", ")' "$RESULT_FILE")
-          ui_upgraded=$(jq -r '.uiUpgraded // [] | join(", ")' "$RESULT_FILE")
-          ui_downgraded=$(jq -r '.uiDowngraded // [] | join(", ")' "$RESULT_FILE")
-          ui_removed=$(jq -r '.uiRemoved // [] | join(", ")' "$RESULT_FILE")
+          be_added=$(jq -r '.beAdded // [] | join("\n")' "$RESULT_FILE")
+          be_upgraded=$(jq -r '.beUpgraded // [] | join("\n")' "$RESULT_FILE")
+          be_downgraded=$(jq -r '.beDowngraded // [] | join("\n")' "$RESULT_FILE")
+          be_removed=$(jq -r '.beRemoved // [] | join("\n")' "$RESULT_FILE")
+          ui_added=$(jq -r '.uiAdded // [] | join("\n")' "$RESULT_FILE")
+          ui_upgraded=$(jq -r '.uiUpgraded // [] | join("\n")' "$RESULT_FILE")
+          ui_downgraded=$(jq -r '.uiDowngraded // [] | join("\n")' "$RESULT_FILE")
+          ui_removed=$(jq -r '.uiRemoved // [] | join("\n")' "$RESULT_FILE")
           total=$(jq '[(.beAdded // []), (.beUpgraded // []), (.beDowngraded // []), (.beRemoved // []), (.uiAdded // []), (.uiUpgraded // []), (.uiDowngraded // []), (.uiRemoved // []) | length] | add' "$RESULT_FILE")
         else
           DESCRIPTOR=$(compgen -G "target/${APP_NAME}*.json" | grep -v "update-result" | head -n 1)
           if [[ -f "$DESCRIPTOR" ]]; then
-            be_added=$(jq -r '[.modules[]? | "\(.name)-\(.version)"] | join(", ")' "$DESCRIPTOR")
-            ui_added=$(jq -r '[.uiModules[]? | "\(.name)-\(.version)"] | join(", ")' "$DESCRIPTOR")
+            be_added=$(jq -r '[.modules[]? | "\(.name)-\(.version)"] | join("\n")' "$DESCRIPTOR")
+            ui_added=$(jq -r '[.uiModules[]? | "\(.name)-\(.version)"] | join("\n")' "$DESCRIPTOR")
             total=$(jq '([.modules // [] | length] + [.uiModules // [] | length]) | add' "$DESCRIPTOR")
           fi
         fi
@@ -306,14 +306,14 @@ runs:
         fi
 
         updated_modules=""
-        [[ -n "$be_added" ]] && updated_modules+="BE Added: $be_added"$'\n'
-        [[ -n "$be_upgraded" ]] && updated_modules+="BE Upgraded: $be_upgraded"$'\n'
-        [[ -n "$be_downgraded" ]] && updated_modules+="BE Downgraded: $be_downgraded"$'\n'
-        [[ -n "$be_removed" ]] && updated_modules+="BE Removed: $be_removed"$'\n'
-        [[ -n "$ui_added" ]] && updated_modules+="UI Added: $ui_added"$'\n'
-        [[ -n "$ui_upgraded" ]] && updated_modules+="UI Upgraded: $ui_upgraded"$'\n'
-        [[ -n "$ui_downgraded" ]] && updated_modules+="UI Downgraded: $ui_downgraded"$'\n'
-        [[ -n "$ui_removed" ]] && updated_modules+="UI Removed: $ui_removed"$'\n'
+        [[ -n "$be_added" ]] && updated_modules+="BE Added:"$'\n'"$be_added"$'\n'$'\n'
+        [[ -n "$be_upgraded" ]] && updated_modules+="BE Upgraded:"$'\n'"$be_upgraded"$'\n'$'\n'
+        [[ -n "$be_downgraded" ]] && updated_modules+="BE Downgraded:"$'\n'"$be_downgraded"$'\n'$'\n'
+        [[ -n "$be_removed" ]] && updated_modules+="BE Removed:"$'\n'"$be_removed"$'\n'$'\n'
+        [[ -n "$ui_added" ]] && updated_modules+="UI Added:"$'\n'"$ui_added"$'\n'$'\n'
+        [[ -n "$ui_upgraded" ]] && updated_modules+="UI Upgraded:"$'\n'"$ui_upgraded"$'\n'$'\n'
+        [[ -n "$ui_downgraded" ]] && updated_modules+="UI Downgraded:"$'\n'"$ui_downgraded"$'\n'$'\n'
+        [[ -n "$ui_removed" ]] && updated_modules+="UI Removed:"$'\n'"$ui_removed"$'\n'$'\n'
 
         echo "updated_modules<<EOF" >> "$GITHUB_OUTPUT"
         echo "$updated_modules" >> "$GITHUB_OUTPUT"
