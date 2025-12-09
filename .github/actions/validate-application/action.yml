@@ -4,10 +4,13 @@ inputs:
   app_name:
     description: 'Application name'
     required: true
-  app_descriptor_file:
+  app_descriptor_path:
     description: 'Application descriptor file name'
     required: true
   app_descriptor_artifact_name:
+    description: 'Application descriptor file name without extension'
+    required: false
+  app_descriptor_artifact_file_name:
     description: 'Application descriptor file name without extension'
     required: false
   platform_descriptor_path:
@@ -42,7 +45,7 @@ runs:
     - name: Validate Inputs
       shell: bash
       run: |
-        if [[ -z "${{ inputs.app_descriptor_artifact_name }}" && -z "${{ inputs.app_descriptor_file }}" ]]; then
+        if [[ -z "${{ inputs.app_descriptor_artifact_name }}" && -z "${{ inputs.app_descriptor_path }}" ]]; then
           echo "::error::Neither application descriptor artifact nor descriptor file is provided. At least one must be specified."
           exit 1
         fi
@@ -119,7 +122,7 @@ runs:
       id: validate-interfaces
       shell: bash
       env:
-        APP_DESCRIPTOR_FILE: "/tmp/app-descriptors/${{ inputs.app_descriptor_file }}"
+        APP_DESCRIPTOR_FILE: ${{ inputs.app_descriptor_path != '' && inputs.app_descriptor_path || format('/tmp/app-descriptors/{0}', inputs.app_descriptor_artifact_file_name) }}
         FAR_API_URL: "${{ inputs.far_url }}/applications"
       run: |
         set -eo pipefail

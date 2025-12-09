@@ -20,7 +20,7 @@ inputs:
   state-file:
     description: 'Name of the state file (application descriptor)'
     required: false
-    default: 'application-descriptor.json'
+    default: 'application.lock.json'
   github-token:
     description: 'GitHub token for API access'
     required: true

@@ -38,7 +38,6 @@ The workflows follow a layered architecture:
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      Core Utilities                         │
-│  • update-application.yml                                   │
 │  • commit-and-push-changes.yml                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -111,18 +110,6 @@ The workflows follow a layered architecture:
 - Comprehensive output for upstream workflows
 
 ### Core Utility Workflows
-
-#### Update Application
-**File**: [`update-application.yml`](workflows/update-application.yml)
-**Purpose**: Core application descriptor update logic
-**Documentation**: [Update Application Guide](docs/update-application.md)
-
-**Key Features**:
-- Module version resolution from registry
-- Application descriptor generation
-- Version management and validation
-- Platform descriptor integration
-- Detailed change tracking
 
 #### Commit and Push Changes
 **File**: [`commit-and-push-changes.yml`](workflows/commit-and-push-changes.yml)
@@ -234,8 +221,8 @@ Each action includes comprehensive documentation with usage examples, input/outp
 
 ##### Generate Application Descriptor
 **Documentation**: [`actions/generate-application-descriptor/README.md`](actions/generate-application-descriptor/README.md)
-**Purpose**: Generate FOLIO application descriptors from state files
-**Key Features**: Maven integration, placeholder validation, artifact upload, comprehensive validation
+**Purpose**: Generate or update FOLIO application descriptors using template-driven version resolution
+**Key Features**: Template-driven updates, semver constraint resolution, module synchronization, artifact validation, Maven integration
 
 ##### Collect Application Version
 **Documentation**: [`actions/collect-app-version/README.md`](actions/collect-app-version/README.md)
@@ -334,7 +321,6 @@ Workflows implement comprehensive error handling:
 - **[Application Update Flow](docs/application-update-flow.md)**: Core application update flow implementation
 
 #### Core Utilities
-- **[Update Application](docs/update-application.md)**: Application descriptor update logic
 - **[Commit and Push Changes](docs/commit-and-push-changes.md)**: Git operations management
 - **[Release PR Check](docs/release-pr-check.md)**: Automated PR validation with GitHub Checks integration
 - **[Validate Application Action](actions/validate-application/README.md)**: Application descriptor validation
@@ -351,5 +337,5 @@ Workflows implement comprehensive error handling:
 ---
 
 **Infrastructure Team**: Kitfox DevOps
-**Last Updated**: September 2025
+**Last Updated**: November 2025
 **Purpose**: Workflow Implementation and Usage Guide
