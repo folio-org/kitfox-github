@@ -130,7 +130,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     logger.info(f"Processing SQS event: {json.dumps(event)}")
 
-    # Load configuration
     config_bucket = os.environ.get('CONFIG_BUCKET_NAME')
     config_key = os.environ.get('CONFIG_FILE_KEY', 'github_events_config.json')
     config = load_config(config_bucket, config_key)
@@ -156,21 +155,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             logger.info(f"Processing {event_type} event (action: {action}, delivery: {delivery_id})")
 
-            # Initialize GitHub client
             github_client = GitHubClient()
             workflow_trigger = WorkflowTrigger(github_client)
 
-            # Extract repository information
             repository = payload.get('repository', {})
             repo_info = {
                 'owner': repository.get('owner', {}).get('login'),
                 'name': repository.get('name')
             }
 
-            # Process events generically using event_type as key
             event_object = payload.get(event_type, {})
 
-            # Extract branch information - try multiple sources
             head_branch = (
                 event_object.get('head_branch', '') or  # check_suite events
                 event_object.get('head', {}).get('ref', '')  # pull_request events
@@ -186,7 +181,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'base_branch': base_branch
             }
 
-            # Find matching workflows
             workflows = find_matching_workflows(
                 event_type, action, repo_info, branch_info, config
             )
@@ -196,31 +190,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 processed_count += 1
                 continue
 
-            # Prepare template variables
-            # Extract PR number based on event type
             pr_number = '0'
             base_branch = ''
             base_sha = ''
 
+            merged = 'false'
             if event_type == 'pull_request':
-                # For pull_request events, the number is directly in the event object
                 pr_number = str(event_object.get('number', '0'))
-                # Extract base branch info from pull_request event
                 base_branch = event_object.get('base', {}).get('ref', '')
                 base_sha = event_object.get('base', {}).get('sha', '')
+                merged = str(event_object.get('merged', False)).lower()
             elif event_type in ['check_suite', 'check_run']:
                 # For check_suite and check_run events, look in the pull_requests array
                 pull_requests = event_object.get('pull_requests', [])
                 if pull_requests:
                     pr_number = str(pull_requests[0].get('number', ''))
-                    # Extract base branch info from the first pull request
                     base_branch = pull_requests[0].get('base', {}).get('ref', '')
                     base_sha = pull_requests[0].get('base', {}).get('sha', '')
                 else:
                     pr_number = '0'
 
-            # Build template variables from event object
-            # Different events have different structures for SHA and branch info
             if event_type == 'pull_request':
                 head_sha = event_object.get('head', {}).get('sha', '')
                 head_branch = event_object.get('head', {}).get('ref', '')
@@ -237,13 +226,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'base_sha': base_sha,
                 'check_suite_id': str(event_object.get('id', '')),
                 'pr_number': pr_number,
-                # 'check_run_id': '0'  # Use "0" as placeholder for events without check_run_id
+                'merged': merged,
             }
 
-            # Trigger each matching workflow
             for workflow_config in workflows:
                 try:
-                    # Substitute template variables
                     workflow_config = substitute_template_variables(workflow_config, template_vars)
 
                     logger.info(f"Triggering workflow: {workflow_config}")
