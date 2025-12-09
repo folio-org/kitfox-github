@@ -53,7 +53,7 @@ on:
         description: 'Use GitHub App for authentication'
         required: false
         type: boolean
-        default: false
+        default: true
       pr_reviewers:
         description: 'Comma-separated list of reviewers (users or teams with org/ prefix)'
         required: false
@@ -342,7 +342,8 @@ jobs:
     if: |
       always() &&
       !cancelled() &&
-      needs.update-application.outputs.updated == 'true'
+      needs.update-application.outputs.updated == 'true' &&
+      (needs.prepare-context.outputs.need_pr == 'true' || needs.verify-application.result == 'success')
     uses: ./.github/workflows/commit-and-push-changes.yml
     with:
       repo: ${{ inputs.repo }}
