@@ -136,6 +136,101 @@ def test_pull_request_event():
 
     return api_gateway_event
 
+def test_pull_request_closed_merged_event():
+    """Test pull_request closed (merged) event structure"""
+    print("Testing pull_request closed (merged) event processing...")
+
+    event = {
+        "action": "closed",
+        "pull_request": {
+            "id": 54321,
+            "number": 123,
+            "merged": True,
+            "merge_commit_sha": "abc123def456789",
+            "head": {
+                "sha": "def456",
+                "ref": "version-update/snapshot"
+            },
+            "base": {
+                "ref": "snapshot",
+                "sha": "base789abc"
+            }
+        },
+        "repository": {
+            "full_name": "folio-org/app-test",
+            "name": "app-test",
+            "owner": {
+                "login": "folio-org"
+            }
+        },
+        "installation": {
+            "id": 67890
+        }
+    }
+
+    api_gateway_event = {
+        "body": json.dumps(event),
+        "headers": {
+            "x-github-event": "pull_request",
+            "x-github-delivery": "merged-12345-67890",
+            "x-hub-signature-256": "sha256=test"
+        }
+    }
+
+    print(f"[OK] Created merged PR event for repository: {event['repository']['full_name']}")
+    print(f"[OK] PR number: {event['pull_request']['number']}")
+    print(f"[OK] PR merged: {event['pull_request']['merged']}")
+    print(f"[OK] Base branch: {event['pull_request']['base']['ref']}")
+
+    return api_gateway_event
+
+def test_pull_request_closed_not_merged_event():
+    """Test pull_request closed (not merged) event structure"""
+    print("Testing pull_request closed (not merged) event processing...")
+
+    event = {
+        "action": "closed",
+        "pull_request": {
+            "id": 54322,
+            "number": 124,
+            "merged": False,
+            "merge_commit_sha": None,
+            "head": {
+                "sha": "def789",
+                "ref": "abandoned-feature"
+            },
+            "base": {
+                "ref": "main",
+                "sha": "base123abc"
+            }
+        },
+        "repository": {
+            "full_name": "folio-org/app-test",
+            "name": "app-test",
+            "owner": {
+                "login": "folio-org"
+            }
+        },
+        "installation": {
+            "id": 67890
+        }
+    }
+
+    api_gateway_event = {
+        "body": json.dumps(event),
+        "headers": {
+            "x-github-event": "pull_request",
+            "x-github-delivery": "closed-12345-67890",
+            "x-hub-signature-256": "sha256=test"
+        }
+    }
+
+    print(f"[OK] Created closed (not merged) PR event for repository: {event['repository']['full_name']}")
+    print(f"[OK] PR number: {event['pull_request']['number']}")
+    print(f"[OK] PR merged: {event['pull_request']['merged']}")
+
+    return api_gateway_event
+
 def test_workflow_config():
     """Test workflow configuration loading"""
     print("Testing workflow configuration...")
@@ -272,6 +367,8 @@ def main():
     # Test event structures
     test_check_suite_event()
     test_pull_request_event()
+    test_pull_request_closed_merged_event()
+    test_pull_request_closed_not_merged_event()
 
     print("=" * 50)
     print("All local tests passed! [OK]")
