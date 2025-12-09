@@ -342,7 +342,8 @@ jobs:
     if: |
       always() &&
       !cancelled() &&
-      needs.update-application.outputs.updated == 'true'
+      needs.update-application.outputs.updated == 'true' &&
+      (needs.prepare-context.outputs.need_pr == 'true' || needs.verify-application.result == 'success')
     uses: ./.github/workflows/commit-and-push-changes.yml
     with:
       repo: ${{ inputs.repo }}
