@@ -367,11 +367,7 @@ jobs:
       !inputs.dry_run &&
       !cancelled() &&
       needs.prepare-context.outputs.need_pr == 'true' &&
-      needs.update-application.result == 'success' &&
-      (
-        needs.update-application.outputs.updated == 'true' ||
-        needs.prepare-context.outputs.update_branch_exists == 'true'
-      )
+      needs.update-application.outputs.updated == 'true'
     runs-on: ubuntu-latest
     outputs:
       pr_created: ${{ steps.create-pr.outputs.pr_created == 'true' }}
@@ -405,8 +401,7 @@ jobs:
         id: create-pr
         if: |
           needs.prepare-context.outputs.pr_exists != 'true' &&
-          (needs.update-application.outputs.updated == 'true' ||
-           needs.prepare-context.outputs.update_branch_exists == 'true')
+          needs.update-application.outputs.updated == 'true'
         uses: folio-org/kitfox-github/.github/actions/create-pr@master
         with:
           repo: ${{ inputs.repo }}
