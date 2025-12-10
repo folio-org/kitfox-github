@@ -1,7 +1,7 @@
-name: Release PR Merge Handler
+name: Release PR Merge
 
 run-name: >-
-  Release PR merge handler • PR #${{ inputs.pr_number }} • ${{ inputs.repo_name }}
+  Release PR merge • PR #${{ inputs.pr_number }} • ${{ inputs.repo_name }}
 
 on:
   workflow_dispatch:
