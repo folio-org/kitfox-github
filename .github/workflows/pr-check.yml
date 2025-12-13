@@ -1,7 +1,7 @@
-name: Release PR Check
+name: PR Check
 
 run-name: >-
-  Release application check • PR #${{ inputs.pr_number }} • ${{ inputs.repo_name }}
+  ${{ inputs.is_merge_group == 'true' && format('Merge queue check - {0}', inputs.repo_name) || format('PR check #{0} - {1}', inputs.pr_number, inputs.repo_name) }}
 
 on:
   workflow_dispatch:
@@ -15,13 +15,24 @@ on:
         required: true
         type: string
       pr_number:
-        description: 'Pull request number'
-        required: true
+        description: 'Pull request number (empty for merge_group)'
+        required: false
         type: string
+        default: ''
       head_sha:
-        description: 'Head commit SHA that triggered the check suite'
+        description: 'Head commit SHA to validate'
         required: true
         type: string
+      base_branch:
+        description: 'Target branch (for merge_group, passed directly; for PR, from pr-info)'
+        required: false
+        type: string
+        default: ''
+      is_merge_group:
+        description: 'Whether this is a merge_group event'
+        required: false
+        type: string
+        default: 'false'
 
 permissions:
   contents: read
@@ -35,8 +46,9 @@ jobs:
     outputs:
       validation_status: ${{ steps.validate.outputs.status }}
       validation_message: ${{ steps.validate.outputs.message }}
-      head_branch: ${{ steps.pr-info.outputs.head_ref }}
-      base_branch: ${{ steps.pr-info.outputs.base_ref }}
+      head_branch: ${{ inputs.is_merge_group == 'true' && '' || steps.pr-info.outputs.head_ref }}
+      base_branch: ${{ inputs.is_merge_group == 'true' && inputs.base_branch || steps.pr-info.outputs.base_ref }}
+      should_skip_pr_steps: ${{ inputs.is_merge_group == 'true' }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -49,6 +61,7 @@ jobs:
 
       - name: Get Pull Request Information
         id: pr-info
+        if: inputs.is_merge_group != 'true'
         uses: folio-org/kitfox-github/.github/actions/get-pr-info@master
         with:
           repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
@@ -57,7 +70,7 @@ jobs:
 
       - name: Check Commit in PR
         id: check-commit
-        if: steps.pr-info.outputs.pr_exists == 'true'
+        if: inputs.is_merge_group != 'true' && steps.pr-info.outputs.pr_exists == 'true'
         uses: folio-org/kitfox-github/.github/actions/is-commit-in-pr@master
         with:
           repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
@@ -66,7 +79,7 @@ jobs:
           github_token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout Repository
-        if: steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true'
+        if: inputs.is_merge_group == 'true' || (steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true')
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
@@ -75,7 +88,7 @@ jobs:
 
       - name: Get Update Configuration
         id: get-config
-        if: steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true'
+        if: inputs.is_merge_group == 'true' || (steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true')
         uses: folio-org/kitfox-github/.github/actions/get-update-config@master
         with:
           repo: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
@@ -84,14 +97,15 @@ jobs:
 
       - name: Validate Configuration
         id: validate
-        if: steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true'
+        if: inputs.is_merge_group == 'true' || (steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true')
         env:
-          TARGET_BRANCH: ${{ steps.pr-info.outputs.base_ref }}
+          TARGET_BRANCH: ${{ inputs.is_merge_group == 'true' && inputs.base_branch || steps.pr-info.outputs.base_ref }}
           PR_LABELS: ${{ steps.pr-info.outputs.labels }}
           CONFIG_EXISTS: ${{ steps.get-config.outputs.config_exists }}
           ENABLED: ${{ steps.get-config.outputs.enabled }}
           RELEASE_BRANCHES: ${{ steps.get-config.outputs.branches }}
           REQUIRED_LABELS: ${{ steps.get-config.outputs.pr_labels }}
+          IS_MERGE_GROUP: ${{ inputs.is_merge_group }}
         run: |
           echo "::notice::Validating configuration for branch $TARGET_BRANCH"
 
@@ -117,7 +131,7 @@ jobs:
             exit 0
           fi
 
-          if [ -n "$REQUIRED_LABELS" ]; then
+          if [[ "$IS_MERGE_GROUP" != "true" ]] && [ -n "$REQUIRED_LABELS" ]; then
             echo "::notice::Checking for required labels: $REQUIRED_LABELS"
             PR_LABELS_ARRAY=$(echo "$PR_LABELS" | jq -r '.[]' 2>/dev/null || echo "")
             MISSING_LABELS=""
@@ -175,21 +189,35 @@ jobs:
       - name: Create Check Run
         id: create-check
         uses: actions/github-script@v7
+        env:
+          IS_MERGE_GROUP: ${{ inputs.is_merge_group }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const isMergeGroup = process.env.IS_MERGE_GROUP === 'true';
+            const prNumber = process.env.PR_NUMBER;
+
+            const summary = isMergeGroup
+              ? 'Starting merge queue validation...'
+              : `Starting application verification for PR #${prNumber}...`;
+
+            const detailsUrl = isMergeGroup
+              ? `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
+              : `https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${prNumber}`;
+
             const { data: checkRun } = await github.rest.checks.create({
               owner: '${{ inputs.repo_owner }}',
               repo: '${{ inputs.repo_name }}',
-              name: 'eureka-ci/release-app-validation',
+              name: 'eureka-ci / validate-application',
               head_sha: '${{ inputs.head_sha }}',
               status: 'in_progress',
               started_at: new Date().toISOString(),
               output: {
                 title: 'Application Verification',
-                summary: 'Starting application verification for PR #${{ inputs.pr_number }}...'
+                summary: summary
               },
-              details_url: `https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }}`
+              details_url: detailsUrl
             });
 
             console.log(`Created check run with ID: ${checkRun.id}`);
@@ -275,9 +303,15 @@ jobs:
       - name: Finalize Check Run
         if: always()
         uses: actions/github-script@v7
+        env:
+          IS_MERGE_GROUP: ${{ inputs.is_merge_group }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const isMergeGroup = process.env.IS_MERGE_GROUP === 'true';
+            const prNumber = process.env.PR_NUMBER;
+
             let conclusion, title, summary;
             const descriptorExists = '${{ steps.check-descriptor.outputs.exists }}';
             const descriptorFailureReason = '${{ steps.check-descriptor.outputs.failure_reason }}';
@@ -290,11 +324,11 @@ jobs:
             if (descriptorExists !== 'true') {
               conclusion = 'failure';
               title = 'Descriptor Not Found';
-              summary = descriptorFailureReason || 'Application descriptor file not found in PR branch';
+              summary = descriptorFailureReason || 'Application descriptor file not found';
             } else if (fetchError === 'true' || fetchOutcome === 'failure') {
               conclusion = 'failure';
               title = 'Platform Descriptor Fetch Failed';
-              summary = 'Failed to fetch platform descriptor from branch ${{ needs.pre-check.outputs.base_branch }}. This might be a temporary issue. Please use the "Re-run Validation" button to retry.';
+              summary = `Failed to fetch platform descriptor from branch ${{ needs.pre-check.outputs.base_branch }}. This might be a temporary issue. Please retry.`;
             } else if (validationPassed === 'false') {
               conclusion = 'failure';
               title = 'Verification Failed';
@@ -311,6 +345,10 @@ jobs:
               summary = 'Some checks could not be completed';
             }
 
+            const contextInfo = isMergeGroup
+              ? `**Merge Queue Validation**\n**Target Branch:** \`${{ needs.pre-check.outputs.base_branch }}\``
+              : `**Pull Request:** [#${prNumber}](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${prNumber})\n**Branch:** \`${{ needs.pre-check.outputs.head_branch }}\``;
+
             let verificationSection = '';
             if (descriptorExists === 'true') {
               verificationSection = `
@@ -322,9 +360,8 @@ jobs:
             const text = `
             ## Application Verification Results
 
-            **Branch:** \`${{ needs.pre-check.outputs.head_branch }}\`
+            ${contextInfo}
             **Commit:** \`${{ inputs.head_sha }}\`
-            **Pull Request:** [#${{ inputs.pr_number }}](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }})
 
             ### Validation Status
             - **Result:** ${{ needs.pre-check.outputs.validation_status || 'unknown' }}
@@ -374,46 +411,15 @@ jobs:
     outputs:
       team_channel: ${{ steps.get-vars.outputs.team_channel }}
     env:
-      TITLE_TEXT: "${{ inputs.repo_name }} release update check ${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'passed' || 'failed' }}"
+      IS_MERGE_GROUP: ${{ inputs.is_merge_group }}
+      TITLE_TEXT: "${{ inputs.repo_name }} ${{ inputs.is_merge_group == 'true' && 'merge queue' || 'release update' }} check ${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'passed' || 'failed' }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.repo_name }} release update check ${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'passed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.repo_name }} ${{ inputs.is_merge_group == 'true' && 'merge queue' || 'release update' }} check ${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'passed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
-        }
-      ATTACHMENT: |
-        {
-          "color": "${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'good' || 'danger' }}",
-          "fields": [
-            {
-              "title": "Release branch",
-              "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/tree/${{ needs.pre-check.outputs.base_branch }}|${{ needs.pre-check.outputs.base_branch }}>",
-              "short": true
-            },
-            {
-              "title": "Update branch",
-              "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/tree/${{ needs.pre-check.outputs.head_branch }}|${{ needs.pre-check.outputs.head_branch }}>",
-              "short": true
-            },
-            {
-              "title": "PR Number",
-              "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }}|#${{ inputs.pr_number }}>",
-              "short": true
-            },
-            {
-              "title": "Commit",
-              "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.head_sha }}|${{ inputs.head_sha }}>",
-              "short": true
-            }${{ (needs.check.result != 'success' || needs.check.outputs.validation_passed != 'true') && format(',
-            {{
-              "title": "Failure Reason",
-              "value": "{0}",
-              "short": false
-            }}', needs.check.outputs.failure_reason) || '' }}
-          ],
-          "footer": "Eureka CI/CD"
         }
     steps:
       - name: Generate GitHub App Token
@@ -443,6 +449,79 @@ jobs:
               console.log(`SLACK_NOTIF_CHANNEL not found or not accessible: ${error.message}`);
               core.setOutput('team_channel', '');
             }
+
+      - name: Build Notification Attachment
+        id: build-attachment
+        env:
+          BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
+          HEAD_BRANCH: ${{ needs.pre-check.outputs.head_branch }}
+          CHECK_PASSED: ${{ needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true' }}
+          FAILURE_REASON: ${{ needs.check.outputs.failure_reason }}
+        run: |
+          if [[ "$IS_MERGE_GROUP" == "true" ]]; then
+            ATTACHMENT=$(cat <<EOF
+          {
+            "color": "${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'good' || 'danger' }}",
+            "fields": [
+              {
+                "title": "Target branch",
+                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/tree/${BASE_BRANCH}|${BASE_BRANCH}>",
+                "short": true
+              },
+              {
+                "title": "Commit",
+                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.head_sha }}|${{ inputs.head_sha }}>",
+                "short": true
+              }${{ (needs.check.result != 'success' || needs.check.outputs.validation_passed != 'true') && format(',
+              {{
+                "title": "Failure Reason",
+                "value": "{0}",
+                "short": false
+              }}', needs.check.outputs.failure_reason) || '' }}
+            ],
+            "footer": "Eureka CI/CD - Merge Queue"
+          }
+          EOF
+          )
+          else
+            ATTACHMENT=$(cat <<EOF
+          {
+            "color": "${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'good' || 'danger' }}",
+            "fields": [
+              {
+                "title": "Release branch",
+                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/tree/${BASE_BRANCH}|${BASE_BRANCH}>",
+                "short": true
+              },
+              {
+                "title": "Update branch",
+                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/tree/${HEAD_BRANCH}|${HEAD_BRANCH}>",
+                "short": true
+              },
+              {
+                "title": "PR Number",
+                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }}|#${{ inputs.pr_number }}>",
+                "short": true
+              },
+              {
+                "title": "Commit",
+                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.head_sha }}|${{ inputs.head_sha }}>",
+                "short": true
+              }${{ (needs.check.result != 'success' || needs.check.outputs.validation_passed != 'true') && format(',
+              {{
+                "title": "Failure Reason",
+                "value": "{0}",
+                "short": false
+              }}', needs.check.outputs.failure_reason) || '' }}
+            ],
+            "footer": "Eureka CI/CD"
+          }
+          EOF
+          )
+          fi
+          echo "ATTACHMENT<<EOF" >> "$GITHUB_ENV"
+          echo "$ATTACHMENT" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
 
       - name: Send to Team Channel
         if: steps.get-vars.outputs.team_channel != ''
@@ -501,61 +580,75 @@ jobs:
           FAILURE_REASON: ${{ needs.check.outputs.failure_reason }}
           HEAD_BRANCH: ${{ needs.pre-check.outputs.head_branch }}
           BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
+          IS_MERGE_GROUP: ${{ inputs.is_merge_group }}
         run: |
           {
-            echo "### 🎯 Release PR Check Summary"
+            if [[ "$IS_MERGE_GROUP" == "true" ]]; then
+              echo "### Merge Queue Check Summary"
+            else
+              echo "### PR Check Summary"
+            fi
             echo ""
             echo "**Repository:** \`${{ inputs.repo_owner }}/${{ inputs.repo_name }}\`"
-            echo "**PR:** [#${{ inputs.pr_number }}](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }})"
+
+            if [[ "$IS_MERGE_GROUP" == "true" ]]; then
+              echo "**Target Branch:** \`$BASE_BRANCH\`"
+            else
+              echo "**PR:** [#${{ inputs.pr_number }}](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }})"
+            fi
             echo "**Commit:** [\`${{ inputs.head_sha }}\`](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.head_sha }})"
             echo ""
 
-            echo "### 📋 Pre-Check Status"
+            echo "### Pre-Check Status"
             echo ""
             if [[ "$PRE_CHECK_RESULT" == "success" ]]; then
               if [[ "$VALIDATION_STATUS" == "success" ]]; then
-                echo "✅ **Pre-Check:** Passed"
+                echo "**Pre-Check:** Passed"
                 echo "- **Base Branch:** $BASE_BRANCH"
-                echo "- **Head Branch:** $HEAD_BRANCH"
+                if [[ "$IS_MERGE_GROUP" != "true" ]]; then
+                  echo "- **Head Branch:** $HEAD_BRANCH"
+                fi
                 echo "- **Message:** $VALIDATION_MESSAGE"
               elif [[ "$VALIDATION_STATUS" == "skipped" ]]; then
-                echo "⏭️ **Pre-Check:** Skipped"
+                echo "**Pre-Check:** Skipped"
                 echo "- **Reason:** $VALIDATION_MESSAGE"
               elif [[ -z "$VALIDATION_STATUS" ]]; then
-                echo "⏭️ **Pre-Check:** Validation step was skipped"
-                echo "- This typically means the PR was not found or the commit is not in the PR"
+                echo "**Pre-Check:** Validation step was skipped"
+                if [[ "$IS_MERGE_GROUP" != "true" ]]; then
+                  echo "- This typically means the PR was not found or the commit is not in the PR"
+                fi
               else
-                echo "⚠️ **Pre-Check:** Unknown status ($VALIDATION_STATUS)"
+                echo "**Pre-Check:** Unknown status ($VALIDATION_STATUS)"
               fi
             elif [[ "$PRE_CHECK_RESULT" == "failure" ]]; then
-              echo "❌ **Pre-Check:** Failed"
+              echo "**Pre-Check:** Failed"
               echo "- **Message:** $VALIDATION_MESSAGE"
             elif [[ "$PRE_CHECK_RESULT" == "cancelled" ]]; then
-              echo "⚠️ **Pre-Check:** Cancelled"
+              echo "**Pre-Check:** Cancelled"
             else
-              echo "⏭️ **Pre-Check:** Skipped"
+              echo "**Pre-Check:** Skipped"
             fi
 
             echo ""
-            echo "### 🔍 Application Check Status"
+            echo "### Application Check Status"
             echo ""
 
             if [[ "$VALIDATION_STATUS" != "success" ]]; then
-              echo "ℹ️ Application check was skipped due to pre-check status"
+              echo "Application check was skipped due to pre-check status"
             elif [[ "$CHECK_RESULT" == "success" ]]; then
               if [[ "$VALIDATION_PASSED" == "true" ]]; then
-                echo "✅ **Application Check:** Passed"
+                echo "**Application Check:** Passed"
                 echo "- **Descriptor Found:** $DESCRIPTOR_EXISTS"
                 echo "- **Validation:** Passed"
               else
-                echo "❌ **Application Check:** Failed"
+                echo "**Application Check:** Failed"
                 echo "- **Descriptor Found:** $DESCRIPTOR_EXISTS"
                 if [[ -n "$FAILURE_REASON" ]]; then
                   echo "- **Failure Reason:** $FAILURE_REASON"
                 fi
               fi
             elif [[ "$CHECK_RESULT" == "failure" ]]; then
-              echo "❌ **Application Check:** Failed"
+              echo "**Application Check:** Failed"
               echo "- **Descriptor Found:** $DESCRIPTOR_EXISTS"
               if [[ -n "$FAILURE_REASON" ]]; then
                 echo "- **Failure Reason:** $FAILURE_REASON"
@@ -563,39 +656,39 @@ jobs:
                 echo "- Check the workflow logs for details"
               fi
             elif [[ "$CHECK_RESULT" == "cancelled" ]]; then
-              echo "⚠️ **Application Check:** Cancelled"
+              echo "**Application Check:** Cancelled"
             else
-              echo "⏭️ **Application Check:** Skipped"
+              echo "**Application Check:** Skipped"
             fi
 
             echo ""
-            echo "### 📨 Notification Status"
+            echo "### Notification Status"
             echo ""
 
             if [[ -n "${{ needs.notify.outputs.team_channel }}" ]]; then
               if [[ "${{ needs.notify.result }}" == "success" ]]; then
-                echo "✅ **Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Sent"
+                echo "**Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Sent"
               elif [[ "${{ needs.notify.result }}" == "failure" ]]; then
-                echo "⚠️ **Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Failed"
+                echo "**Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Failed"
               else
-                echo "ℹ️ **Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Skipped"
+                echo "**Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Skipped"
               fi
             else
-              echo "ℹ️ **Team Channel:** Not configured"
+              echo "**Team Channel:** Not configured"
             fi
 
             echo ""
 
             if [[ -n "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}" ]]; then
               if [[ "${{ needs.notify.result }}" == "success" ]]; then
-                echo "✅ **General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Sent"
+                echo "**General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Sent"
               elif [[ "${{ needs.notify.result }}" == "failure" ]]; then
-                echo "⚠️ **General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Failed"
+                echo "**General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Failed"
               else
-                echo "ℹ️ **General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Skipped"
+                echo "**General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Skipped"
               fi
             else
-              echo "ℹ️ **General Channel:** Not configured"
+              echo "**General Channel:** Not configured"
             fi
 
             echo ""
