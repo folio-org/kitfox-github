@@ -89,7 +89,7 @@
             {
               "owner": "{owner}",
               "repository": "{repository}",
-              "workflow_file": "pr-merge.yml",
+              "workflow_file": "descriptor-publish.yml",
               "ref": "master",
               "inputs": {
                 "repo_owner": "{owner}",
@@ -98,6 +98,56 @@
                 "head_sha": "{head_sha}",
                 "base_branch": "{base_branch}",
                 "merged": "{merged}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event_type": "merge_group",
+      "actions": ["checks_requested"],
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "app-*",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "folio-org",
+              "repository": "kitfox-github",
+              "workflow_file": "pr-check.yml",
+              "ref": "master",
+              "inputs": {
+                "repo_owner": "{owner}",
+                "repo_name": "{repository}",
+                "head_sha": "{head_sha}",
+                "base_branch": "{base_branch}",
+                "is_merge_group": "{is_merge_group}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event_type": "push",
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "app-*",
+          "branches": "master",
+          "file_patterns": [".github/update-config.yml"],
+          "workflows": [
+            {
+              "owner": "folio-org",
+              "repository": "kitfox-github",
+              "workflow_file": "branch-ruleset-automation.yml",
+              "ref": "master",
+              "inputs": {
+                "repo_owner": "{owner}",
+                "repo_name": "{repository}",
+                "head_sha": "{head_sha}"
               }
             }
           ]
