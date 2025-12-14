@@ -1,7 +1,6 @@
-name: PR Check
+name: Merge Queue Check
 
-run-name: >-
-  ${{ inputs.pr_number != '' && format('PR check #{0} - {1}', inputs.pr_number, inputs.repo_name) || format('PR check - {0}', inputs.repo_name) }}
+run-name: Merge queue check - ${{ inputs.repo_name }}
 
 on:
   workflow_dispatch:
@@ -14,12 +13,12 @@ on:
         description: 'Repository name'
         required: true
         type: string
-      pr_number:
-        description: 'Pull request number'
-        required: true
-        type: string
       head_sha:
         description: 'Head commit SHA to validate'
+        required: true
+        type: string
+      base_branch:
+        description: 'Target branch'
         required: true
         type: string
 
@@ -35,17 +34,16 @@ jobs:
     outputs:
       validation_status: ${{ steps.validate.outputs.status }}
       validation_message: ${{ steps.validate.outputs.message }}
-      is_update_pr: ${{ steps.validate.outputs.is_update_pr }}
-      head_branch: ${{ steps.pr-info.outputs.head_ref }}
-      base_branch: ${{ steps.pr-info.outputs.base_ref }}
+      is_update_commit: ${{ steps.validate.outputs.is_update_commit }}
+      base_branch: ${{ inputs.base_branch }}
     steps:
       - name: Print Input Parameters
         run: |
           echo "::group::Workflow Inputs"
           echo "repo_owner: ${{ inputs.repo_owner }}"
           echo "repo_name: ${{ inputs.repo_name }}"
-          echo "pr_number: ${{ inputs.pr_number }}"
           echo "head_sha: ${{ inputs.head_sha }}"
+          echo "base_branch: ${{ inputs.base_branch }}"
           echo "::endgroup::"
 
       - name: Generate GitHub App Token
@@ -57,35 +55,16 @@ jobs:
           owner: ${{ inputs.repo_owner }}
           repositories: ${{ inputs.repo_name }}
 
-      - name: Get Pull Request Information
-        id: pr-info
-        uses: folio-org/kitfox-github/.github/actions/get-pr-info@master
-        with:
-          repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
-          pr_number: ${{ inputs.pr_number }}
-          github_token: ${{ steps.app-token.outputs.token }}
-
-      - name: Check Commit in PR
-        id: check-commit
-        if: steps.pr-info.outputs.pr_exists == 'true'
-        uses: folio-org/kitfox-github/.github/actions/is-commit-in-pr@master
-        with:
-          repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
-          pr_number: ${{ inputs.pr_number }}
-          commit_sha: ${{ inputs.head_sha }}
-          github_token: ${{ steps.app-token.outputs.token }}
-
       - name: Checkout Repository
-        if: steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true'
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
           ref: ${{ inputs.head_sha }}
           token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 2
 
       - name: Get Update Configuration
         id: get-config
-        if: steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true'
         uses: folio-org/kitfox-github/.github/actions/get-update-config@master
         with:
           repo: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
@@ -94,16 +73,12 @@ jobs:
 
       - name: Validate Configuration
         id: validate
-        if: steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true'
         env:
-          TARGET_BRANCH: ${{ steps.pr-info.outputs.base_ref }}
-          HEAD_BRANCH: ${{ steps.pr-info.outputs.head_ref }}
-          PR_LABELS: ${{ steps.pr-info.outputs.labels }}
+          TARGET_BRANCH: ${{ inputs.base_branch }}
           CONFIG_EXISTS: ${{ steps.get-config.outputs.config_exists }}
           ENABLED: ${{ steps.get-config.outputs.enabled }}
           RELEASE_BRANCHES: ${{ steps.get-config.outputs.branches }}
           BRANCH_CONFIG: ${{ steps.get-config.outputs.branch_config }}
-          REQUIRED_LABELS: ${{ steps.get-config.outputs.pr_labels }}
         run: |
           echo "::notice::Validating configuration for branch $TARGET_BRANCH"
 
@@ -131,44 +106,24 @@ jobs:
 
           BRANCH_ENTRY=$(echo "$BRANCH_CONFIG" | jq -r ".[] | select(.branch == \"$TARGET_BRANCH\")")
           NEED_PR=$(echo "$BRANCH_ENTRY" | jq -r ".need_pr // false")
-          UPDATE_BRANCH=$(echo "$BRANCH_ENTRY" | jq -r ".update_branch // empty")
 
           if [[ "$NEED_PR" != "true" ]]; then
             echo "status=skipped" >> "$GITHUB_OUTPUT"
             echo "message=Branch $TARGET_BRANCH is not configured for PR-based updates" >> "$GITHUB_OUTPUT"
-            echo "::notice::Branch $TARGET_BRANCH has need_pr=false, skipping PR check"
+            echo "::notice::Branch $TARGET_BRANCH has need_pr=false, skipping check"
             exit 0
           fi
 
-          if [[ "$HEAD_BRANCH" != "$UPDATE_BRANCH" ]]; then
-            echo "is_update_pr=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::Determining if this is an update commit by checking modified files"
+          if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q "application.lock.json"; then
+            echo "::notice::Commit modifies application.lock.json - this is an update commit"
+            echo "is_update_commit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Commit does not modify application.lock.json - this is a non-update commit"
+            echo "is_update_commit=false" >> "$GITHUB_OUTPUT"
             echo "status=success" >> "$GITHUB_OUTPUT"
-            echo "message=Non-update PR - validation skipped" >> "$GITHUB_OUTPUT"
-            echo "::notice::Head branch '$HEAD_BRANCH' is not the configured update branch '$UPDATE_BRANCH', this is a non-update PR"
+            echo "message=Non-update commit in merge queue - validation skipped" >> "$GITHUB_OUTPUT"
             exit 0
-          fi
-
-          echo "is_update_pr=true" >> "$GITHUB_OUTPUT"
-
-          if [ -n "$REQUIRED_LABELS" ]; then
-            echo "::notice::Checking for required labels: $REQUIRED_LABELS"
-            PR_LABELS_ARRAY=$(echo "$PR_LABELS" | jq -r '.[]' 2>/dev/null || echo "")
-            MISSING_LABELS=""
-
-            IFS=',' read -ra LABEL_ARRAY <<< "$REQUIRED_LABELS"
-            for label in "${LABEL_ARRAY[@]}"; do
-              label=$(echo "$label" | xargs)
-              if ! echo "$PR_LABELS_ARRAY" | grep -q "^$label$"; then
-                MISSING_LABELS="${MISSING_LABELS}${MISSING_LABELS:+, }$label"
-              fi
-            done
-
-            if [ -n "$MISSING_LABELS" ]; then
-              echo "status=skipped" >> "$GITHUB_OUTPUT"
-              echo "message=PR is missing required labels: $MISSING_LABELS" >> "$GITHUB_OUTPUT"
-              echo "::notice::PR does not have required labels, skipping validation"
-              exit 0
-            fi
           fi
 
           echo "status=success" >> "$GITHUB_OUTPUT"
@@ -177,11 +132,11 @@ jobs:
 
 
   non-update-check:
-    name: Non-Update PR Check
+    name: Non-Update Check
     needs: pre-check
     if: |
       needs.pre-check.outputs.validation_status == 'success' &&
-      needs.pre-check.outputs.is_update_pr == 'false'
+      needs.pre-check.outputs.is_update_commit == 'false'
     runs-on: ubuntu-latest
     outputs:
       has_violations: ${{ steps.check-protected.outputs.has_violations }}
@@ -189,13 +144,13 @@ jobs:
     env:
       PROTECTED_LOCK_FILE: application.lock.json
       PROTECTED_TEMPLATE_FILE: application.template.json
-      TITLE_TEXT: "${{ inputs.repo_name }} PR #${{ inputs.pr_number }} blocked - protected file violation"
+      TITLE_TEXT: "${{ inputs.repo_name }} merge queue commit blocked - protected file violation"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.repo_name }} PR blocked - protected file violation <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.repo_name }} merge queue commit blocked - protected file violation <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
         }
     steps:
@@ -208,45 +163,39 @@ jobs:
           owner: ${{ inputs.repo_owner }}
           repositories: ${{ inputs.repo_name }}
 
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+          ref: ${{ inputs.head_sha }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 2
+
       - name: Check Protected Files
         id: check-protected
-        uses: actions/github-script@v7
-        env:
-          PROTECTED_LOCK_FILE: ${{ env.PROTECTED_LOCK_FILE }}
-          PROTECTED_TEMPLATE_FILE: ${{ env.PROTECTED_TEMPLATE_FILE }}
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: |
-            const protectedLockFile = process.env.PROTECTED_LOCK_FILE;
-            const protectedTemplateFile = process.env.PROTECTED_TEMPLATE_FILE;
+        run: |
+          echo "::notice::Checking protected files for merge queue commit using git diff"
+          echo "::notice::Protected files: $PROTECTED_LOCK_FILE (deletion), $PROTECTED_TEMPLATE_FILE (deletion)"
+          VIOLATIONS=""
 
-            console.log(`Protected files: ${protectedLockFile} (deletion), ${protectedTemplateFile} (deletion)`);
+          while IFS=$'\t' read -r STATUS FILE; do
+            if [[ "$FILE" == "$PROTECTED_LOCK_FILE" ]] && [[ "$STATUS" == "D" ]]; then
+              VIOLATIONS="${VIOLATIONS}${VIOLATIONS:+; }${FILE}: lock file deletion not allowed"
+            fi
+            if [[ "$FILE" == "$PROTECTED_TEMPLATE_FILE" ]] && [[ "$STATUS" == "D" ]]; then
+              VIOLATIONS="${VIOLATIONS}${VIOLATIONS:+; }${FILE}: template file deletion not allowed"
+            fi
+          done < <(git diff --name-status HEAD~1 HEAD 2>/dev/null || echo "")
 
-            const { data: files } = await github.rest.pulls.listFiles({
-              owner: '${{ inputs.repo_owner }}',
-              repo: '${{ inputs.repo_name }}',
-              pull_number: parseInt('${{ inputs.pr_number }}')
-            });
-
-            let violations = [];
-            for (const file of files) {
-              if (file.filename === protectedLockFile && file.status === 'removed') {
-                violations.push(`${file.filename}: lock file deletion not allowed`);
-              }
-              if (file.filename === protectedTemplateFile && file.status === 'removed') {
-                violations.push(`${file.filename}: template file deletion not allowed`);
-              }
-            }
-
-            const hasViolations = violations.length > 0;
-            core.setOutput('has_violations', hasViolations);
-            core.setOutput('violations', violations.join('; '));
-
-            if (hasViolations) {
-              console.log(`Protected file violations found: ${violations.join(', ')}`);
-            } else {
-              console.log('No protected file violations found');
-            }
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Protected file violations found: $VIOLATIONS"
+            echo "has_violations=true" >> "$GITHUB_OUTPUT"
+            echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No protected file violations found"
+            echo "has_violations=false" >> "$GITHUB_OUTPUT"
+            echo "violations=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create Check Run
         uses: actions/github-script@v7
@@ -258,11 +207,11 @@ jobs:
 
             const title = hasViolations
               ? 'Protected File Violation'
-              : 'Non-Update PR Approved';
+              : 'Non-Update Commit Approved';
 
             const summary = hasViolations
-              ? `This PR modifies protected files:\n${violations.split('; ').join('\n')}`
-              : 'This is not an update PR. Validation skipped, PR can proceed.';
+              ? `This commit modifies protected files:\n${violations.split('; ').join('\n')}`
+              : 'This is not an update commit. Validation skipped, merge can proceed.';
 
             await github.rest.checks.create({
               owner: '${{ inputs.repo_owner }}',
@@ -312,13 +261,13 @@ jobs:
             "color": "danger",
             "fields": [
               {
-                "title": "PR",
-                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }}|#${{ inputs.pr_number }}>",
+                "title": "Target Branch",
+                "value": "${{ needs.pre-check.outputs.base_branch }}",
                 "short": true
               },
               {
-                "title": "Target Branch",
-                "value": "${{ needs.pre-check.outputs.base_branch }}",
+                "title": "Commit",
+                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.head_sha }}|${GITHUB_SHA:0:7}>",
                 "short": true
               },
               {
@@ -327,7 +276,7 @@ jobs:
                 "short": false
               }
             ],
-            "footer": "Eureka CI/CD"
+            "footer": "Eureka CI/CD - Merge Queue"
           }
           EOF
           )
@@ -381,7 +330,7 @@ jobs:
     needs: pre-check
     if: |
       needs.pre-check.outputs.validation_status == 'success' &&
-      needs.pre-check.outputs.is_update_pr == 'true'
+      needs.pre-check.outputs.is_update_commit == 'true'
     runs-on: ubuntu-latest
     outputs:
       validation_passed: ${{ steps.check-commit.outputs.validation_passed }}
@@ -402,6 +351,7 @@ jobs:
           repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
           ref: ${{ inputs.head_sha }}
           token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 2
 
       - name: Check Commit
         id: check-commit
@@ -410,11 +360,9 @@ jobs:
           repo_owner: ${{ inputs.repo_owner }}
           repo_name: ${{ inputs.repo_name }}
           head_sha: ${{ inputs.head_sha }}
-          base_branch: ${{ needs.pre-check.outputs.base_branch }}
+          base_branch: ${{ inputs.base_branch }}
           github_token: ${{ steps.app-token.outputs.token }}
-          check_type: pr
-          pr_number: ${{ inputs.pr_number }}
-          head_branch: ${{ needs.pre-check.outputs.head_branch }}
+          check_type: merge_queue
           far_url: ${{ vars.FAR_URL }}
           workflow_run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
@@ -425,18 +373,18 @@ jobs:
     if: |
       always() && !cancelled() &&
       needs.pre-check.outputs.validation_status == 'success' &&
-      needs.pre-check.outputs.is_update_pr == 'true'
+      needs.pre-check.outputs.is_update_commit == 'true'
     runs-on: ubuntu-latest
     outputs:
       team_channel: ${{ steps.get-vars.outputs.team_channel }}
     env:
-      TITLE_TEXT: "${{ inputs.repo_name }} release update check ${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'passed' || 'failed' }}"
+      TITLE_TEXT: "${{ inputs.repo_name }} merge queue check ${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'passed' || 'failed' }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.repo_name }} release update check ${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'passed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.repo_name }} merge queue check ${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'passed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
         }
     steps:
@@ -472,7 +420,6 @@ jobs:
         id: build-attachment
         env:
           BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
-          HEAD_BRANCH: ${{ needs.pre-check.outputs.head_branch }}
           FAILURE_REASON: ${{ needs.check.outputs.failure_reason }}
         run: |
           ATTACHMENT=$(cat <<EOF
@@ -480,18 +427,8 @@ jobs:
             "color": "${{ (needs.check.result == 'success' && needs.check.outputs.validation_passed == 'true') && 'good' || 'danger' }}",
             "fields": [
               {
-                "title": "Release branch",
+                "title": "Target branch",
                 "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/tree/${BASE_BRANCH}|${BASE_BRANCH}>",
-                "short": true
-              },
-              {
-                "title": "Update branch",
-                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/tree/${HEAD_BRANCH}|${HEAD_BRANCH}>",
-                "short": true
-              },
-              {
-                "title": "PR Number",
-                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }}|#${{ inputs.pr_number }}>",
                 "short": true
               },
               {
@@ -505,7 +442,7 @@ jobs:
                 "short": false
               }}', needs.check.outputs.failure_reason) || '' }}
             ],
-            "footer": "Eureka CI/CD"
+            "footer": "Eureka CI/CD - Merge Queue"
           }
           EOF
           )
@@ -568,14 +505,13 @@ jobs:
           CHECK_RESULT: ${{ needs.check.result }}
           VALIDATION_PASSED: ${{ needs.check.outputs.validation_passed }}
           FAILURE_REASON: ${{ needs.check.outputs.failure_reason }}
-          HEAD_BRANCH: ${{ needs.pre-check.outputs.head_branch }}
           BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
         run: |
           {
-            echo "### PR Check Summary"
+            echo "### Merge Queue Check Summary"
             echo ""
             echo "**Repository:** \`${{ inputs.repo_owner }}/${{ inputs.repo_name }}\`"
-            echo "**PR:** [#${{ inputs.pr_number }}](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }})"
+            echo "**Target Branch:** \`$BASE_BRANCH\`"
             echo "**Commit:** [\`${{ inputs.head_sha }}\`](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.head_sha }})"
             echo ""
 
@@ -584,15 +520,10 @@ jobs:
             if [[ "$PRE_CHECK_RESULT" == "success" ]]; then
               if [[ "$VALIDATION_STATUS" == "success" ]]; then
                 echo "**Pre-Check:** Passed"
-                echo "- **Base Branch:** $BASE_BRANCH"
-                echo "- **Head Branch:** $HEAD_BRANCH"
                 echo "- **Message:** $VALIDATION_MESSAGE"
               elif [[ "$VALIDATION_STATUS" == "skipped" ]]; then
                 echo "**Pre-Check:** Skipped"
                 echo "- **Reason:** $VALIDATION_MESSAGE"
-              elif [[ -z "$VALIDATION_STATUS" ]]; then
-                echo "**Pre-Check:** Validation step was skipped"
-                echo "- This typically means the PR was not found or the commit is not in the PR"
               else
                 echo "**Pre-Check:** Unknown status ($VALIDATION_STATUS)"
               fi
