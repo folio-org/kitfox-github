@@ -1,7 +1,7 @@
-name: Descriptor Publish
+name: Post-Merge Flow
 
 run-name: >-
-  Descriptor publish • PR #${{ inputs.pr_number }} • ${{ inputs.repo_name }}
+  Post-merge • PR #${{ inputs.pr_number }} • ${{ inputs.repo_name }}
 
 on:
   workflow_dispatch:
@@ -183,27 +183,74 @@ jobs:
           far-url: ${{ vars.FAR_URL }}
 
 
+  cleanup-branch:
+    name: Cleanup Update Branch
+    needs: [pre-check, publish]
+    if: always() && !cancelled() && needs.pre-check.outputs.should_process == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      branch_deleted: ${{ steps.delete-branch.outputs.deleted }}
+      failure_reason: ${{ steps.delete-branch.outputs.failure_reason }}
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ inputs.repo_owner }}
+          repositories: ${{ inputs.repo_name }}
+
+      - name: Delete Update Branch
+        id: delete-branch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+          HEAD_BRANCH: ${{ needs.pre-check.outputs.head_branch }}
+        run: |
+          if [[ -z "$HEAD_BRANCH" ]]; then
+            echo "::notice::No head branch info available, skipping cleanup"
+            echo "deleted=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$HEAD_BRANCH" != update-* ]]; then
+            echo "::notice::Branch '$HEAD_BRANCH' is not an update branch, skipping cleanup"
+            echo "deleted=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::notice::Deleting merged update branch: $HEAD_BRANCH"
+          if gh api -X DELETE "repos/$REPO/git/refs/heads/$HEAD_BRANCH" 2>/dev/null; then
+            echo "::notice::Branch '$HEAD_BRANCH' deleted successfully"
+            echo "deleted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Failed to delete branch '$HEAD_BRANCH'"
+            echo "deleted=false" >> "$GITHUB_OUTPUT"
+            echo "failure_reason=Failed to delete update branch: $HEAD_BRANCH" >> "$GITHUB_OUTPUT"
+          fi
+
   notify:
     name: Send Notifications
-    needs: [pre-check, publish]
+    needs: [pre-check, publish, cleanup-branch]
     if: always() && !cancelled() && needs.pre-check.outputs.should_process == 'true'
     runs-on: ubuntu-latest
     outputs:
       team_channel: ${{ steps.get-vars.outputs.team_channel }}
     env:
-      WORKFLOW_SUCCESS: ${{ needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' }}
-      TITLE_TEXT: "${{ inputs.repo_name }} descriptor publish ${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success') && 'completed' || 'failed' }}"
+      WORKFLOW_SUCCESS: ${{ needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' && needs.cleanup-branch.outputs.deleted != 'false' }}
+      TITLE_TEXT: "${{ inputs.repo_name }} post-merge ${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' && needs.cleanup-branch.outputs.deleted != 'false') && 'completed' || 'failed' }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.repo_name }} descriptor publish ${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success') && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.repo_name }} post-merge ${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' && needs.cleanup-branch.outputs.deleted != 'false') && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
         }
       ATTACHMENT: |
         {
-          "color": "${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success') && 'good' || 'danger' }}",
+          "color": "${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' && needs.cleanup-branch.outputs.deleted != 'false') && 'good' || 'danger' }}",
           "fields": [
             {
               "title": "Release branch",
@@ -224,17 +271,22 @@ jobs:
               "title": "Commit",
               "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.head_sha }}|${{ inputs.head_sha }}>",
               "short": true
+            },
+            {
+              "title": "Branch Cleanup",
+              "value": "${{ needs.cleanup-branch.outputs.deleted == 'true' && 'Deleted' || (needs.cleanup-branch.outputs.deleted == 'skipped' && 'Skipped' || 'Failed') }}",
+              "short": true
             }${{ needs.publish.outputs.descriptor_url != '' && format(',
             {{
               "title": "Descriptor URL",
               "value": "<{0}|View in FAR>",
               "short": false
-            }}', needs.publish.outputs.descriptor_url) || '' }}${{ (needs.publish.outputs.descriptor_exists != 'true' || needs.publish.outputs.publish_status != 'success') && format(',
+            }}', needs.publish.outputs.descriptor_url) || '' }}${{ (needs.publish.outputs.descriptor_exists != 'true' || needs.publish.outputs.publish_status != 'success' || needs.cleanup-branch.outputs.deleted == 'false') && format(',
             {{
               "title": "Failure Reason",
               "value": "{0}",
               "short": false
-            }}', needs.publish.outputs.failure_reason || 'Publication failed') || '' }}
+            }}', needs.publish.outputs.failure_reason || needs.cleanup-branch.outputs.failure_reason || 'Operation failed') || '' }}
           ],
           "footer": "Eureka CI/CD"
         }
@@ -307,10 +359,9 @@ jobs:
               ]
             }
 
-
   summarize:
     name: Workflow Summary
-    needs: [pre-check, publish, notify]
+    needs: [pre-check, publish, notify, cleanup-branch]
     if: always()
     runs-on: ubuntu-latest
     steps:
