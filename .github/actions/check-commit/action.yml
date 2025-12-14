@@ -350,3 +350,7 @@ runs:
 
           await github.rest.checks.update(updateParams);
           console.log(`Check run finalized with conclusion: ${conclusion}`);
+
+          if (conclusion === 'failure') {
+            core.setFailed(summary);
+          }
