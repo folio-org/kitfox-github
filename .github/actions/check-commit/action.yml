@@ -42,7 +42,7 @@ outputs:
     value: ${{ steps.validate.outputs.validation_passed }}
   failure_reason:
     description: 'Reason for failure'
-    value: ${{ steps.check-descriptor.outputs.exists != 'true' && steps.check-descriptor.outputs.failure_reason || steps.validate.outputs.failure_reason || 'Check workflow logs for details' }}
+    value: ${{ steps.check-descriptor.outputs.exists != 'true' && steps.check-descriptor.outputs.failure_reason || steps.check-protected.outputs.has_violation == 'true' && steps.check-protected.outputs.violation_reason || steps.validate.outputs.failure_reason || 'Check workflow logs for details' }}
   check_run_id:
     description: 'Created check run ID'
     value: ${{ steps.create-check.outputs.check_run_id }}
