@@ -85,6 +85,7 @@ jobs:
         with:
           repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
           branches: ${{ steps.get-config.outputs.branches }}
+          branch_config: ${{ steps.get-config.outputs.branch_config }}
           github_token: ${{ steps.app-token.outputs.token }}
 
 
@@ -111,20 +112,15 @@ jobs:
           "color": "${{ needs.update-rulesets.result == 'success' && 'good' || 'danger' }}",
           "fields": [
             {
-              "title": "Repository",
-              "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}|${{ inputs.repo_owner }}/${{ inputs.repo_name }}>",
-              "short": true
-            },
-            {
               "title": "Branches Updated",
               "value": "${{ needs.update-rulesets.outputs.branches_updated || 'none' }}",
               "short": true
-            },
-            {
-              "title": "Branches Skipped",
-              "value": "${{ needs.update-rulesets.outputs.branches_skipped || 'none' }}",
+            }${{ inputs.head_sha != '' && format(',
+            {{
+              "title": "Config Change",
+              "value": "<https://github.com/{0}/{1}/commit/{2}|{2}>",
               "short": true
-            }${{ needs.update-rulesets.outputs.branches_failed != 'none' && needs.update-rulesets.outputs.branches_failed != '' && format(',
+            }}', inputs.repo_owner, inputs.repo_name, inputs.head_sha) || '' }}${{ needs.update-rulesets.outputs.branches_failed != 'none' && needs.update-rulesets.outputs.branches_failed != '' && format(',
             {{
               "title": "Branches Failed",
               "value": "{0}",

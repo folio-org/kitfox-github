@@ -16,6 +16,10 @@ inputs:
     description: 'Required status check context name'
     required: false
     default: 'eureka-ci / validate-application'
+  branch_config:
+    description: 'JSON array of branch configurations with need_pr flag'
+    required: false
+    default: '[]'
   github_token:
     description: 'GitHub token with admin permissions'
     required: true
@@ -41,12 +45,14 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_BRANCHES: ${{ inputs.branches }}
         INPUT_REQUIRED_CHECK: ${{ inputs.required_check }}
+        INPUT_BRANCH_CONFIG: ${{ inputs.branch_config }}
       with:
         github-token: ${{ inputs.github_token }}
         script: |
           const [owner, repo] = process.env.INPUT_REPOSITORY.split('/');
           const branches = JSON.parse(process.env.INPUT_BRANCHES);
           const requiredCheck = process.env.INPUT_REQUIRED_CHECK;
+          const branchConfig = JSON.parse(process.env.INPUT_BRANCH_CONFIG || '[]');
 
           const updatedBranches = [];
           const skippedBranches = [];
@@ -54,6 +60,7 @@ runs:
 
           console.log(`Processing ${branches.length} branches for ${owner}/${repo}`);
           console.log(`Required check: ${requiredCheck}`);
+          console.log(`Branch config entries: ${branchConfig.length}`);
 
           // Get existing rulesets
           let existingRulesets = [];
@@ -89,6 +96,52 @@ runs:
               throw error;
             }
 
+            const config = branchConfig.find(c => c.branch === branch) || {};
+            const needPr = config.need_pr === true;
+            console.log(`Branch ${branch}: need_pr=${needPr}`);
+
+            const rules = [];
+
+            if (needPr) {
+              rules.push({
+                type: 'pull_request',
+                parameters: {
+                  required_approving_review_count: 1,
+                  dismiss_stale_reviews_on_push: true,
+                  require_code_owner_review: false,
+                  require_last_push_approval: false,
+                  required_review_thread_resolution: false
+                }
+              });
+            }
+
+            rules.push({
+              type: 'required_status_checks',
+              parameters: {
+                required_status_checks: [
+                  {
+                    context: requiredCheck
+                  }
+                ],
+                strict_required_status_checks_policy: needPr
+              }
+            });
+
+            if (needPr) {
+              rules.push({
+                type: 'merge_queue',
+                parameters: {
+                  check_response_timeout_minutes: 60,
+                  grouping_strategy: 'ALLGREEN',
+                  max_entries_to_build: 5,
+                  max_entries_to_merge: 5,
+                  merge_method: 'SQUASH',
+                  min_entries_to_merge: 1,
+                  min_entries_to_merge_wait_minutes: 5
+                }
+              });
+            }
+
             const rulesetConfig = {
               name: rulesetName,
               target: 'branch',
@@ -99,42 +152,14 @@ runs:
                   exclude: []
                 }
               },
-              rules: [
+              rules: rules,
+              bypass_actors: [
                 {
-                  type: 'pull_request',
-                  parameters: {
-                    required_approving_review_count: 1,
-                    dismiss_stale_reviews_on_push: true,
-                    require_code_owner_review: false,
-                    require_last_push_approval: false,
-                    required_review_thread_resolution: false
-                  }
-                },
-                {
-                  type: 'required_status_checks',
-                  parameters: {
-                    required_status_checks: [
-                      {
-                        context: requiredCheck
-                      }
-                    ],
-                    strict_required_status_checks_policy: true
-                  }
-                },
-                {
-                  type: 'merge_queue',
-                  parameters: {
-                    check_response_timeout_minutes: 60,
-                    grouping_strategy: 'ALLGREEN',
-                    max_entries_to_build: 5,
-                    max_entries_to_merge: 5,
-                    merge_method: 'SQUASH',
-                    min_entries_to_merge: 1,
-                    min_entries_to_merge_wait_minutes: 5
-                  }
+                  actor_id: 1671958,
+                  actor_type: 'Integration',
+                  bypass_mode: 'always'
                 }
-              ],
-              bypass_actors: []
+              ]
             };
 
             try {
