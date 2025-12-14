@@ -46,6 +46,7 @@ jobs:
     outputs:
       validation_status: ${{ steps.validate.outputs.status }}
       validation_message: ${{ steps.validate.outputs.message }}
+      is_update_pr: ${{ steps.validate.outputs.is_update_pr }}
       head_branch: ${{ inputs.is_merge_group == 'true' && '' || steps.pr-info.outputs.head_ref }}
       base_branch: ${{ inputs.is_merge_group == 'true' && inputs.base_branch || steps.pr-info.outputs.base_ref }}
       should_skip_pr_steps: ${{ inputs.is_merge_group == 'true' }}
@@ -156,11 +157,14 @@ jobs:
           fi
 
           if [[ "$IS_MERGE_GROUP" != "true" ]] && [[ "$HEAD_BRANCH" != "$UPDATE_BRANCH" ]]; then
-            echo "status=skipped" >> "$GITHUB_OUTPUT"
-            echo "message=PR head branch '$HEAD_BRANCH' does not match configured update branch '$UPDATE_BRANCH'" >> "$GITHUB_OUTPUT"
-            echo "::notice::Head branch '$HEAD_BRANCH' is not the configured update branch '$UPDATE_BRANCH', skipping"
+            echo "is_update_pr=false" >> "$GITHUB_OUTPUT"
+            echo "status=success" >> "$GITHUB_OUTPUT"
+            echo "message=Non-update PR - validation skipped" >> "$GITHUB_OUTPUT"
+            echo "::notice::Head branch '$HEAD_BRANCH' is not the configured update branch '$UPDATE_BRANCH', this is a non-update PR"
             exit 0
           fi
+
+          echo "is_update_pr=true" >> "$GITHUB_OUTPUT"
 
           if [[ "$IS_MERGE_GROUP" != "true" ]] && [ -n "$REQUIRED_LABELS" ]; then
             echo "::notice::Checking for required labels: $REQUIRED_LABELS"
@@ -189,10 +193,187 @@ jobs:
           echo "::notice::Configuration validation successful"
 
 
+  non-update-check:
+    name: Non-Update PR Check
+    needs: pre-check
+    if: |
+      needs.pre-check.outputs.validation_status == 'success' &&
+      needs.pre-check.outputs.is_update_pr == 'false' &&
+      inputs.is_merge_group != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      has_violations: ${{ steps.check-protected.outputs.has_violations }}
+      violations: ${{ steps.check-protected.outputs.violations }}
+    env:
+      TITLE_TEXT: "${{ inputs.repo_name }} PR #${{ inputs.pr_number }} blocked - protected file violation"
+      TITLE_BLOCK: |
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*${{ inputs.repo_name }} PR blocked - protected file violation <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+          }
+        }
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ inputs.repo_owner }}
+          repositories: ${{ inputs.repo_name }}
+
+      - name: Check Protected Files and Create Check Run
+        id: check-protected
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: '${{ inputs.repo_owner }}',
+              repo: '${{ inputs.repo_name }}',
+              pull_number: parseInt('${{ inputs.pr_number }}')
+            });
+
+            let violations = [];
+            for (const file of files) {
+              if (file.filename.endsWith('.state.json')) {
+                violations.push(`${file.filename}: state file modification not allowed`);
+              }
+              if (file.filename.endsWith('.template.json') && file.status === 'removed') {
+                violations.push(`${file.filename}: template file deletion not allowed`);
+              }
+            }
+
+            const hasViolations = violations.length > 0;
+            core.setOutput('has_violations', hasViolations);
+            core.setOutput('violations', violations.join('; '));
+
+            await github.rest.checks.create({
+              owner: '${{ inputs.repo_owner }}',
+              repo: '${{ inputs.repo_name }}',
+              name: 'eureka-ci / validate-application',
+              head_sha: '${{ inputs.head_sha }}',
+              status: 'completed',
+              conclusion: hasViolations ? 'failure' : 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: hasViolations ? 'Protected File Violation' : 'Non-Update PR Approved',
+                summary: hasViolations
+                  ? `This PR modifies protected files:\n${violations.join('\n')}`
+                  : 'This is not an update PR. Validation skipped, PR can proceed.'
+              },
+              details_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            });
+
+            if (hasViolations) {
+              console.log(`Protected file violations found: ${violations.join(', ')}`);
+            } else {
+              console.log('No protected file violations, check passed');
+            }
+
+      - name: Get Repository Variables
+        id: get-vars
+        if: steps.check-protected.outputs.has_violations == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            try {
+              const { data: variable } = await github.rest.actions.getRepoVariable({
+                owner: '${{ inputs.repo_owner }}',
+                repo: '${{ inputs.repo_name }}',
+                name: 'SLACK_NOTIF_CHANNEL'
+              });
+              console.log(`Found SLACK_NOTIF_CHANNEL: ${variable.value}`);
+              core.setOutput('team_channel', variable.value);
+            } catch (error) {
+              console.log(`SLACK_NOTIF_CHANNEL not found or not accessible: ${error.message}`);
+              core.setOutput('team_channel', '');
+            }
+
+      - name: Build Notification Attachment
+        id: build-attachment
+        if: steps.check-protected.outputs.has_violations == 'true'
+        env:
+          VIOLATIONS: ${{ steps.check-protected.outputs.violations }}
+        run: |
+          ATTACHMENT=$(cat <<EOF
+          {
+            "color": "danger",
+            "fields": [
+              {
+                "title": "PR",
+                "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }}|#${{ inputs.pr_number }}>",
+                "short": true
+              },
+              {
+                "title": "Target Branch",
+                "value": "${{ needs.pre-check.outputs.base_branch }}",
+                "short": true
+              },
+              {
+                "title": "Violations",
+                "value": "${VIOLATIONS}",
+                "short": false
+              }
+            ],
+            "footer": "Eureka CI/CD"
+          }
+          EOF
+          )
+          echo "ATTACHMENT<<EOF" >> "$GITHUB_ENV"
+          echo "$ATTACHMENT" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+      - name: Send Violation Notification to Team Channel
+        if: steps.check-protected.outputs.has_violations == 'true' && steps.get-vars.outputs.team_channel != ''
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ steps.get-vars.outputs.team_channel }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ env.ATTACHMENT }}
+              ]
+            }
+
+      - name: Send Violation Notification to General Channel
+        if: steps.check-protected.outputs.has_violations == 'true' && vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ env.ATTACHMENT }}
+              ]
+            }
+
+
   check:
     name: Check commit
     needs: pre-check
-    if: needs.pre-check.outputs.validation_status == 'success'
+    if: |
+        needs.pre-check.outputs.validation_status == 'success' &&
+        (inputs.is_merge_group == 'true' || needs.pre-check.outputs.is_update_pr == 'true')
     runs-on: ubuntu-latest
     outputs:
       descriptor_exists: ${{ steps.check-descriptor.outputs.exists }}
@@ -437,7 +618,10 @@ jobs:
   notify:
     name: Send Notifications
     needs: [pre-check, check]
-    if: always() && !cancelled() && needs.pre-check.outputs.validation_status == 'success'
+    if: |
+      always() && !cancelled() &&
+      needs.pre-check.outputs.validation_status == 'success' &&
+      (inputs.is_merge_group == 'true' || needs.pre-check.outputs.is_update_pr == 'true')
     runs-on: ubuntu-latest
     outputs:
       team_channel: ${{ steps.get-vars.outputs.team_channel }}
