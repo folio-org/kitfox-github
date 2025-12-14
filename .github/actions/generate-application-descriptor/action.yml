@@ -29,6 +29,10 @@ inputs:
     description: 'When true, uses pom.xml version as base; when false, increments patch from descriptor version (update mode only)'
     required: false
     default: 'true'
+  no_version_bump:
+    description: 'When true, skips automatic version incrementing, keeping the version unchanged (update mode only)'
+    required: false
+    default: 'true'
   upload_artifact:
     description: 'Whether to upload the generated descriptor as an artifact'
     required: false
@@ -177,6 +181,7 @@ runs:
         VALIDATE_ARTIFACTS: ${{ inputs.validate_artifacts }}
         BUILD_NUMBER: ${{ inputs.build_number }}
         USE_PROJECT_VERSION: ${{ inputs.use_project_version }}
+        NO_VERSION_BUMP: ${{ inputs.no_version_bump }}
         GENERATOR_VERSION: ${{ inputs.generator_version }}
         USE_INPUT_GENERATOR_VERSION: ${{ inputs.use_input_generator_version }}
         SUPPRESS_LOGS: "-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
@@ -219,6 +224,10 @@ runs:
 
         if [[ "$GENERATION_MODE" == "update" && "$USE_PROJECT_VERSION" == "true" ]]; then
           EXTRA_PARAMS+=" -DuseProjectVersion=true"
+        fi
+
+        if [[ "$GENERATION_MODE" == "update" && "$NO_VERSION_BUMP" == "true" ]]; then
+          EXTRA_PARAMS+=" -DnoVersionBump=true"
         fi
 
         echo "::notice::Running $GENERATION_MODE mode"
