@@ -116,14 +116,13 @@
             {
               "owner": "folio-org",
               "repository": "kitfox-github",
-              "workflow_file": "pr-check.yml",
+              "workflow_file": "merge-queue-check.yml",
               "ref": "master",
               "inputs": {
                 "repo_owner": "{owner}",
                 "repo_name": "{repository}",
                 "head_sha": "{head_sha}",
-                "base_branch": "{base_branch}",
-                "is_merge_group": "{is_merge_group}"
+                "base_branch": "{base_branch}"
               }
             }
           ]
