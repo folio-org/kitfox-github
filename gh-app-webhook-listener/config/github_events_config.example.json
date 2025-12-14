@@ -89,7 +89,7 @@
             {
               "owner": "{owner}",
               "repository": "{repository}",
-              "workflow_file": "descriptor-publish.yml",
+              "workflow_file": "post-merge-flow.yml",
               "ref": "master",
               "inputs": {
                 "repo_owner": "{owner}",

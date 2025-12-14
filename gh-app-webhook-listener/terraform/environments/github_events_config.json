@@ -39,7 +39,7 @@
             {
               "owner": "folio-org",
               "repository": "kitfox-github",
-              "workflow_file": "descriptor-publish.yml",
+              "workflow_file": "post-merge-flow.yml",
               "ref": "master",
               "inputs": {
                 "repo_owner": "{owner}",
