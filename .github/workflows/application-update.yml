@@ -128,7 +128,7 @@ jobs:
   notify:
     name: Send Notifications
     needs: [update]
-    if: always() && !cancelled() && needs.update.outputs.updated == 'true' && !inputs.dry_run
+    if: always() && !cancelled() && (needs.update.outputs.updated == 'true' || needs.update.result == 'failure') && !inputs.dry_run
     runs-on: ubuntu-latest
     outputs:
       team_notif_status: ${{ steps.notify-team.outcome }}
