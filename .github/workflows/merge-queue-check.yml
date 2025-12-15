@@ -173,26 +173,62 @@ jobs:
 
       - name: Check Protected Files
         id: check-protected
-        uses: folio-org/kitfox-github/.github/actions/check-protected-files@master
-        with:
-          check_type: merge_queue
-          repo_owner: ${{ inputs.repo_owner }}
-          repo_name: ${{ inputs.repo_name }}
-          head_sha: ${{ inputs.head_sha }}
-          github_token: ${{ steps.app-token.outputs.token }}
-          protected_lock_file: ${{ env.PROTECTED_LOCK_FILE }}
-          protected_template_file: ${{ env.PROTECTED_TEMPLATE_FILE }}
+        run: |
+          echo "::notice::Checking protected files for merge queue commit using git diff"
+          echo "::notice::Protected files: $PROTECTED_LOCK_FILE (deletion), $PROTECTED_TEMPLATE_FILE (deletion)"
+          VIOLATIONS=""
+
+          while IFS=$'\t' read -r STATUS FILE; do
+            if [[ "$FILE" == "$PROTECTED_LOCK_FILE" ]] && [[ "$STATUS" == "D" ]]; then
+              VIOLATIONS="${VIOLATIONS}${VIOLATIONS:+; }${FILE}: lock file deletion not allowed"
+            fi
+            if [[ "$FILE" == "$PROTECTED_TEMPLATE_FILE" ]] && [[ "$STATUS" == "D" ]]; then
+              VIOLATIONS="${VIOLATIONS}${VIOLATIONS:+; }${FILE}: template file deletion not allowed"
+            fi
+          done < <(git diff --name-status HEAD~1 HEAD 2>/dev/null || echo "")
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Protected file violations found: $VIOLATIONS"
+            echo "has_violations=true" >> "$GITHUB_OUTPUT"
+            echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No protected file violations found"
+            echo "has_violations=false" >> "$GITHUB_OUTPUT"
+            echo "violations=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create Check Run
-        uses: folio-org/kitfox-github/.github/actions/check-run-create@master
+        uses: actions/github-script@v7
         with:
-          repo_owner: ${{ inputs.repo_owner }}
-          repo_name: ${{ inputs.repo_name }}
-          head_sha: ${{ inputs.head_sha }}
-          github_token: ${{ steps.app-token.outputs.token }}
-          has_violations: ${{ steps.check-protected.outputs.has_violations }}
-          violations: ${{ steps.check-protected.outputs.violations }}
-          details_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const hasViolations = '${{ steps.check-protected.outputs.has_violations }}' === 'true';
+            const violations = '${{ steps.check-protected.outputs.violations }}';
+
+            const title = hasViolations
+              ? 'Protected File Violation'
+              : 'Non-Update Commit Approved';
+
+            const summary = hasViolations
+              ? `This commit modifies protected files:\n${violations.split('; ').join('\n')}`
+              : 'This is not an update commit. Validation skipped, merge can proceed.';
+
+            await github.rest.checks.create({
+              owner: '${{ inputs.repo_owner }}',
+              repo: '${{ inputs.repo_name }}',
+              name: 'eureka-ci / validate-application',
+              head_sha: '${{ inputs.head_sha }}',
+              status: 'completed',
+              conclusion: hasViolations ? 'failure' : 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: title,
+                summary: summary
+              },
+              details_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            });
+
+            console.log(`Check run created with conclusion: ${hasViolations ? 'failure' : 'success'}`);
 
       - name: Get Repository Variables
         id: get-vars

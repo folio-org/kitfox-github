@@ -210,26 +210,76 @@ jobs:
 
       - name: Check Protected Files
         id: check-protected
-        uses: folio-org/kitfox-github/.github/actions/check-protected-files@master
+        uses: actions/github-script@v7
+        env:
+          PROTECTED_LOCK_FILE: ${{ env.PROTECTED_LOCK_FILE }}
+          PROTECTED_TEMPLATE_FILE: ${{ env.PROTECTED_TEMPLATE_FILE }}
         with:
-          check_type: pr
-          repo_owner: ${{ inputs.repo_owner }}
-          repo_name: ${{ inputs.repo_name }}
-          pr_number: ${{ inputs.pr_number }}
-          github_token: ${{ steps.app-token.outputs.token }}
-          protected_lock_file: ${{ env.PROTECTED_LOCK_FILE }}
-          protected_template_file: ${{ env.PROTECTED_TEMPLATE_FILE }}
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const protectedLockFile = process.env.PROTECTED_LOCK_FILE;
+            const protectedTemplateFile = process.env.PROTECTED_TEMPLATE_FILE;
+
+            console.log(`Protected files: ${protectedLockFile} (deletion), ${protectedTemplateFile} (deletion)`);
+
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: '${{ inputs.repo_owner }}',
+              repo: '${{ inputs.repo_name }}',
+              pull_number: parseInt('${{ inputs.pr_number }}')
+            });
+
+            let violations = [];
+            for (const file of files) {
+              if (file.filename === protectedLockFile && file.status === 'removed') {
+                violations.push(`${file.filename}: lock file deletion not allowed`);
+              }
+              if (file.filename === protectedTemplateFile && file.status === 'removed') {
+                violations.push(`${file.filename}: template file deletion not allowed`);
+              }
+            }
+
+            const hasViolations = violations.length > 0;
+            core.setOutput('has_violations', hasViolations);
+            core.setOutput('violations', violations.join('; '));
+
+            if (hasViolations) {
+              console.log(`Protected file violations found: ${violations.join(', ')}`);
+            } else {
+              console.log('No protected file violations found');
+            }
 
       - name: Create Check Run
-        uses: folio-org/kitfox-github/.github/actions/check-run-create@master
+        uses: actions/github-script@v7
         with:
-          repo_owner: ${{ inputs.repo_owner }}
-          repo_name: ${{ inputs.repo_name }}
-          head_sha: ${{ inputs.head_sha }}
-          github_token: ${{ steps.app-token.outputs.token }}
-          has_violations: ${{ steps.check-protected.outputs.has_violations }}
-          violations: ${{ steps.check-protected.outputs.violations }}
-          details_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const hasViolations = '${{ steps.check-protected.outputs.has_violations }}' === 'true';
+            const violations = '${{ steps.check-protected.outputs.violations }}';
+
+            const title = hasViolations
+              ? 'Protected File Violation'
+              : 'Non-Update PR Approved';
+
+            const summary = hasViolations
+              ? `This PR modifies protected files:\n${violations.split('; ').join('\n')}`
+              : 'This is not an update PR. Validation skipped, PR can proceed.';
+
+            await github.rest.checks.create({
+              owner: '${{ inputs.repo_owner }}',
+              repo: '${{ inputs.repo_name }}',
+              name: 'eureka-ci / validate-application',
+              head_sha: '${{ inputs.head_sha }}',
+              status: 'completed',
+              conclusion: hasViolations ? 'failure' : 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: title,
+                summary: summary
+              },
+              details_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            });
+
+            console.log(`Check run created with conclusion: ${hasViolations ? 'failure' : 'success'}`);
 
       - name: Get Repository Variables
         id: get-vars
