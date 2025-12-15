@@ -111,12 +111,10 @@ jobs:
         if: inputs.is_merge_group == 'true' || (steps.pr-info.outputs.pr_exists == 'true' && steps.check-commit.outputs.commit_found == 'true')
         env:
           TARGET_BRANCH: ${{ inputs.is_merge_group == 'true' && inputs.base_branch || steps.pr-info.outputs.base_ref }}
-          HEAD_BRANCH: ${{ steps.pr-info.outputs.head_ref }}
           PR_LABELS: ${{ steps.pr-info.outputs.labels }}
           CONFIG_EXISTS: ${{ steps.get-config.outputs.config_exists }}
           ENABLED: ${{ steps.get-config.outputs.enabled }}
           RELEASE_BRANCHES: ${{ steps.get-config.outputs.branches }}
-          BRANCH_CONFIG: ${{ steps.get-config.outputs.branch_config }}
           REQUIRED_LABELS: ${{ steps.get-config.outputs.pr_labels }}
           IS_MERGE_GROUP: ${{ inputs.is_merge_group }}
         run: |
@@ -141,24 +139,6 @@ jobs:
             echo "status=skipped" >> "$GITHUB_OUTPUT"
             echo "message=Target branch $TARGET_BRANCH is not configured for release scanning" >> "$GITHUB_OUTPUT"
             echo "::notice::Branch $TARGET_BRANCH is not in release_branches configuration"
-            exit 0
-          fi
-
-          BRANCH_ENTRY=$(echo "$BRANCH_CONFIG" | jq -r ".[] | select(.branch == \"$TARGET_BRANCH\")")
-          NEED_PR=$(echo "$BRANCH_ENTRY" | jq -r ".need_pr // false")
-          UPDATE_BRANCH=$(echo "$BRANCH_ENTRY" | jq -r ".update_branch // empty")
-
-          if [[ "$NEED_PR" != "true" ]]; then
-            echo "status=skipped" >> "$GITHUB_OUTPUT"
-            echo "message=Branch $TARGET_BRANCH is not configured for PR-based updates" >> "$GITHUB_OUTPUT"
-            echo "::notice::Branch $TARGET_BRANCH has need_pr=false, skipping PR check"
-            exit 0
-          fi
-
-          if [[ "$IS_MERGE_GROUP" != "true" ]] && [[ "$HEAD_BRANCH" != "$UPDATE_BRANCH" ]]; then
-            echo "status=skipped" >> "$GITHUB_OUTPUT"
-            echo "message=PR head branch '$HEAD_BRANCH' does not match configured update branch '$UPDATE_BRANCH'" >> "$GITHUB_OUTPUT"
-            echo "::notice::Head branch '$HEAD_BRANCH' is not the configured update branch '$UPDATE_BRANCH', skipping"
             exit 0
           fi
 

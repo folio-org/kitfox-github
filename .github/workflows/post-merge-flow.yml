@@ -45,7 +45,6 @@ jobs:
       skip_reason: ${{ steps.validate-config.outputs.skip_reason || steps.check-merge.outputs.skip_reason }}
       base_branch: ${{ steps.pr-info.outputs.base_ref || inputs.base_branch }}
       head_branch: ${{ steps.pr-info.outputs.head_ref }}
-      update_branch: ${{ steps.validate-config.outputs.update_branch }}
     steps:
       - name: Check Merge Status
         id: check-merge
@@ -92,11 +91,9 @@ jobs:
         if: steps.check-merge.outputs.should_process == 'true'
         env:
           TARGET_BRANCH: ${{ steps.pr-info.outputs.base_ref || inputs.base_branch }}
-          HEAD_BRANCH: ${{ steps.pr-info.outputs.head_ref }}
           CONFIG_EXISTS: ${{ steps.get-config.outputs.config_exists }}
           ENABLED: ${{ steps.get-config.outputs.enabled }}
           RELEASE_BRANCHES: ${{ steps.get-config.outputs.branches }}
-          BRANCH_CONFIG: ${{ steps.get-config.outputs.branch_config }}
         run: |
           if [[ "$CONFIG_EXISTS" != "true" ]]; then
             echo "should_process=false" >> "$GITHUB_OUTPUT"
@@ -120,27 +117,8 @@ jobs:
             exit 0
           fi
 
-          BRANCH_ENTRY=$(echo "$BRANCH_CONFIG" | jq -r ".[] | select(.branch == \"$TARGET_BRANCH\")")
-          NEED_PR=$(echo "$BRANCH_ENTRY" | jq -r ".need_pr // false")
-          UPDATE_BRANCH=$(echo "$BRANCH_ENTRY" | jq -r ".update_branch // empty")
-
-          if [[ "$NEED_PR" != "true" ]]; then
-            echo "should_process=false" >> "$GITHUB_OUTPUT"
-            echo "skip_reason=Branch $TARGET_BRANCH is not configured for PR-based updates" >> "$GITHUB_OUTPUT"
-            echo "::notice::Branch $TARGET_BRANCH has need_pr=false, skipping post-merge flow"
-            exit 0
-          fi
-
-          if [[ "$HEAD_BRANCH" != "$UPDATE_BRANCH" ]]; then
-            echo "should_process=false" >> "$GITHUB_OUTPUT"
-            echo "skip_reason=PR head branch '$HEAD_BRANCH' does not match configured update branch '$UPDATE_BRANCH'" >> "$GITHUB_OUTPUT"
-            echo "::notice::Head branch '$HEAD_BRANCH' is not the configured update branch '$UPDATE_BRANCH', skipping"
-            exit 0
-          fi
-
-          echo "update_branch=$UPDATE_BRANCH" >> "$GITHUB_OUTPUT"
           echo "should_process=true" >> "$GITHUB_OUTPUT"
-          echo "::notice::Configuration validation successful for branch $TARGET_BRANCH (update_branch: $UPDATE_BRANCH)"
+          echo "::notice::Configuration validation successful for branch $TARGET_BRANCH"
 
 
   publish:
@@ -232,6 +210,12 @@ jobs:
         run: |
           if [[ -z "$HEAD_BRANCH" ]]; then
             echo "::notice::No head branch info available, skipping cleanup"
+            echo "deleted=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$HEAD_BRANCH" != update-* ]]; then
+            echo "::notice::Branch '$HEAD_BRANCH' is not an update branch, skipping cleanup"
             echo "deleted=skipped" >> "$GITHUB_OUTPUT"
             exit 0
           fi
