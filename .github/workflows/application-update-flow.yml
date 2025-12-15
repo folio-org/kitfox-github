@@ -251,7 +251,7 @@ jobs:
       app_descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
       app_descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
       artifact_name: ${{ steps.generate.outputs.artifact_name }}
-      state_file_artifact_name: ${{ steps.upload-state.outputs.artifact_name }}
+      state_file_artifact_name: ${{ steps.generate.outputs.state_file_artifact_name }}
       failure_reason: ${{ steps.generate.outputs.failure_reason || '' }}
     steps:
       - name: Checkout Application Repository
@@ -301,7 +301,7 @@ jobs:
             echo "value=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Increment Application Patch Version
+      - name: Increment Patch Version
         id: bump-version
         if: |
           needs.prepare-context.outputs.need_pr == 'true' &&
@@ -341,39 +341,11 @@ jobs:
           app_name: ${{ inputs.app_name }}
           build_number: ${{ steps.build-number.outputs.value }}
           use_input_generator_version: true #TODO: remove sometime later
-          upload_state_file: false
 
       - name: Collect New Version
         id: collect-new-version
         if: steps.generate.outputs.generated == 'true'
         run: echo "version=$(jq -r '.version' target/${{ steps.generate.outputs.descriptor_file }})" >> "$GITHUB_OUTPUT"
-
-      - name: Upload State File Artifact
-        id: upload-state
-        if: steps.generate.outputs.generated == 'true'
-        env:
-          APP_NAME: ${{ inputs.app_name }}
-          DESCRIPTOR_FILE: ${{ steps.generate.outputs.descriptor_file }}
-          VERSION_BUMPED: ${{ steps.bump-version.outputs.bumped }}
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/state-file-upload
-          cp "target/$DESCRIPTOR_FILE" /tmp/state-file-upload/application.lock.json
-
-          if [[ "$VERSION_BUMPED" == "true" ]]; then
-            echo "::notice::Including pom.xml in state file artifact (version was bumped)"
-            cp pom.xml /tmp/state-file-upload/
-          fi
-
-          echo "artifact_name=${APP_NAME}-state-file" >> "$GITHUB_OUTPUT"
-
-      - name: Upload State File
-        if: steps.generate.outputs.generated == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.upload-state.outputs.artifact_name }}
-          path: /tmp/state-file-upload/
-          retention-days: 1
 
   verify-application:
     name: Verify Application
