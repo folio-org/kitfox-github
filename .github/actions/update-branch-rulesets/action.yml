@@ -115,8 +115,7 @@ runs:
                     context: requiredCheck,
                     integration_id: checkIntegrationId
                   }
-                ],
-                strict_required_status_checks_policy: false
+                ]
               }
             });
 
