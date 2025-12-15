@@ -1,7 +1,7 @@
-name: Descriptor Publish
+name: Release PR Merge
 
 run-name: >-
-  Descriptor publish • PR #${{ inputs.pr_number }} • ${{ inputs.repo_name }}
+  Release PR merge • PR #${{ inputs.pr_number }} • ${{ inputs.repo_name }}
 
 on:
   workflow_dispatch:
@@ -35,16 +35,20 @@ on:
 
 permissions:
   contents: read
+  checks: write
+  statuses: write
 
 jobs:
   pre-check:
     name: Pre-Check Merge Status
     runs-on: ubuntu-latest
     outputs:
-      should_process: ${{ steps.validate-config.outputs.should_process || steps.check-merge.outputs.should_process }}
-      skip_reason: ${{ steps.validate-config.outputs.skip_reason || steps.check-merge.outputs.skip_reason }}
+      should_process: ${{ steps.check-merge.outputs.should_process }}
+      skip_reason: ${{ steps.check-merge.outputs.skip_reason }}
       base_branch: ${{ steps.pr-info.outputs.base_ref || inputs.base_branch }}
       head_branch: ${{ steps.pr-info.outputs.head_ref }}
+      config_exists: ${{ steps.get-config.outputs.config_exists }}
+      enabled: ${{ steps.get-config.outputs.enabled }}
     steps:
       - name: Check Merge Status
         id: check-merge
@@ -121,17 +125,90 @@ jobs:
           echo "::notice::Configuration validation successful for branch $TARGET_BRANCH"
 
 
-  publish:
-    name: Publish to FAR
+  validate:
+    name: Validate Application Descriptor
     needs: pre-check
     if: needs.pre-check.outputs.should_process == 'true'
     runs-on: ubuntu-latest
     outputs:
+      descriptor_exists: ${{ steps.check-descriptor.outputs.exists }}
+      descriptor_id: ${{ steps.get-descriptor-id.outputs.descriptor_id }}
+      validation_passed: ${{ steps.validate.outputs.validation_passed }}
+      platform_found: ${{ steps.fetch-platform.outputs.platform_found }}
+      failure_reason: ${{ steps.check-descriptor.outputs.exists != 'true' && 'Application descriptor not found' || steps.validate.outputs.failure_reason }}
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ inputs.repo_owner }}
+          repositories: ${{ inputs.repo_name }}
+
+      - name: Checkout Repository (merged branch)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+          ref: ${{ needs.pre-check.outputs.base_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Check Existing Descriptor
+        id: check-descriptor
+        env:
+          DESCRIPTOR_FILE: "application.lock.json"
+        run: |
+          set -eo pipefail
+
+          if [[ ! -f "$DESCRIPTOR_FILE" ]]; then
+            echo "::error::Application descriptor not found after merge: $DESCRIPTOR_FILE"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::notice::Found application descriptor: $DESCRIPTOR_FILE"
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          echo "descriptor_file=$DESCRIPTOR_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Get Descriptor ID
+        id: get-descriptor-id
+        if: steps.check-descriptor.outputs.exists == 'true'
+        run: |
+          DESCRIPTOR_ID=$(jq -r '.id' application.lock.json)
+          echo "descriptor_id=$DESCRIPTOR_ID" >> "$GITHUB_OUTPUT"
+          echo "::notice::Descriptor ID: $DESCRIPTOR_ID"
+
+      - name: Fetch Platform Descriptor
+        id: fetch-platform
+        if: steps.check-descriptor.outputs.exists == 'true'
+        uses: folio-org/kitfox-github/.github/actions/fetch-platform-descriptor@master
+        with:
+          branch: ${{ needs.pre-check.outputs.base_branch }}
+          upload_artifact: 'false'
+
+      - name: Validate Application
+        id: validate
+        if: steps.check-descriptor.outputs.exists == 'true'
+        uses: folio-org/kitfox-github/.github/actions/validate-application@master
+        with:
+          app_name: ${{ inputs.repo_name }}
+          app_descriptor_path: application.lock.json
+          platform_descriptor_path: ${{ steps.fetch-platform.outputs.descriptor_path }}
+          use_platform_descriptor: ${{ steps.fetch-platform.outputs.platform_found == 'true' && 'true' || 'false' }}
+          rely_on_FAR: 'false'
+          far_url: ${{ vars.FAR_URL }}
+
+
+  publish:
+    name: Publish to FAR
+    needs: [pre-check, validate]
+    if: |
+      needs.validate.outputs.descriptor_exists == 'true' &&
+      needs.validate.outputs.validation_passed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
       publish_status: ${{ steps.publish.outputs.publish-status }}
       descriptor_url: ${{ steps.publish.outputs.descriptor-url }}
-      descriptor_id: ${{ steps.get-descriptor-id.outputs.descriptor_id }}
-      descriptor_exists: ${{ steps.check-descriptor.outputs.exists }}
-      failure_reason: ${{ steps.check-descriptor.outputs.failure_reason || steps.publish.outputs.failure-reason }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -149,34 +226,8 @@ jobs:
           ref: ${{ needs.pre-check.outputs.base_branch }}
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Check Existing Descriptor
-        id: check-descriptor
-        env:
-          DESCRIPTOR_FILE: "application.lock.json"
-        run: |
-          set -eo pipefail
-
-          if [[ ! -f "$DESCRIPTOR_FILE" ]]; then
-            echo "::error::Application descriptor not found after merge: $DESCRIPTOR_FILE"
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "failure_reason=Application descriptor file not found: $DESCRIPTOR_FILE" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "::notice::Found application descriptor: $DESCRIPTOR_FILE"
-          echo "exists=true" >> "$GITHUB_OUTPUT"
-
-      - name: Get Descriptor ID
-        id: get-descriptor-id
-        if: steps.check-descriptor.outputs.exists == 'true'
-        run: |
-          DESCRIPTOR_ID=$(jq -r '.id' application.lock.json)
-          echo "descriptor_id=$DESCRIPTOR_ID" >> "$GITHUB_OUTPUT"
-          echo "::notice::Descriptor ID: $DESCRIPTOR_ID"
-
       - name: Publish Application Descriptor to FAR
         id: publish
-        if: steps.check-descriptor.outputs.exists == 'true'
         uses: folio-org/kitfox-github/.github/actions/publish-app-descriptor@master
         with:
           descriptor-path: application.lock.json
@@ -185,25 +236,25 @@ jobs:
 
   notify:
     name: Send Notifications
-    needs: [pre-check, publish]
+    needs: [pre-check, validate, publish]
     if: always() && !cancelled() && needs.pre-check.outputs.should_process == 'true'
     runs-on: ubuntu-latest
     outputs:
       team_channel: ${{ steps.get-vars.outputs.team_channel }}
     env:
-      WORKFLOW_SUCCESS: ${{ needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' }}
-      TITLE_TEXT: "${{ inputs.repo_name }} descriptor publish ${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success') && 'completed' || 'failed' }}"
+      WORKFLOW_SUCCESS: ${{ needs.validate.outputs.validation_passed == 'true' && needs.publish.outputs.publish_status == 'success' }}
+      TITLE_TEXT: "${{ inputs.repo_name }} release merge ${{ (needs.validate.outputs.validation_passed == 'true' && needs.publish.outputs.publish_status == 'success') && 'completed' || 'failed' }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.repo_name }} descriptor publish ${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success') && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.repo_name }} release merge ${{ (needs.validate.outputs.validation_passed == 'true' && needs.publish.outputs.publish_status == 'success') && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
         }
       ATTACHMENT: |
         {
-          "color": "${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success') && 'good' || 'danger' }}",
+          "color": "${{ (needs.validate.outputs.validation_passed == 'true' && needs.publish.outputs.publish_status == 'success') && 'good' || 'danger' }}",
           "fields": [
             {
               "title": "Release branch",
@@ -217,7 +268,7 @@ jobs:
             },
             {
               "title": "Descriptor ID",
-              "value": "${{ needs.publish.outputs.descriptor_id || 'N/A' }}",
+              "value": "${{ needs.validate.outputs.descriptor_id || 'N/A' }}",
               "short": true
             },
             {
@@ -229,12 +280,12 @@ jobs:
               "title": "Descriptor URL",
               "value": "<{0}|View in FAR>",
               "short": false
-            }}', needs.publish.outputs.descriptor_url) || '' }}${{ (needs.publish.outputs.descriptor_exists != 'true' || needs.publish.outputs.publish_status != 'success') && format(',
+            }}', needs.publish.outputs.descriptor_url) || '' }}${{ (needs.validate.outputs.validation_passed != 'true' || needs.publish.outputs.publish_status != 'success') && format(',
             {{
               "title": "Failure Reason",
               "value": "{0}",
               "short": false
-            }}', needs.publish.outputs.failure_reason || 'Publication failed') || '' }}
+            }}', needs.validate.outputs.failure_reason || 'Publication failed') || '' }}
           ],
           "footer": "Eureka CI/CD"
         }
@@ -310,7 +361,7 @@ jobs:
 
   summarize:
     name: Workflow Summary
-    needs: [pre-check, publish, notify]
+    needs: [pre-check, validate, publish, notify]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -320,14 +371,16 @@ jobs:
           SKIP_REASON: ${{ needs.pre-check.outputs.skip_reason }}
           BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
           HEAD_BRANCH: ${{ needs.pre-check.outputs.head_branch }}
-          DESCRIPTOR_EXISTS: ${{ needs.publish.outputs.descriptor_exists }}
-          DESCRIPTOR_ID: ${{ needs.publish.outputs.descriptor_id }}
-          FAILURE_REASON: ${{ needs.publish.outputs.failure_reason }}
+          DESCRIPTOR_EXISTS: ${{ needs.validate.outputs.descriptor_exists }}
+          DESCRIPTOR_ID: ${{ needs.validate.outputs.descriptor_id }}
+          VALIDATION_PASSED: ${{ needs.validate.outputs.validation_passed }}
+          PLATFORM_FOUND: ${{ needs.validate.outputs.platform_found }}
+          FAILURE_REASON: ${{ needs.validate.outputs.failure_reason }}
           PUBLISH_STATUS: ${{ needs.publish.outputs.publish_status }}
           DESCRIPTOR_URL: ${{ needs.publish.outputs.descriptor_url }}
         run: |
           {
-            echo "### Descriptor Publish Summary"
+            echo "### 🎯 Release PR Merge Handler Summary"
             echo ""
             echo "**Repository:** \`${{ inputs.repo_owner }}/${{ inputs.repo_name }}\`"
             echo "**PR:** [#${{ inputs.pr_number }}](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/pull/${{ inputs.pr_number }})"
@@ -335,54 +388,64 @@ jobs:
             echo "**Merged:** ${{ inputs.merged }}"
             echo ""
 
-            echo "### Pre-Check Status"
+            echo "### 📋 Pre-Check Status"
             echo ""
             if [[ "$SHOULD_PROCESS" == "true" ]]; then
-              echo "**Pre-Check:** Passed"
+              echo "✅ **Pre-Check:** Passed"
               echo "- **Base Branch:** $BASE_BRANCH"
               echo "- **Head Branch:** $HEAD_BRANCH"
             else
-              echo "**Pre-Check:** Skipped"
+              echo "⏭️ **Pre-Check:** Skipped"
               echo "- **Reason:** $SKIP_REASON"
             fi
             echo ""
 
             if [[ "$SHOULD_PROCESS" == "true" ]]; then
-              echo "### Publication Status"
+              echo "### 🔍 Validation Status"
               echo ""
               if [[ "$DESCRIPTOR_EXISTS" == "true" ]]; then
-                echo "- **Descriptor Found:** Yes"
+                echo "- **Descriptor Found:** ✅ Yes"
                 echo "- **Descriptor ID:** \`$DESCRIPTOR_ID\`"
-                if [[ "$PUBLISH_STATUS" == "success" ]]; then
-                  echo "- **Published to FAR:** Yes"
-                  if [[ -n "$DESCRIPTOR_URL" ]]; then
-                    echo "- **Descriptor URL:** [$DESCRIPTOR_URL]($DESCRIPTOR_URL)"
-                  fi
+                if [[ "$VALIDATION_PASSED" == "true" ]]; then
+                  echo "- **Validation:** ✅ Passed"
                 else
-                  echo "- **Published to FAR:** No"
-                  if [[ -n "$FAILURE_REASON" ]]; then
-                    echo "- **Failure Reason:** $FAILURE_REASON"
-                  fi
+                  echo "- **Validation:** ❌ Failed"
+                  echo "- **Failure Reason:** $FAILURE_REASON"
                 fi
+                echo "- **Platform Descriptor:** ${PLATFORM_FOUND:-N/A}"
               else
-                echo "- **Descriptor Found:** No"
+                echo "- **Descriptor Found:** ❌ No"
                 echo "- **Error:** Application descriptor (application.lock.json) not found"
+              fi
+              echo ""
+
+              echo "### 📤 Publication Status"
+              echo ""
+              if [[ "$PUBLISH_STATUS" == "success" ]]; then
+                echo "✅ **Published to FAR successfully**"
+                if [[ -n "$DESCRIPTOR_URL" ]]; then
+                  echo "- **Descriptor URL:** [$DESCRIPTOR_URL]($DESCRIPTOR_URL)"
+                fi
+              elif [[ "$VALIDATION_PASSED" != "true" ]]; then
+                echo "⏭️ **Publication skipped** (validation failed)"
+              else
+                echo "❌ **Publication failed**"
               fi
               echo ""
             fi
 
-            echo "### Notification Status"
+            echo "### 📨 Notification Status"
             echo ""
             if [[ -n "${{ needs.notify.outputs.team_channel }}" ]]; then
-              echo "**Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Sent"
+              echo "✅ **Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Sent"
             else
-              echo "**Team Channel:** Not configured"
+              echo "ℹ️ **Team Channel:** Not configured"
             fi
 
             if [[ -n "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}" ]]; then
-              echo "**General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Sent"
+              echo "✅ **General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Sent"
             else
-              echo "**General Channel:** Not configured"
+              echo "ℹ️ **General Channel:** Not configured"
             fi
 
             echo ""
