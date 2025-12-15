@@ -1,4 +1,7 @@
 # TODO: Specify branch ruleset parameters in the update-config.yml file later and update it here based on them.
+# TODO: Along with reenabling the ruleset creation for non-pr update approach branches,
+# we should also add ruleset support in the pr-check workflow for such branches.
+
 name: 'Update Branch Rulesets'
 description: 'Create or update branch rulesets with merge queue and required status checks'
 
@@ -104,6 +107,14 @@ runs:
             const config = branchConfig.find(c => c.branch === branch) || {};
             const needPr = config.need_pr === true;
             console.log(`Branch ${branch}: need_pr=${needPr}`);
+
+            //TODO: Along with reenabling the ruleset creation, we should also add ruleset support in the pr-check workflow.
+            // Temporarily skip ruleset creation for non-PR branches
+            if (!needPr) {
+              console.log(`Skipping ruleset creation for ${branch} (need_pr=false)`);
+              skippedBranches.push(`${branch} (no PR required)`);
+              continue;
+            }
 
             const rules = [];
 
