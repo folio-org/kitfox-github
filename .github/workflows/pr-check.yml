@@ -1,7 +1,7 @@
 name: PR Check
 
 run-name: >-
-  ${{ inputs.is_merge_group == 'true' && format('Merge queue check - {0}', inputs.repo_name) || (inputs.pr_number != '' && format('PR check #{0} - {1}', inputs.pr_number, inputs.repo_name) || format('PR check - {0}', inputs.repo_name)) }}
+  ${{ inputs.is_merge_group == 'true' && format('Merge queue check - {0}', inputs.repo_name) || format('PR check #{0} - {1}', inputs.pr_number, inputs.repo_name) }}
 
 on:
   workflow_dispatch:
@@ -50,17 +50,6 @@ jobs:
       base_branch: ${{ inputs.is_merge_group == 'true' && inputs.base_branch || steps.pr-info.outputs.base_ref }}
       should_skip_pr_steps: ${{ inputs.is_merge_group == 'true' }}
     steps:
-      - name: Print Input Parameters
-        run: |
-          echo "::group::Workflow Inputs"
-          echo "repo_owner: ${{ inputs.repo_owner }}"
-          echo "repo_name: ${{ inputs.repo_name }}"
-          echo "pr_number: ${{ inputs.pr_number }}"
-          echo "head_sha: ${{ inputs.head_sha }}"
-          echo "base_branch: ${{ inputs.base_branch }}"
-          echo "is_merge_group: ${{ inputs.is_merge_group }}"
-          echo "::endgroup::"
-
       - name: Generate GitHub App Token
         id: app-token
         uses: actions/create-github-app-token@v1

@@ -224,18 +224,8 @@ runs:
         echo "::notice::Running $GENERATION_MODE mode"
         echo "::notice::Full Maven command: mvn $SUPPRESS_LOGS clean $COMMAND -U -e $EXTRA_PARAMS"
         echo "::group::Generate application descriptor"
-        mvn_output=$(mktemp)
-        if ! mvn $SUPPRESS_LOGS clean $COMMAND -U -e $EXTRA_PARAMS 2>&1 | tee "$mvn_output"; then
-          echo "::endgroup::"
-          echo "::error::Maven command failed"
-          echo "generated=false" >> "$GITHUB_OUTPUT"
-          error_msg=$(grep -E "(ERROR|FAILURE|Exception)" "$mvn_output" | head -3 | tr '\n' ' ')
-          echo "failure_reason=${error_msg:-Maven execution failed}" >> "$GITHUB_OUTPUT"
-          rm -f "$mvn_output"
-          exit 1
-        fi
+        mvn $SUPPRESS_LOGS clean $COMMAND -U -e $EXTRA_PARAMS
         echo "::endgroup::"
-        rm -f "$mvn_output"
 
         if [[ ! -d "target" ]]; then
           echo "::notice::No changes detected - target directory was not created by Maven"

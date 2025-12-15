@@ -222,19 +222,6 @@ jobs:
             echo "pr_url=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate Branch/PR State
-        id: validate-state
-        if: steps.determine.outputs.need_pr == 'true' && steps.determine.outputs.update_branch_exists == 'true'
-        env:
-          PR_EXISTS: ${{ steps.check-pr.outputs.pr_exists }}
-          UPDATE_BRANCH: ${{ inputs.update_branch }}
-        run: |
-          if [[ "$PR_EXISTS" != "true" ]]; then
-            echo "::error::Update branch '$UPDATE_BRANCH' exists but no PR found."
-            echo "::error::Please delete the orphan branch."
-            exit 1
-          fi
-
   update-application:
     name: Update Application
     needs: prepare-context
@@ -297,39 +284,6 @@ jobs:
           else
             echo "value=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Increment Patch Version
-        id: bump-version
-        if: |
-          needs.prepare-context.outputs.need_pr == 'true' &&
-          needs.prepare-context.outputs.pr_exists != 'true' &&
-          needs.prepare-context.outputs.update_branch_exists != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          current="$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)"
-
-          if [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(.*)$ ]]; then
-            major="${BASH_REMATCH[1]}"
-            minor="${BASH_REMATCH[2]}"
-            patch="${BASH_REMATCH[3]}"
-            rest="${BASH_REMATCH[4]}"   # includes any suffix like -SNAPSHOT, -RC1, +build, etc.
-          else
-            echo "::error::Unsupported version format (expected X.Y.Z...): $current"
-            exit 1
-          fi
-
-          new_version="${major}.${minor}.$((patch + 1))${rest}"
-
-          echo "::group::Updating pom.xml version"
-          mvn -q versions:set -DnewVersion="$new_version" -DgenerateBackupPoms=false
-          echo "::endgroup::"
-
-          echo "::notice::Version bumped: $current -> $new_version"
-          echo "bumped=true" >> "$GITHUB_OUTPUT"
-          echo "old_version=$current" >> "$GITHUB_OUTPUT"
-          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
 
       - name: Generate Descriptor
         id: generate
