@@ -30,7 +30,6 @@ jobs:
     outputs:
       branches_updated: ${{ steps.update-rulesets.outputs.branches_updated }}
       branches_skipped: ${{ steps.update-rulesets.outputs.branches_skipped }}
-      branches_failed: ${{ steps.update-rulesets.outputs.branches_failed }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -88,123 +87,9 @@ jobs:
           github_token: ${{ steps.app-token.outputs.token }}
 
 
-  notify:
-    name: Send Notifications
-    needs: update-rulesets
-    if: always() && !cancelled()
-    runs-on: ubuntu-latest
-    outputs:
-      team_channel: ${{ steps.get-vars.outputs.team_channel }}
-    env:
-      WORKFLOW_SUCCESS: ${{ needs.update-rulesets.result == 'success' }}
-      TITLE_TEXT: "${{ inputs.repo_name }} branch ruleset update ${{ needs.update-rulesets.result == 'success' && 'completed' || 'failed' }}"
-      TITLE_BLOCK: |
-        {
-          "type": "section",
-          "text": {
-            "type": "mrkdwn",
-            "text": "*${{ inputs.repo_name }} branch ruleset update ${{ needs.update-rulesets.result == 'success' && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
-          }
-        }
-      ATTACHMENT: |
-        {
-          "color": "${{ needs.update-rulesets.result == 'success' && 'good' || 'danger' }}",
-          "fields": [
-            {
-              "title": "Repository",
-              "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}|${{ inputs.repo_owner }}/${{ inputs.repo_name }}>",
-              "short": true
-            },
-            {
-              "title": "Branches Updated",
-              "value": "${{ needs.update-rulesets.outputs.branches_updated || 'none' }}",
-              "short": true
-            },
-            {
-              "title": "Branches Skipped",
-              "value": "${{ needs.update-rulesets.outputs.branches_skipped || 'none' }}",
-              "short": true
-            }${{ needs.update-rulesets.outputs.branches_failed != 'none' && needs.update-rulesets.outputs.branches_failed != '' && format(',
-            {{
-              "title": "Branches Failed",
-              "value": "{0}",
-              "short": false
-            }}', needs.update-rulesets.outputs.branches_failed) || '' }}
-          ],
-          "footer": "Eureka CI/CD"
-        }
-    steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.EUREKA_CI_APP_ID }}
-          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
-          owner: ${{ inputs.repo_owner }}
-          repositories: ${{ inputs.repo_name }}
-
-      - name: Get Repository Variables
-        id: get-vars
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: |
-            try {
-              const { data: variable } = await github.rest.actions.getRepoVariable({
-                owner: '${{ inputs.repo_owner }}',
-                repo: '${{ inputs.repo_name }}',
-                name: 'SLACK_NOTIF_CHANNEL'
-              });
-              console.log(`Found SLACK_NOTIF_CHANNEL: ${variable.value}`);
-              core.setOutput('team_channel', variable.value);
-            } catch (error) {
-              console.log(`SLACK_NOTIF_CHANNEL not found or not accessible: ${error.message}`);
-              core.setOutput('team_channel', '');
-            }
-
-      - name: Send to Team Channel
-        if: steps.get-vars.outputs.team_channel != ''
-        continue-on-error: true
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
-          errors: false
-          payload: |
-            {
-              "channel": "${{ steps.get-vars.outputs.team_channel }}",
-              "text": "${{ env.TITLE_TEXT }}",
-              "blocks": [
-                ${{ env.TITLE_BLOCK }}
-              ],
-              "attachments": [
-                ${{ env.ATTACHMENT }}
-              ]
-            }
-
-      - name: Send to General Channel
-        if: vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
-        continue-on-error: true
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
-          errors: false
-          payload: |
-            {
-              "channel": "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}",
-              "text": "${{ env.TITLE_TEXT }}",
-              "blocks": [
-                ${{ env.TITLE_BLOCK }}
-              ],
-              "attachments": [
-                ${{ env.ATTACHMENT }}
-              ]
-            }
-
   summarize:
     name: Workflow Summary
-    needs: [update-rulesets, notify]
+    needs: update-rulesets
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -212,7 +97,6 @@ jobs:
         env:
           BRANCHES_UPDATED: ${{ needs.update-rulesets.outputs.branches_updated }}
           BRANCHES_SKIPPED: ${{ needs.update-rulesets.outputs.branches_skipped }}
-          BRANCHES_FAILED: ${{ needs.update-rulesets.outputs.branches_failed }}
           JOB_STATUS: ${{ needs.update-rulesets.result }}
         run: |
           {
@@ -246,26 +130,6 @@ jobs:
             echo "**Branches Updated:** $BRANCHES_UPDATED"
             echo ""
             echo "**Branches Skipped:** $BRANCHES_SKIPPED"
-
-            if [[ -n "$BRANCHES_FAILED" && "$BRANCHES_FAILED" != "none" ]]; then
-              echo ""
-              echo "**Branches Failed:** $BRANCHES_FAILED"
-            fi
-
-            echo ""
-            echo "### Notification Status"
-            echo ""
-            if [[ -n "${{ needs.notify.outputs.team_channel }}" ]]; then
-              echo "**Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Sent"
-            else
-              echo "**Team Channel:** Not configured"
-            fi
-
-            if [[ -n "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}" ]]; then
-              echo "**General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Sent"
-            else
-              echo "**General Channel:** Not configured"
-            fi
 
             echo ""
             echo "---"
