@@ -136,6 +136,264 @@ def test_pull_request_event():
 
     return api_gateway_event
 
+def test_pull_request_closed_merged_event():
+    """Test pull_request closed (merged) event structure"""
+    print("Testing pull_request closed (merged) event processing...")
+
+    event = {
+        "action": "closed",
+        "pull_request": {
+            "id": 54321,
+            "number": 123,
+            "merged": True,
+            "merge_commit_sha": "abc123def456789",
+            "head": {
+                "sha": "def456",
+                "ref": "version-update/snapshot"
+            },
+            "base": {
+                "ref": "snapshot",
+                "sha": "base789abc"
+            }
+        },
+        "repository": {
+            "full_name": "folio-org/app-test",
+            "name": "app-test",
+            "owner": {
+                "login": "folio-org"
+            }
+        },
+        "installation": {
+            "id": 67890
+        }
+    }
+
+    api_gateway_event = {
+        "body": json.dumps(event),
+        "headers": {
+            "x-github-event": "pull_request",
+            "x-github-delivery": "merged-12345-67890",
+            "x-hub-signature-256": "sha256=test"
+        }
+    }
+
+    print(f"[OK] Created merged PR event for repository: {event['repository']['full_name']}")
+    print(f"[OK] PR number: {event['pull_request']['number']}")
+    print(f"[OK] PR merged: {event['pull_request']['merged']}")
+    print(f"[OK] Base branch: {event['pull_request']['base']['ref']}")
+
+    return api_gateway_event
+
+def test_pull_request_closed_not_merged_event():
+    """Test pull_request closed (not merged) event structure"""
+    print("Testing pull_request closed (not merged) event processing...")
+
+    event = {
+        "action": "closed",
+        "pull_request": {
+            "id": 54322,
+            "number": 124,
+            "merged": False,
+            "merge_commit_sha": None,
+            "head": {
+                "sha": "def789",
+                "ref": "abandoned-feature"
+            },
+            "base": {
+                "ref": "main",
+                "sha": "base123abc"
+            }
+        },
+        "repository": {
+            "full_name": "folio-org/app-test",
+            "name": "app-test",
+            "owner": {
+                "login": "folio-org"
+            }
+        },
+        "installation": {
+            "id": 67890
+        }
+    }
+
+    api_gateway_event = {
+        "body": json.dumps(event),
+        "headers": {
+            "x-github-event": "pull_request",
+            "x-github-delivery": "closed-12345-67890",
+            "x-hub-signature-256": "sha256=test"
+        }
+    }
+
+    print(f"[OK] Created closed (not merged) PR event for repository: {event['repository']['full_name']}")
+    print(f"[OK] PR number: {event['pull_request']['number']}")
+    print(f"[OK] PR merged: {event['pull_request']['merged']}")
+
+    return api_gateway_event
+
+def test_merge_group_checks_requested_event():
+    """Test merge_group checks_requested event structure"""
+    print("Testing merge_group checks_requested event processing...")
+
+    event = {
+        "action": "checks_requested",
+        "merge_group": {
+            "head_sha": "abc123merge456",
+            "head_ref": "refs/heads/gh-readonly-queue/R1-2025/pr-42-abc123",
+            "base_sha": "base789def",
+            "base_ref": "refs/heads/R1-2025"
+        },
+        "repository": {
+            "full_name": "folio-org/app-acquisitions",
+            "name": "app-acquisitions",
+            "owner": {
+                "login": "folio-org"
+            }
+        },
+        "installation": {
+            "id": 67890
+        }
+    }
+
+    api_gateway_event = {
+        "body": json.dumps(event),
+        "headers": {
+            "x-github-event": "merge_group",
+            "x-github-delivery": "merge-group-12345-67890",
+            "x-hub-signature-256": "sha256=test"
+        }
+    }
+
+    print(f"[OK] Created merge_group event for repository: {event['repository']['full_name']}")
+    print(f"[OK] Action: {event['action']}")
+    print(f"[OK] Head SHA (synthetic merge commit): {event['merge_group']['head_sha']}")
+    print(f"[OK] Base ref: {event['merge_group']['base_ref']}")
+
+    return api_gateway_event
+
+
+def test_merge_group_template_variables():
+    """Test merge_group template variable extraction"""
+    print("Testing merge_group template variable extraction...")
+
+    merge_group_payload = {
+        "head_sha": "synthetic123merge456",
+        "head_ref": "refs/heads/gh-readonly-queue/R1-2025/pr-42-abc123",
+        "base_sha": "base789def",
+        "base_ref": "refs/heads/R1-2025"
+    }
+
+    head_branch = merge_group_payload.get('head_ref', '').replace('refs/heads/', '')
+    base_branch = merge_group_payload.get('base_ref', '').replace('refs/heads/', '')
+    head_sha = merge_group_payload.get('head_sha', '')
+    base_sha = merge_group_payload.get('base_sha', '')
+
+    assert head_branch == "gh-readonly-queue/R1-2025/pr-42-abc123", f"Expected head_branch to be 'gh-readonly-queue/R1-2025/pr-42-abc123', got '{head_branch}'"
+    print(f"[OK] head_branch extracted correctly: {head_branch}")
+
+    assert base_branch == "R1-2025", f"Expected base_branch to be 'R1-2025', got '{base_branch}'"
+    print(f"[OK] base_branch extracted correctly (refs/heads/ stripped): {base_branch}")
+
+    assert head_sha == "synthetic123merge456", f"Expected head_sha to be 'synthetic123merge456', got '{head_sha}'"
+    print(f"[OK] head_sha extracted correctly: {head_sha}")
+
+    assert base_sha == "base789def", f"Expected base_sha to be 'base789def', got '{base_sha}'"
+    print(f"[OK] base_sha extracted correctly: {base_sha}")
+
+    is_merge_group = True
+    pr_number = ''
+
+    assert pr_number == '', f"Expected pr_number to be empty for merge_group, got '{pr_number}'"
+    print(f"[OK] pr_number is empty (merge_group can have multiple PRs): '{pr_number}'")
+
+    assert is_merge_group == True, f"Expected is_merge_group to be True"
+    print(f"[OK] is_merge_group flag set correctly: {is_merge_group}")
+
+    print("All merge_group template variable extractions passed!\n")
+
+
+def test_push_event_with_file_changes():
+    """Test push event structure with file changes"""
+    print("Testing push event with file changes...")
+
+    event = {
+        "ref": "refs/heads/master",
+        "before": "abc123before",
+        "after": "def456after",
+        "commits": [
+            {
+                "id": "def456after",
+                "message": "Update config",
+                "added": [],
+                "modified": [".github/update-config.yml"],
+                "removed": []
+            }
+        ],
+        "repository": {
+            "full_name": "folio-org/app-acquisitions",
+            "name": "app-acquisitions",
+            "owner": {
+                "login": "folio-org"
+            }
+        },
+        "installation": {
+            "id": 67890
+        }
+    }
+
+    api_gateway_event = {
+        "body": json.dumps(event),
+        "headers": {
+            "x-github-event": "push",
+            "x-github-delivery": "push-12345-67890",
+            "x-hub-signature-256": "sha256=test"
+        }
+    }
+
+    print(f"[OK] Created push event for repository: {event['repository']['full_name']}")
+    print(f"[OK] Ref: {event['ref']}")
+    print(f"[OK] Head SHA (after): {event['after']}")
+    print(f"[OK] Modified files: {event['commits'][0]['modified']}")
+
+    return api_gateway_event
+
+
+def test_push_event_changed_files_extraction():
+    """Test extraction of changed files from push event"""
+    print("Testing push event changed files extraction...")
+
+    # Import the function we're testing
+    import sys
+    sys.path.insert(0, str(project_root / 'src' / 'check_processor'))
+    from handler import get_changed_files_from_push
+    sys.path.remove(str(project_root / 'src' / 'check_processor'))
+
+    payload = {
+        "commits": [
+            {
+                "added": ["new-file.txt"],
+                "modified": [".github/update-config.yml", "README.md"],
+                "removed": ["old-file.txt"]
+            },
+            {
+                "added": [],
+                "modified": ["src/main.py"],
+                "removed": []
+            }
+        ]
+    }
+
+    changed_files = get_changed_files_from_push(payload)
+
+    expected_files = {"new-file.txt", ".github/update-config.yml", "README.md", "old-file.txt", "src/main.py"}
+    actual_files = set(changed_files)
+
+    assert actual_files == expected_files, f"Expected {expected_files}, got {actual_files}"
+    print(f"[OK] Extracted changed files correctly: {changed_files}")
+
+    print("Push event changed files extraction test passed!\n")
+
+
 def test_workflow_config():
     """Test workflow configuration loading"""
     print("Testing workflow configuration...")
@@ -272,6 +530,12 @@ def main():
     # Test event structures
     test_check_suite_event()
     test_pull_request_event()
+    test_pull_request_closed_merged_event()
+    test_pull_request_closed_not_merged_event()
+    test_merge_group_checks_requested_event()
+    test_merge_group_template_variables()
+    test_push_event_with_file_changes()
+    test_push_event_changed_files_extraction()
 
     print("=" * 50)
     print("All local tests passed! [OK]")

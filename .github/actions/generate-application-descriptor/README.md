@@ -44,18 +44,20 @@ A GitHub Action that generates or updates FOLIO application descriptors. This ac
 
 ## Inputs
 
-| Input                     | Required | Default                       | Description                                                              |
-|---------------------------|----------|-------------------------------|--------------------------------------------------------------------------|
-| `app_name`                | Yes      | -                             | Application name used for naming the generated descriptor file           |
-| `state_file`              | No       | `application-descriptor.json` | Path to the application state file (JSON format)                         |
-| `generation_mode`         | No       | `generate`                    | Mode: `generate` (from template) or `update` (sync from template)        |
-| `template_file`           | No       | `application.template.json`   | Path to template file                                                    |
-| `validate_artifacts`      | No       | `true`                        | Validate Docker/NPM artifacts exist before resolution                    |
-| `build_number`            | No       | -                             | Build number for snapshot versions                                       |
-| `pre_release`             | No       | `true`                        | Pre-release filter: `true` (include), `false` (release only), `only`     |
-| `upload_artifact`         | No       | `true`                        | Whether to upload the generated descriptor as a GitHub artifact          |
-| `artifact_name`           | No       | `{app_name}-descriptor`       | Name for the uploaded artifact                                           |
-| `artifact_retention_days` | No       | `1`                           | Number of days to retain the uploaded artifact                           |
+| Input                     | Required | Default                       | Description                                                                                 |
+|---------------------------|----------|-------------------------------|---------------------------------------------------------------------------------------------|
+| `app_name`                | Yes      | -                             | Application name used for naming the generated descriptor file                              |
+| `state_file`              | No       | `application-descriptor.json` | Path to the application state file (JSON format)                                            |
+| `generation_mode`         | No       | `generate`                    | Mode: `generate` (from template) or `update` (sync from template)                           |
+| `template_file`           | No       | `application.template.json`   | Path to template file                                                                       |
+| `validate_artifacts`      | No       | `true`                        | Validate Docker/NPM artifacts exist before resolution                                       |
+| `build_number`            | No       | -                             | Build number for snapshot versions                                                          |
+| `pre_release`             | No       | `true`                        | Pre-release filter: `true` (include), `false` (release only), `only`                        |
+| `use_project_version`     | No       | `true`                        | When true, uses pom.xml version; when false, increments patch from descriptor (update mode) |
+| `no_version_bump`         | No       | `true`                        | Skip automatic version incrementing, keeping the version unchanged (update mode)            |
+| `upload_artifact`         | No       | `true`                        | Whether to upload the generated descriptor as a GitHub artifact                             |
+| `artifact_name`           | No       | `{app_name}-descriptor`       | Name for the uploaded artifact                                                              |
+| `artifact_retention_days` | No       | `1`                           | Number of days to retain the uploaded artifact                                              |
 
 ## Outputs
 

@@ -119,6 +119,7 @@ on:
       failure_reason:
         description: 'Reason for workflow failure if any'
         value: ${{
+          (jobs.prepare-context.outputs.failure_reason != '' && jobs.prepare-context.outputs.failure_reason) ||
           (jobs.update-application.outputs.failure_reason != '' && jobs.update-application.outputs.failure_reason) ||
           (jobs.verify-application.outputs.failure_reason != '' && jobs.verify-application.outputs.failure_reason) ||
           (jobs.commit-changes.outputs.failure_reason != '' && jobs.commit-changes.outputs.failure_reason) ||
@@ -146,6 +147,7 @@ jobs:
       pr_exists: ${{ steps.check-pr.outputs.pr_exists }}
       pr_number: ${{ steps.check-pr.outputs.pr_number }}
       pr_url: ${{ steps.check-pr.outputs.pr_url }}
+      failure_reason: ${{ steps.validate-state.outputs.failure_reason }}
     steps:
       - name: Determine target branch
         id: determine
@@ -222,6 +224,20 @@ jobs:
             echo "pr_url=" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Validate Branch/PR State
+        id: validate-state
+        if: steps.determine.outputs.need_pr == 'true' && steps.determine.outputs.update_branch_exists == 'true'
+        env:
+          PR_EXISTS: ${{ steps.check-pr.outputs.pr_exists }}
+          UPDATE_BRANCH: ${{ inputs.update_branch }}
+        run: |
+          if [[ "$PR_EXISTS" != "true" ]]; then
+            echo "failure_reason=Orphan branch detected: '$UPDATE_BRANCH' exists but no PR found. Please delete the orphan branch." >> "$GITHUB_OUTPUT"
+            echo "::error::Update branch '$UPDATE_BRANCH' exists but no PR found."
+            echo "::error::Please delete the orphan branch."
+            exit 1
+          fi
+
   update-application:
     name: Update Application
     needs: prepare-context
@@ -235,7 +251,7 @@ jobs:
       app_descriptor_file: ${{ steps.generate.outputs.descriptor_file }}
       app_descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
       artifact_name: ${{ steps.generate.outputs.artifact_name }}
-      state_file_artifact_name: ${{ steps.generate.outputs.state_file_artifact_name }}
+      state_file_artifact_name: ${{ steps.upload-state.outputs.artifact_name }}
       failure_reason: ${{ steps.generate.outputs.failure_reason || '' }}
     steps:
       - name: Checkout Application Repository
@@ -285,6 +301,39 @@ jobs:
             echo "value=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Increment Application Patch Version
+        id: bump-version
+        if: |
+          needs.prepare-context.outputs.need_pr == 'true' &&
+          needs.prepare-context.outputs.pr_exists != 'true' &&
+          needs.prepare-context.outputs.update_branch_exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current="$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)"
+
+          if [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(.*)$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+            rest="${BASH_REMATCH[4]}"   # includes any suffix like -SNAPSHOT, -RC1, +build, etc.
+          else
+            echo "::error::Unsupported version format (expected X.Y.Z...): $current"
+            exit 1
+          fi
+
+          new_version="${major}.${minor}.$((patch + 1))${rest}"
+
+          echo "::group::Updating pom.xml version"
+          mvn -q versions:set -DnewVersion="$new_version" -DgenerateBackupPoms=false
+          echo "::endgroup::"
+
+          echo "::notice::Version bumped: $current -> $new_version"
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+          echo "old_version=$current" >> "$GITHUB_OUTPUT"
+          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
+
       - name: Generate Descriptor
         id: generate
         uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
@@ -292,11 +341,39 @@ jobs:
           app_name: ${{ inputs.app_name }}
           build_number: ${{ steps.build-number.outputs.value }}
           use_input_generator_version: true #TODO: remove sometime later
+          upload_state_file: false
 
       - name: Collect New Version
         id: collect-new-version
         if: steps.generate.outputs.generated == 'true'
         run: echo "version=$(jq -r '.version' target/${{ steps.generate.outputs.descriptor_file }})" >> "$GITHUB_OUTPUT"
+
+      - name: Upload State File Artifact
+        id: upload-state
+        if: steps.generate.outputs.generated == 'true'
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          DESCRIPTOR_FILE: ${{ steps.generate.outputs.descriptor_file }}
+          VERSION_BUMPED: ${{ steps.bump-version.outputs.bumped }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/state-file-upload
+          cp "target/$DESCRIPTOR_FILE" /tmp/state-file-upload/application.lock.json
+
+          if [[ "$VERSION_BUMPED" == "true" ]]; then
+            echo "::notice::Including pom.xml in state file artifact (version was bumped)"
+            cp pom.xml /tmp/state-file-upload/
+          fi
+
+          echo "artifact_name=${APP_NAME}-state-file" >> "$GITHUB_OUTPUT"
+
+      - name: Upload State File
+        if: steps.generate.outputs.generated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.upload-state.outputs.artifact_name }}
+          path: /tmp/state-file-upload/
+          retention-days: 1
 
   verify-application:
     name: Verify Application
@@ -442,7 +519,7 @@ jobs:
 
             ### Updated Modules:
             ```
-            ${{ steps.compare.outputs.updated-modules }}
+            ${{ steps.compare.outputs.updated-modules || 'No module version changes detected.' }}
             ```
 
             This PR was automatically generated by the update workflow.

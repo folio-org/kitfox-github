@@ -1,0 +1,270 @@
+name: Branch Ruleset Automation
+
+run-name: >-
+  Branch ruleset update • ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_owner:
+        description: 'Repository owner'
+        required: true
+        type: string
+      repo_name:
+        description: 'Repository name'
+        required: true
+        type: string
+      head_sha:
+        description: 'Commit SHA that triggered the update'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  update-rulesets:
+    name: Update Branch Rulesets
+    runs-on: ubuntu-latest
+    outputs:
+      branches_updated: ${{ steps.update-rulesets.outputs.branches_updated }}
+      branches_skipped: ${{ steps.update-rulesets.outputs.branches_skipped }}
+      branches_failed: ${{ steps.update-rulesets.outputs.branches_failed }}
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ inputs.repo_owner }}
+          repositories: ${{ inputs.repo_name }}
+
+      - name: Get Update Configuration
+        id: get-config
+        uses: folio-org/kitfox-github/.github/actions/get-update-config@master
+        with:
+          repo: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+          branch: master
+          github_token: ${{ steps.app-token.outputs.token }}
+
+      - name: Check Configuration
+        id: check-config
+        env:
+          CONFIG_EXISTS: ${{ steps.get-config.outputs.config_exists }}
+          ENABLED: ${{ steps.get-config.outputs.enabled }}
+          RELEASE_BRANCHES: ${{ steps.get-config.outputs.branches }}
+        run: |
+          if [[ "$CONFIG_EXISTS" != "true" ]]; then
+            echo "::warning::Configuration file not found: .github/update-config.yml"
+            echo "should_continue=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$ENABLED" != "true" ]]; then
+            echo "::notice::Release scanning is disabled in configuration"
+            echo "should_continue=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BRANCH_COUNT=$(echo "$RELEASE_BRANCHES" | jq -r 'length')
+          if [[ "$BRANCH_COUNT" == "0" ]]; then
+            echo "::notice::No release branches configured"
+            echo "should_continue=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::notice::Found $BRANCH_COUNT release branches to configure"
+          echo "should_continue=true" >> "$GITHUB_OUTPUT"
+
+      - name: Update Branch Rulesets
+        id: update-rulesets
+        if: steps.check-config.outputs.should_continue == 'true'
+        uses: folio-org/kitfox-github/.github/actions/update-branch-rulesets@master
+        with:
+          repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+          branches: ${{ steps.get-config.outputs.branches }}
+          branch_config: ${{ steps.get-config.outputs.branch_config }}
+          github_token: ${{ steps.app-token.outputs.token }}
+
+
+  notify:
+    name: Send Notifications
+    needs: update-rulesets
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    outputs:
+      team_channel: ${{ steps.get-vars.outputs.team_channel }}
+    env:
+      WORKFLOW_SUCCESS: ${{ needs.update-rulesets.result == 'success' }}
+      TITLE_TEXT: "${{ inputs.repo_name }} branch ruleset update ${{ needs.update-rulesets.result == 'success' && 'completed' || 'failed' }}"
+      TITLE_BLOCK: |
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*${{ inputs.repo_name }} branch ruleset update ${{ needs.update-rulesets.result == 'success' && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+          }
+        }
+      ATTACHMENT: |
+        {
+          "color": "${{ needs.update-rulesets.result == 'success' && 'good' || 'danger' }}",
+          "fields": [
+            {
+              "title": "Branches Updated",
+              "value": "${{ needs.update-rulesets.outputs.branches_updated || 'none' }}",
+              "short": true
+            }${{ inputs.head_sha != '' && format(',
+            {{
+              "title": "Config Change",
+              "value": "<https://github.com/{0}/{1}/commit/{2}|{2}>",
+              "short": true
+            }}', inputs.repo_owner, inputs.repo_name, inputs.head_sha) || '' }}${{ needs.update-rulesets.outputs.branches_failed != 'none' && needs.update-rulesets.outputs.branches_failed != '' && format(',
+            {{
+              "title": "Branches Failed",
+              "value": "{0}",
+              "short": false
+            }}', needs.update-rulesets.outputs.branches_failed) || '' }}
+          ],
+          "footer": "Eureka CI/CD"
+        }
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ inputs.repo_owner }}
+          repositories: ${{ inputs.repo_name }}
+
+      - name: Get Repository Variables
+        id: get-vars
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            try {
+              const { data: variable } = await github.rest.actions.getRepoVariable({
+                owner: '${{ inputs.repo_owner }}',
+                repo: '${{ inputs.repo_name }}',
+                name: 'SLACK_NOTIF_CHANNEL'
+              });
+              console.log(`Found SLACK_NOTIF_CHANNEL: ${variable.value}`);
+              core.setOutput('team_channel', variable.value);
+            } catch (error) {
+              console.log(`SLACK_NOTIF_CHANNEL not found or not accessible: ${error.message}`);
+              core.setOutput('team_channel', '');
+            }
+
+      - name: Send to Team Channel
+        if: steps.get-vars.outputs.team_channel != ''
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ steps.get-vars.outputs.team_channel }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ env.ATTACHMENT }}
+              ]
+            }
+
+      - name: Send to General Channel
+        if: vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ env.ATTACHMENT }}
+              ]
+            }
+
+  summarize:
+    name: Workflow Summary
+    needs: [update-rulesets, notify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Workflow Summary
+        env:
+          BRANCHES_UPDATED: ${{ needs.update-rulesets.outputs.branches_updated }}
+          BRANCHES_SKIPPED: ${{ needs.update-rulesets.outputs.branches_skipped }}
+          BRANCHES_FAILED: ${{ needs.update-rulesets.outputs.branches_failed }}
+          JOB_STATUS: ${{ needs.update-rulesets.result }}
+        run: |
+          {
+            echo "### Branch Ruleset Automation Summary"
+            echo ""
+            echo "**Repository:** \`${{ inputs.repo_owner }}/${{ inputs.repo_name }}\`"
+            if [[ -n "${{ inputs.head_sha }}" ]]; then
+              echo "**Trigger Commit:** [\`${{ inputs.head_sha }}\`](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.head_sha }})"
+            fi
+            echo ""
+
+            echo "### Ruleset Configuration"
+            echo ""
+            echo "Each configured branch will have:"
+            echo "- Required status check: \`eureka-ci / validate-application\`"
+            echo "- Merge queue enabled (SQUASH merge, ALLGREEN strategy)"
+            echo "- Pull request reviews required (1 approval)"
+            echo ""
+
+            echo "### Results"
+            echo ""
+            if [[ "$JOB_STATUS" == "success" ]]; then
+              echo "**Status:** Completed successfully"
+            elif [[ "$JOB_STATUS" == "failure" ]]; then
+              echo "**Status:** Completed with errors"
+            else
+              echo "**Status:** $JOB_STATUS"
+            fi
+
+            echo ""
+            echo "**Branches Updated:** $BRANCHES_UPDATED"
+            echo ""
+            echo "**Branches Skipped:** $BRANCHES_SKIPPED"
+
+            if [[ -n "$BRANCHES_FAILED" && "$BRANCHES_FAILED" != "none" ]]; then
+              echo ""
+              echo "**Branches Failed:** $BRANCHES_FAILED"
+            fi
+
+            echo ""
+            echo "### Notification Status"
+            echo ""
+            if [[ -n "${{ needs.notify.outputs.team_channel }}" ]]; then
+              echo "**Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Sent"
+            else
+              echo "**Team Channel:** Not configured"
+            fi
+
+            if [[ -n "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}" ]]; then
+              echo "**General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Sent"
+            else
+              echo "**General Channel:** Not configured"
+            fi
+
+            echo ""
+            echo "---"
+            echo ""
+            echo "**Workflow Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } >> $GITHUB_STEP_SUMMARY
