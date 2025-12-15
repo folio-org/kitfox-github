@@ -1,4 +1,3 @@
-# TODO: Specify branch ruleset parameters in the update-config.yml file later and update it here based on them.
 name: 'Update Branch Rulesets'
 description: 'Create or update branch rulesets with merge queue and required status checks'
 
@@ -12,15 +11,11 @@ inputs:
   ruleset_pattern:
     description: 'Pattern for ruleset names with {0} as branch placeholder (e.g., eureka-ci-{0} or {0}-merge-queue)'
     required: false
-    default: '{0}-eureka-ci'
+    default: '{0}-merge-queue'
   required_check:
     description: 'Required status check context name'
     required: false
     default: 'eureka-ci / validate-application'
-  check_integration_id:
-    description: 'Integration ID for the status check source (GitHub App ID)'
-    required: false
-    default: '1671958' # TODO: Move it to a kitfox-github env variable later
   branch_config:
     description: 'JSON array of branch configurations with need_pr flag'
     required: false
@@ -50,7 +45,6 @@ runs:
         INPUT_REPOSITORY: ${{ inputs.repository }}
         INPUT_BRANCHES: ${{ inputs.branches }}
         INPUT_REQUIRED_CHECK: ${{ inputs.required_check }}
-        INPUT_CHECK_INTEGRATION_ID: ${{ inputs.check_integration_id }}
         INPUT_BRANCH_CONFIG: ${{ inputs.branch_config }}
       with:
         github-token: ${{ inputs.github_token }}
@@ -59,7 +53,6 @@ runs:
           const branches = JSON.parse(process.env.INPUT_BRANCHES);
           const requiredCheck = process.env.INPUT_REQUIRED_CHECK;
           const branchConfig = JSON.parse(process.env.INPUT_BRANCH_CONFIG || '[]');
-          const checkIntegrationId = parseInt(process.env.INPUT_CHECK_INTEGRATION_ID, 10);
 
           const updatedBranches = [];
           const skippedBranches = [];
@@ -69,6 +62,7 @@ runs:
           console.log(`Required check: ${requiredCheck}`);
           console.log(`Branch config entries: ${branchConfig.length}`);
 
+          // Get existing rulesets
           let existingRulesets = [];
           try {
             const { data: rulesets } = await github.rest.repos.getRepoRulesets({
@@ -86,6 +80,7 @@ runs:
             const rulesetName = '${{ inputs.ruleset_pattern }}'.replace('{0}', branch);
             console.log(`\nProcessing branch: ${branch}, ruleset: ${rulesetName}`);
 
+            // Check if branch exists
             try {
               await github.rest.repos.getBranch({
                 owner,
@@ -107,15 +102,28 @@ runs:
 
             const rules = [];
 
+            if (needPr) {
+              rules.push({
+                type: 'pull_request',
+                parameters: {
+                  required_approving_review_count: 1,
+                  dismiss_stale_reviews_on_push: true,
+                  require_code_owner_review: false,
+                  require_last_push_approval: false,
+                  required_review_thread_resolution: false
+                }
+              });
+            }
+
             rules.push({
               type: 'required_status_checks',
               parameters: {
                 required_status_checks: [
                   {
-                    context: requiredCheck,
-                    integration_id: checkIntegrationId
+                    context: requiredCheck
                   }
-                ]
+                ],
+                strict_required_status_checks_policy: needPr
               }
             });
 
@@ -155,6 +163,7 @@ runs:
             };
 
             try {
+              // Check if ruleset exists
               const existingRuleset = existingRulesets.find(r => r.name === rulesetName);
 
               if (existingRuleset) {
