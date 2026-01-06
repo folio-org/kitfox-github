@@ -169,6 +169,14 @@ runs:
           echo "mode=$GENERATION_MODE" >> "$GITHUB_OUTPUT"
         fi
 
+    - name: Cache Maven Repository
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
     - name: Generate Application Descriptor
       id: generate
       if: steps.validate-template.outputs.valid == 'true'
