@@ -12,6 +12,7 @@ A GitHub Action that generates or updates FOLIO application descriptors. This ac
 - **Artifact Validation**: Validates Docker images and NPM packages exist before resolution
 - **Template Validation**: Validates all module versions are valid semver or semver range format
 - **Maven Integration**: Uses the FOLIO application generator Maven plugin
+- **Maven Dependency Caching**: Caches `~/.m2/repository` to reduce Maven Central downloads and avoid rate limiting
 - **Artifact Upload**: Optionally uploads generated descriptors as GitHub artifacts
 - **Detailed Change Tracking**: Outputs detailed information about module changes
 
@@ -330,6 +331,13 @@ Your `pom.xml` should include the FOLIO application generator plugin:
 ```
 **Solution**: Verify the template file path is correct.
 
+#### Maven Central 403 Forbidden
+```
+Could not transfer artifact ... from/to central: status code: 403, reason phrase: Forbidden
+```
+**Cause**: GitHub-hosted runners share IP pools that can hit Maven Central rate limits.
+**Mitigation**: The action uses `actions/cache@v5` to cache Maven dependencies. On cache hit, no Maven Central downloads are needed. Cache misses (first run, after 7-day eviction, pom.xml changes) may still encounter this issue - retry the workflow.
+
 ## Related Documentation
 
 - **[Application Update Flow](../../docs/application-update-flow.md)**: Workflow that uses this action
@@ -337,5 +345,5 @@ Your `pom.xml` should include the FOLIO application generator plugin:
 
 ---
 
-**Last Updated**: December 2025
-**Action Version**: 2.0 (Template-Driven Update Support)
+**Last Updated**: January 2026
+**Action Version**: 2.1 (Maven Dependency Caching)
