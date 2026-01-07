@@ -336,7 +336,7 @@ jobs:
 
       - name: Generate Descriptor
         id: generate
-        uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@RANCHER-2711
+        uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
         with:
           app_name: ${{ inputs.app_name }}
           build_number: ${{ steps.build-number.outputs.value }}
