@@ -30,17 +30,19 @@ This workflow implements the core update flow for FOLIO applications. It coordin
 
 ### Outputs
 
-| Output           | Description                                          |
-|------------------|------------------------------------------------------|
-| `updated`        | Whether application was updated                      |
-| `previous_version` | Previous application version                       |
-| `new_version`    | New application version if updated                   |
-| `updated_cnt`    | Number of updated modules                            |
-| `updated_modules`| List of updated modules                              |
-| `pr_created`     | Whether a PR was created                             |
-| `pr_url`         | URL of created/updated PR                            |
-| `failure_reason` | Reason for failure (validation or publishing errors) |
-| `commit_sha`     | Commit SHA                                           |
+| Output                    | Description                                                               |
+|---------------------------|---------------------------------------------------------------------------|
+| `updated`                 | Whether application was updated                                           |
+| `previous_version`        | Previous application version                                              |
+| `new_version`             | New application version if updated                                        |
+| `updated_cnt`             | Number of updated modules                                                 |
+| `updated_modules`         | List of updated modules                                                   |
+| `pr_created`              | Whether a PR was created                                                  |
+| `pr_url`                  | URL of created/updated PR                                                 |
+| `failure_reason`          | Reason for failure (validation or publishing errors)                      |
+| `commit_sha`              | Commit SHA                                                                |
+| `error_category`          | Error classification (`NONE`, `INFRASTRUCTURE`, `MODULE_NOT_FOUND`, etc.) |
+| `is_infrastructure_error` | Whether error is infrastructure-related (`true`/`false`)                  |
 
 ### Permissions
 
@@ -460,6 +462,6 @@ Solution: Check repository permissions and GitHub API status
 
 ---
 
-**Last Updated**: November 2025
-**Workflow Version**: 2.0 (Unified)
+**Last Updated**: January 2026
+**Workflow Version**: 2.1 (Error Classification)
 **Compatibility**: All FOLIO application repositories

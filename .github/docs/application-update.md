@@ -33,19 +33,21 @@ All branch-specific configuration (pre-release mode, build offsets, PR requireme
 
 ### Outputs
 
-| Output                 | Description                                                  |
-|------------------------|--------------------------------------------------------------|
-| `update_result`        | Result of the update (success/failure/skipped)               |
-| `updated`              | Whether modules were updated                                 |
-| `new_version`          | New application version                                      |
-| `previous_version`     | Previous application version                                 |
-| `updated_cnt`          | Number of updated modules                                    |
-| `updated_modules`      | List of updated modules                                      |
-| `pr_created`           | Whether a PR was created (for need_pr mode)                  |
-| `pr_url`               | URL of created/updated PR                                    |
-| `commit_sha`           | Commit SHA of the update                                     |
-| `failure_reason`       | Reason for failure (validation or publishing errors)         |
-| `notification_outcome` | Outcome of the notification                                  |
+| Output                    | Description                                                               |
+|---------------------------|---------------------------------------------------------------------------|
+| `update_result`           | Result of the update (success/failure/skipped)                            |
+| `updated`                 | Whether modules were updated                                              |
+| `new_version`             | New application version                                                   |
+| `previous_version`        | Previous application version                                              |
+| `updated_cnt`             | Number of updated modules                                                 |
+| `updated_modules`         | List of updated modules                                                   |
+| `pr_created`              | Whether a PR was created (for need_pr mode)                               |
+| `pr_url`                  | URL of created/updated PR                                                 |
+| `commit_sha`              | Commit SHA of the update                                                  |
+| `failure_reason`          | Reason for failure (validation or publishing errors)                      |
+| `error_category`          | Error classification (`NONE`, `INFRASTRUCTURE`, `MODULE_NOT_FOUND`, etc.) |
+| `is_infrastructure_error` | Whether error is infrastructure-related (`true`/`false`)                  |
+| `notification_outcome`    | Outcome of the notification                                               |
 
 ### Permissions
 
@@ -283,6 +285,21 @@ jobs:
 - **Status-Based Messaging**: Success, failure, and skip scenarios
 - **Non-Blocking**: Notification failures don't fail workflow
 
+### Error-Based Notification Routing
+
+The workflow classifies errors and routes notifications accordingly to reduce noise:
+
+| Error Category       | Description                        | Team Channel | General Channel |
+|---------------------|------------------------------------|--------------|-----------------|
+| `NONE`              | Successful execution               | Updates only | Updates only    |
+| `INFRASTRUCTURE`    | Maven/network/registry issues      | Skipped      | Receives        |
+| `MODULE_NOT_FOUND`  | Module not found in registry       | Receives     | Receives        |
+| `ARTIFACT_NOT_FOUND`| Docker/NPM artifact missing        | Receives     | Receives        |
+| `VALIDATION_FAILED` | Application validation error       | Receives     | Receives        |
+| `CONFIGURATION_ERROR`| Template/config issue             | Receives     | Receives        |
+
+**Rationale**: Infrastructure errors (Maven failures, network issues, registry outages) are not team-actionable and would flood 50+ team channels with non-actionable alerts. These are consolidated to the general channel only.
+
 ### Professional Reporting
 - **GitHub Summaries**: Rich markdown summaries in workflow UI
 - **Progress Indicators**: Visual status for each component
@@ -406,6 +423,6 @@ Solution: Check FOLIO registry connectivity and module availability
 
 ---
 
-**Last Updated**: November 2025
-**Workflow Version**: 2.0 (Unified)
+**Last Updated**: January 2026
+**Workflow Version**: 2.1 (Error Classification)
 **Compatibility**: All FOLIO application repositories

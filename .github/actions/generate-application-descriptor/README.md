@@ -72,6 +72,21 @@ A GitHub Action that generates or updates FOLIO application descriptors. This ac
 | `artifact_name`        | Name of the uploaded artifact                                                          |
 | `failure_reason`       | Reason for failure if generation failed (e.g., invalid template versions)              |
 
+### Error Classification Outputs
+
+| Output                    | Description                                                                                                                                           |
+|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `error_category`          | Error category from execution result (`NONE`, `INFRASTRUCTURE`, `MODULE_NOT_FOUND`, `ARTIFACT_NOT_FOUND`, `VALIDATION_FAILED`, `CONFIGURATION_ERROR`) |
+| `is_infrastructure_error` | Whether the error is infrastructure-related (`true`/`false`) - used for notification routing                                                          |
+
+**Error Category Values**:
+- `NONE`: Successful execution
+- `INFRASTRUCTURE`: Maven/network/registry issues (not team-actionable)
+- `MODULE_NOT_FOUND`: Module not found in registry
+- `ARTIFACT_NOT_FOUND`: Docker/NPM artifact missing
+- `VALIDATION_FAILED`: Application validation error
+- `CONFIGURATION_ERROR`: Template/config issue
+
 ### Update Mode Outputs
 
 | Output             | Description                                            |

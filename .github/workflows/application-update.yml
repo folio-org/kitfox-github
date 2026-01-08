@@ -93,6 +93,12 @@ on:
       failure_reason:
         description: 'Reason for failure if any'
         value: ${{ jobs.update.outputs.failure_reason }}
+      error_category:
+        description: 'Error category for classification'
+        value: ${{ jobs.update.outputs.error_category }}
+      is_infrastructure_error:
+        description: 'Whether error is infrastructure-related'
+        value: ${{ jobs.update.outputs.is_infrastructure_error }}
       notification_outcome:
         description: 'Outcome of the notification'
         value: ${{ jobs.notify.outputs.notification_outcome }}
@@ -234,7 +240,7 @@ jobs:
     steps:
       - name: Notify Team Channel
         id: notify-team
-        if: vars.SLACK_NOTIF_CHANNEL != ''
+        if: vars.SLACK_NOTIF_CHANNEL != '' && needs.update.outputs.is_infrastructure_error != 'true'
         continue-on-error: true
         env:
           CHANNEL: ${{ vars.SLACK_NOTIF_CHANNEL }}
