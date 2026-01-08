@@ -254,6 +254,7 @@ runs:
         echo "::endgroup::"
         rm -f "$mvn_output"
 
+        APP_DESCRIPTOR_FILE=$(compgen -G "target/${APP_NAME}*.json" | grep -v "update-result" | grep -v "execution-result" | head -n 1 || true)
         if [[ ! -d "target" ]]; then
           echo "::notice::No changes detected - target directory was not created by Maven"
           echo "generated=false" >> "$GITHUB_OUTPUT"
@@ -263,8 +264,7 @@ runs:
         echo "::group::Debug - Check target directory contents"
         ls -la target/
         echo "::endgroup::"
-
-        APP_DESCRIPTOR_FILE=$(compgen -G "target/${APP_NAME}*.json" | grep -v "update-result" | head -n 1 || true)
+        
         if [[ -z "$APP_DESCRIPTOR_FILE" ]]; then
           echo "::error::Generated application descriptor not found in target directory"
           echo "generated=false" >> "$GITHUB_OUTPUT"
