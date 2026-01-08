@@ -63,13 +63,13 @@ inputs:
 outputs:
   generated:
     description: 'Whether descriptor was generated with changes (true only when new descriptor file was created)'
-    value: ${{ steps.generate.outputs.generated }}
+    value: ${{ steps.parse-execution-result.outputs.generated }}
   descriptor_file:
     description: 'Name of generated descriptor file'
-    value: ${{ steps.generate.outputs.descriptor_file }}
+    value: ${{ steps.parse-execution-result.outputs.descriptor_file }}
   descriptor_file_name:
     description: 'Name of descriptor file without extension'
-    value: ${{ steps.generate.outputs.descriptor_file_name }}
+    value: ${{ steps.parse-execution-result.outputs.descriptor_file_name }}
   artifact_name:
     description: 'Name of the uploaded artifact'
     value: ${{ inputs.artifact_name || format('{0}-descriptor', inputs.app_name) }}
@@ -78,7 +78,7 @@ outputs:
     value: ${{ inputs.state_file_artifact_name || format('{0}-state-file', inputs.app_name) }}
   failure_reason:
     description: 'Reason for failure if generation failed'
-    value: ${{ steps.validate-template.outputs.failure_reason || steps.generate.outputs.failure_reason }}
+    value: ${{ steps.validate-template.outputs.failure_reason || steps.parse-execution-result.outputs.failure_reason || steps.generate.outputs.failure_reason }}
   updates_cnt:
     description: 'Total number of module changes (update mode only)'
     value: ${{ steps.parse-results.outputs.updates_cnt }}
@@ -109,6 +109,12 @@ outputs:
   updated_modules:
     description: 'Summary of all module changes'
     value: ${{ steps.parse-results.outputs.updated_modules }}
+  error_category:
+    description: 'Error category from execution result (NONE, INFRASTRUCTURE, MODULE_NOT_FOUND, ARTIFACT_NOT_FOUND, VALIDATION_FAILED, CONFIGURATION_ERROR)'
+    value: ${{ steps.parse-execution-result.outputs.error_category }}
+  is_infrastructure_error:
+    description: 'Whether the error is infrastructure-related (true/false)'
+    value: ${{ steps.parse-execution-result.outputs.is_infrastructure_error }}
 
 runs:
   using: 'composite'
@@ -254,20 +260,74 @@ runs:
         echo "::endgroup::"
         rm -f "$mvn_output"
 
-        APP_DESCRIPTOR_FILE=$(compgen -G "target/${APP_NAME}*.json" | grep -v "update-result" | grep -v "execution-result" | head -n 1 || true)
-        if [[ ! -d "target" ]] || [[ -z "$APP_DESCRIPTOR_FILE" ]]; then
-          echo "::notice::No changes detected. Application descriptor not generated."
+        echo "::notice::Maven execution completed successfully"
+
+    - name: Parse Execution Result
+      id: parse-execution-result
+      if: always() && steps.validate-template.outputs.valid == 'true'
+      shell: bash
+      env:
+        APP_NAME: ${{ inputs.app_name }}
+      run: |
+        set -eo pipefail
+
+        RESULT_FILE="target/execution-result.json"
+
+        if [[ ! -f "$RESULT_FILE" ]]; then
+          echo "::warning::execution-result.json not found - classifying as INFRASTRUCTURE"
+          echo "error_category=INFRASTRUCTURE" >> "$GITHUB_OUTPUT"
+          echo "is_infrastructure_error=true" >> "$GITHUB_OUTPUT"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          echo "failure_reason=Maven execution failed before plugin initialization" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "::group::Execution Result"
+        cat "$RESULT_FILE"
+        echo "::endgroup::"
+
+        STATUS=$(jq -r '.status // "UNKNOWN"' "$RESULT_FILE")
+        SUCCESS=$(jq -r '.success // "null"' "$RESULT_FILE")
+        ERROR_CATEGORY=$(jq -r '.errorCategory // "NONE"' "$RESULT_FILE")
+        ERROR_MESSAGE=$(jq -r '.errorMessage // ""' "$RESULT_FILE")
+        APP_VERSION=$(jq -r '.appVersion // ""' "$RESULT_FILE")
+
+        if [[ "$STATUS" != "COMPLETED" ]]; then
+          echo "::warning::Plugin execution incomplete (status: $STATUS) - classifying as INFRASTRUCTURE"
+          echo "error_category=INFRASTRUCTURE" >> "$GITHUB_OUTPUT"
+          echo "is_infrastructure_error=true" >> "$GITHUB_OUTPUT"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          echo "failure_reason=Plugin execution incomplete (status: $STATUS)" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "error_category=$ERROR_CATEGORY" >> "$GITHUB_OUTPUT"
+        if [[ "$ERROR_CATEGORY" == "INFRASTRUCTURE" ]]; then
+          echo "is_infrastructure_error=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "is_infrastructure_error=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        if [[ "$SUCCESS" != "true" ]]; then
+          echo "::notice::Generation not successful (success=$SUCCESS)"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          if [[ -n "$ERROR_MESSAGE" ]]; then
+            echo "failure_reason=$ERROR_MESSAGE" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+        fi
+
+        if [[ -z "$APP_VERSION" ]]; then
+          echo "::notice::No version in execution result - no changes detected"
           echo "generated=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
-        echo "::group::Debug - Check target directory contents"
-        ls -la target/
-        echo "::endgroup::"
-        
-        if [[ -z "$APP_DESCRIPTOR_FILE" ]]; then
-          echo "::error::Generated application descriptor not found in target directory"
+        APP_DESCRIPTOR_FILE="target/${APP_NAME}-${APP_VERSION}.json"
+        if [[ ! -f "$APP_DESCRIPTOR_FILE" ]]; then
+          echo "::error::Descriptor file not found: $APP_DESCRIPTOR_FILE"
           echo "generated=false" >> "$GITHUB_OUTPUT"
+          echo "failure_reason=Descriptor file not found despite successful execution" >> "$GITHUB_OUTPUT"
           exit 1
         fi
 
@@ -276,11 +336,11 @@ runs:
         echo "descriptor_file=$APP_DESCRIPTOR_FILENAME" >> "$GITHUB_OUTPUT"
         echo "descriptor_file_name=${APP_DESCRIPTOR_FILENAME%.json}" >> "$GITHUB_OUTPUT"
 
-        echo "::notice::Application descriptor generated successfully: $APP_DESCRIPTOR_FILENAME"
+        echo "::notice::Application descriptor generated: $APP_DESCRIPTOR_FILENAME (category: $ERROR_CATEGORY)"
 
     - name: Parse Update Results
       id: parse-results
-      if: steps.generate.outputs.generated == 'true'
+      if: steps.parse-execution-result.outputs.generated == 'true'
       shell: bash
       env:
         GENERATION_MODE: ${{ steps.determine-mode.outputs.mode }}
@@ -365,7 +425,7 @@ runs:
         echo "::notice::Total module changes: $total"
 
     - name: Upload Descriptor Artifact
-      if: steps.generate.outputs.generated == 'true' && inputs.upload_artifact == 'true'
+      if: steps.parse-execution-result.outputs.generated == 'true' && inputs.upload_artifact == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.artifact_name || format('{0}-descriptor', inputs.app_name) }}"
@@ -373,14 +433,14 @@ runs:
         retention-days: ${{ inputs.artifact_retention_days }}
 
     - name: Prepare State File
-      if: steps.generate.outputs.generated == 'true' && inputs.upload_state_file == 'true'
+      if: steps.parse-execution-result.outputs.generated == 'true' && inputs.upload_state_file == 'true'
       shell: bash
       run: |
         mkdir -p /tmp/state-file-upload
-        cp "target/${{ steps.generate.outputs.descriptor_file }}" /tmp/state-file-upload/application.lock.json
+        cp "target/${{ steps.parse-execution-result.outputs.descriptor_file }}" /tmp/state-file-upload/application.lock.json
 
     - name: Upload State File Artifact
-      if: steps.generate.outputs.generated == 'true' && inputs.upload_state_file == 'true'
+      if: steps.parse-execution-result.outputs.generated == 'true' && inputs.upload_state_file == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.state_file_artifact_name || format('{0}-state-file', inputs.app_name) }}"
