@@ -107,6 +107,12 @@ on:
       app_descriptor_file_name:
         description: 'Name of generated application descriptor file'
         value: ${{ jobs.update-application.outputs.app_descriptor_file_name }}
+      error_category:
+        description: 'Error category from execution result (NONE, INFRASTRUCTURE, MODULE_NOT_FOUND, etc.)'
+        value: ${{ jobs.update-application.outputs.error_category }}
+      is_infrastructure_error:
+        description: 'Whether the error is infrastructure-related (true/false)'
+        value: ${{ jobs.update-application.outputs.is_infrastructure_error }}
       workflow_status:
         description: 'Overall workflow status'
         value: ${{ 
@@ -253,6 +259,8 @@ jobs:
       artifact_name: ${{ steps.generate.outputs.artifact_name }}
       state_file_artifact_name: ${{ steps.upload-state.outputs.artifact_name }}
       failure_reason: ${{ steps.generate.outputs.failure_reason || '' }}
+      error_category: ${{ steps.generate.outputs.error_category }}
+      is_infrastructure_error: ${{ steps.generate.outputs.is_infrastructure_error }}
     steps:
       - name: Checkout Application Repository
         uses: actions/checkout@v4
