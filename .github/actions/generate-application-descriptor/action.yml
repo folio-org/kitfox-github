@@ -54,7 +54,7 @@ inputs:
   generator_version:
     description: 'Version of folio-application-generator Maven plugin to use'
     required: false
-    default: '1.4.0-SNAPSHOT'
+    default: '1.4.1-SNAPSHOT'
   use_input_generator_version:
     description: 'When true, uses generator_version input; when false, uses version from pom.xml'
     required: false
