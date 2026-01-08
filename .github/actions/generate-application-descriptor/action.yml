@@ -291,7 +291,7 @@ runs:
         ERROR_CATEGORY=$(jq -r '.errorCategory // "NONE"' "$RESULT_FILE")
         ERROR_MESSAGE=$(jq -r '.errorMessage // ""' "$RESULT_FILE")
         APP_VERSION=$(jq -r '.appVersion // ""' "$RESULT_FILE")
-        CHANGES_DETECTED=$(jq -r '.changesDetected // "null"' "$RESULT_FILE")
+        CHANGES_DETECTED=$(jq -r '.changesDetected' "$RESULT_FILE")
 
         if [[ "$STATUS" != "COMPLETED" ]]; then
           echo "::warning::Plugin execution incomplete (status: $STATUS) - classifying as INFRASTRUCTURE"
