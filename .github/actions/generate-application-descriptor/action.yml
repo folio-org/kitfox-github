@@ -291,6 +291,7 @@ runs:
         ERROR_CATEGORY=$(jq -r '.errorCategory // "NONE"' "$RESULT_FILE")
         ERROR_MESSAGE=$(jq -r '.errorMessage // ""' "$RESULT_FILE")
         APP_VERSION=$(jq -r '.appVersion // ""' "$RESULT_FILE")
+        CHANGES_DETECTED=$(jq -r '.changesDetected // "null"' "$RESULT_FILE")
 
         if [[ "$STATUS" != "COMPLETED" ]]; then
           echo "::warning::Plugin execution incomplete (status: $STATUS) - classifying as INFRASTRUCTURE"
@@ -317,8 +318,8 @@ runs:
           exit 0
         fi
 
-        if [[ -z "$APP_VERSION" ]]; then
-          echo "::notice::No version in execution result - no changes detected"
+        if [[ "$CHANGES_DETECTED" == "false" ]]; then
+          echo "::notice::No changes detected"
           echo "generated=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
