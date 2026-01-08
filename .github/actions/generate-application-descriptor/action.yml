@@ -255,8 +255,8 @@ runs:
         rm -f "$mvn_output"
 
         APP_DESCRIPTOR_FILE=$(compgen -G "target/${APP_NAME}*.json" | grep -v "update-result" | grep -v "execution-result" | head -n 1 || true)
-        if [[ ! -d "target" ]]; then
-          echo "::notice::No changes detected - target directory was not created by Maven"
+        if [[ ! -d "target" ]] || [[ -z "$APP_DESCRIPTOR_FILE" ]]; then
+          echo "::notice::No changes detected. Application descriptor not generated."
           echo "generated=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
