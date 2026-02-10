@@ -58,7 +58,7 @@ jobs:
           MATRIX_ENTRIES="[]"
           SKIPPED_BRANCHES="[]"
 
-          for branch_entry in $(echo "$BRANCH_CONFIG" | jq -c '.[]'); do
+          while IFS= read -r branch_entry; do
             branch=$(echo "$branch_entry" | jq -r '.branch')
             ruleset=$(echo "$branch_entry" | jq -c '.ruleset // {}')
 
@@ -77,7 +77,7 @@ jobs:
 
             MATRIX_ENTRIES=$(echo "$MATRIX_ENTRIES" | jq -c --argjson entry "$entry" '. += [$entry]')
             echo "::notice::Prepared matrix entry for branch: $branch"
-          done
+          done < <(echo "$BRANCH_CONFIG" | jq -c '.[]')
 
           BRANCH_COUNT=$(echo "$MATRIX_ENTRIES" | jq 'length')
           echo "::notice::Matrix contains $BRANCH_COUNT branches"
