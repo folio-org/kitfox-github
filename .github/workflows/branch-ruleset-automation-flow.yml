@@ -42,6 +42,11 @@ on:
         required: false
         type: string
         default: '[]'
+      enforcement:
+        description: 'Ruleset enforcement level: active or disabled'
+        required: false
+        type: string
+        default: 'active'
     outputs:
       result:
         description: 'Result of the ruleset update'
@@ -88,6 +93,7 @@ jobs:
           required_checks: ${{ inputs.required_checks }}
           merge_queue: ${{ inputs.merge_queue }}
           bypass_actors: ${{ inputs.bypass_actors }}
+          enforcement: ${{ inputs.enforcement }}
           integration_id: ${{ vars.EUREKA_CI_APP_ID }}
           github_token: ${{ steps.app-token.outputs.token }}
 
