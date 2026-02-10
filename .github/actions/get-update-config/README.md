@@ -78,7 +78,14 @@ The `branch_config` output provides a JSON array of objects, each containing:
     "need_pr": false,
     "pre_release": "only",
     "descriptor_build_offset": "100100000000000",
-    "rely_on_FAR": false
+    "rely_on_FAR": false,
+    "ruleset": {
+      "enabled": false,
+      "pattern": "{0}-eureka-ci",
+      "required_checks": [{"context": "eureka-ci / validate-application"}],
+      "merge_queue": {"enabled": false, "...": "..."},
+      "bypass_actors": [{"actor_type": "Integration", "bypass_mode": "always"}]
+    }
   },
   {
     "branch": "R1-2025",
@@ -86,7 +93,14 @@ The `branch_config` output provides a JSON array of objects, each containing:
     "need_pr": true,
     "pre_release": "false",
     "descriptor_build_offset": "",
-    "rely_on_FAR": false
+    "rely_on_FAR": false,
+    "ruleset": {
+      "enabled": true,
+      "pattern": "{0}-eureka-ci",
+      "required_checks": [{"context": "eureka-ci / validate-application"}],
+      "merge_queue": {"enabled": true, "...": "..."},
+      "bypass_actors": [{"actor_type": "Integration", "bypass_mode": "always"}]
+    }
   }
 ]
 ```
@@ -106,6 +120,16 @@ update_config:
     - "version-update"
     - "automated"
   update_branch_format: "version-update/{0}"
+  ruleset:
+    enabled: true
+    pattern: "{0}-eureka-ci"
+    required_checks:
+      - context: "eureka-ci / validate-application"
+    merge_queue:
+      enabled: true
+    bypass_actors:
+      - actor_type: "Integration"
+        bypass_mode: "always"
 
 # List of branches to monitor with branch-specific settings
 branches:
@@ -115,6 +139,8 @@ branches:
       pre_release: "only"
       descriptor_build_offset: "100100000000000"
       rely_on_FAR: false
+      ruleset:
+        enabled: false
   - R1-2025:
       enabled: true
       need_pr: true
@@ -135,6 +161,7 @@ branches:
 - **`pr_reviewers`**: Array of GitHub usernames or teams to assign as PR reviewers
 - **`labels`**: Array of labels to apply to generated PRs
 - **`update_branch_format`**: Template for update branch names (use `{0}` as placeholder for branch name)
+- **`ruleset`**: Global branch ruleset configuration (opt-in, `enabled: false` by default). See [update-config.md](../../docs/update-config.md) for full schema
 
 #### `branches` Section
 
@@ -150,6 +177,7 @@ branches:
     - `"false"`: Release-only modules (e.g., `1.2.3`)
   - **`descriptor_build_offset`**: Offset for application artifact version (default: `""`)
   - **`rely_on_FAR`**: Whether to rely on FAR for validation dependencies (default: `false`)
+  - **`ruleset`**: Per-branch ruleset overrides (merged with global `update_config.ruleset`)
 - Only existing and enabled branches will be included in outputs
 - Disabled or non-existent branches are logged as warnings
 
