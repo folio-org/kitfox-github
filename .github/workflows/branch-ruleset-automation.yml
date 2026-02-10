@@ -24,13 +24,13 @@ permissions:
   contents: read
 
 jobs:
-  update-rulesets:
-    name: Update Branch Rulesets
+  prepare:
+    name: Prepare Branch Configurations
     runs-on: ubuntu-latest
     outputs:
-      branches_updated: ${{ steps.update-rulesets.outputs.branches_updated }}
-      branches_skipped: ${{ steps.update-rulesets.outputs.branches_skipped }}
-      branches_failed: ${{ steps.update-rulesets.outputs.branches_failed }}
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+      has_branches: ${{ steps.build-matrix.outputs.has_branches }}
+      skipped_branches: ${{ steps.build-matrix.outputs.skipped_branches }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -46,53 +46,99 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/get-update-config@master
         with:
           repo: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
-          branch: master
           github_token: ${{ steps.app-token.outputs.token }}
 
-      - name: Check Configuration
-        id: check-config
+      - name: Build Matrix
+        id: build-matrix
         env:
-          CONFIG_EXISTS: ${{ steps.get-config.outputs.config_exists }}
-          ENABLED: ${{ steps.get-config.outputs.enabled }}
-          RELEASE_BRANCHES: ${{ steps.get-config.outputs.branches }}
+          BRANCH_CONFIG: ${{ steps.get-config.outputs.branch_config }}
         run: |
-          if [[ "$CONFIG_EXISTS" != "true" ]]; then
-            echo "::warning::Configuration file not found: .github/update-config.yml"
-            echo "should_continue=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          set -eo pipefail
+
+          MATRIX_ENTRIES="[]"
+          SKIPPED_BRANCHES="[]"
+
+          for branch_entry in $(echo "$BRANCH_CONFIG" | jq -c '.[]'); do
+            branch=$(echo "$branch_entry" | jq -r '.branch')
+            ruleset=$(echo "$branch_entry" | jq -c '.ruleset // {}')
+
+            ruleset_enabled=$(echo "$ruleset" | jq -r '.enabled // true')
+
+            if [[ "$ruleset_enabled" != "true" ]]; then
+              echo "::notice::Skipping branch $branch (ruleset.enabled=false)"
+              SKIPPED_BRANCHES=$(echo "$SKIPPED_BRANCHES" | jq -c --arg b "$branch (ruleset disabled)" '. += [$b]')
+              continue
+            fi
+
+            entry=$(jq -n \
+              --arg branch "$branch" \
+              --argjson ruleset "$ruleset" \
+              '{branch: $branch, ruleset: $ruleset}')
+
+            MATRIX_ENTRIES=$(echo "$MATRIX_ENTRIES" | jq -c --argjson entry "$entry" '. += [$entry]')
+            echo "::notice::Prepared matrix entry for branch: $branch"
+          done
+
+          BRANCH_COUNT=$(echo "$MATRIX_ENTRIES" | jq 'length')
+          echo "::notice::Matrix contains $BRANCH_COUNT branches"
+
+          if [[ "$BRANCH_COUNT" -gt 0 ]]; then
+            echo "matrix={\"include\": $(echo "$MATRIX_ENTRIES" | jq -c .)}" >> "$GITHUB_OUTPUT"
+            echo "has_branches=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix={\"include\": []}" >> "$GITHUB_OUTPUT"
+            echo "has_branches=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [[ "$ENABLED" != "true" ]]; then
-            echo "::notice::Release scanning is disabled in configuration"
-            echo "should_continue=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          echo "skipped_branches=$(echo "$SKIPPED_BRANCHES" | jq -c .)" >> "$GITHUB_OUTPUT"
 
-          BRANCH_COUNT=$(echo "$RELEASE_BRANCHES" | jq -r 'length')
-          if [[ "$BRANCH_COUNT" == "0" ]]; then
-            echo "::notice::No release branches configured"
-            echo "should_continue=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+  update-rulesets:
+    name: Update Ruleset - ${{ matrix.branch }}
+    needs: prepare
+    if: needs.prepare.outputs.has_branches == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+      fail-fast: false
+      max-parallel: 5
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ inputs.repo_owner }}
+          repositories: ${{ inputs.repo_name }}
 
-          echo "::notice::Found $BRANCH_COUNT release branches to configure"
-          echo "should_continue=true" >> "$GITHUB_OUTPUT"
-
-      - name: Update Branch Rulesets
-        id: update-rulesets
-        if: steps.check-config.outputs.should_continue == 'true'
-        uses: folio-org/kitfox-github/.github/actions/update-branch-rulesets@master
+      - name: Update Branch Ruleset
+        id: update-ruleset
+        uses: folio-org/kitfox-github/.github/actions/branch-ruleset-management@master
         with:
           repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
-          branches: ${{ steps.get-config.outputs.branches }}
-          branch_config: ${{ steps.get-config.outputs.branch_config }}
+          branch: ${{ matrix.branch }}
+          ruleset_pattern: ${{ matrix.ruleset.pattern }}
+          required_checks: ${{ toJson(matrix.ruleset.required_checks) }}
+          merge_queue: ${{ toJson(matrix.ruleset.merge_queue) }}
+          bypass_actors: ${{ toJson(matrix.ruleset.bypass_actors) }}
+          integration_id: ${{ vars.EUREKA_CI_APP_ID }}
           github_token: ${{ steps.app-token.outputs.token }}
 
+      - name: Report Result
+        run: |
+          echo "### Ruleset Update Result" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ matrix.branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Result:** ${{ steps.update-ruleset.outputs.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Message:** ${{ steps.update-ruleset.outputs.message }}" >> $GITHUB_STEP_SUMMARY
+          if [[ -n "${{ steps.update-ruleset.outputs.ruleset_id }}" ]]; then
+            echo "**Ruleset ID:** ${{ steps.update-ruleset.outputs.ruleset_id }}" >> $GITHUB_STEP_SUMMARY
+          fi
 
   notify:
     name: Send Notifications
-    needs: update-rulesets
-    if: always() && !cancelled()
+    needs: [prepare, update-rulesets]
+    if: always() && !cancelled() && needs.prepare.outputs.has_branches == 'true'
     runs-on: ubuntu-latest
     outputs:
       team_channel: ${{ steps.get-vars.outputs.team_channel }}
@@ -112,20 +158,15 @@ jobs:
           "color": "${{ needs.update-rulesets.result == 'success' && 'good' || 'danger' }}",
           "fields": [
             {
-              "title": "Branches Updated",
-              "value": "${{ needs.update-rulesets.outputs.branches_updated || 'none' }}",
+              "title": "Status",
+              "value": "${{ needs.update-rulesets.result }}",
               "short": true
             }${{ inputs.head_sha != '' && format(',
             {{
               "title": "Config Change",
               "value": "<https://github.com/{0}/{1}/commit/{2}|{2}>",
               "short": true
-            }}', inputs.repo_owner, inputs.repo_name, inputs.head_sha) || '' }}${{ needs.update-rulesets.outputs.branches_failed != 'none' && needs.update-rulesets.outputs.branches_failed != '' && format(',
-            {{
-              "title": "Branches Failed",
-              "value": "{0}",
-              "short": false
-            }}', needs.update-rulesets.outputs.branches_failed) || '' }}
+            }}', inputs.repo_owner, inputs.repo_name, inputs.head_sha) || '' }}
           ],
           "footer": "Eureka CI/CD"
         }
@@ -200,16 +241,16 @@ jobs:
 
   summarize:
     name: Workflow Summary
-    needs: [update-rulesets, notify]
+    needs: [prepare, update-rulesets, notify]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Generate Workflow Summary
         env:
-          BRANCHES_UPDATED: ${{ needs.update-rulesets.outputs.branches_updated }}
-          BRANCHES_SKIPPED: ${{ needs.update-rulesets.outputs.branches_skipped }}
-          BRANCHES_FAILED: ${{ needs.update-rulesets.outputs.branches_failed }}
-          JOB_STATUS: ${{ needs.update-rulesets.result }}
+          MATRIX_RESULT: ${{ needs.update-rulesets.result }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          HAS_BRANCHES: ${{ needs.prepare.outputs.has_branches }}
+          SKIPPED_BRANCHES: ${{ needs.prepare.outputs.skipped_branches }}
         run: |
           {
             echo "### Branch Ruleset Automation Summary"
@@ -222,30 +263,35 @@ jobs:
 
             echo "### Ruleset Configuration"
             echo ""
-            echo "Each configured branch will have:"
-            echo "- Required status check: \`eureka-ci / validate-application\`"
-            echo "- Merge queue enabled (SQUASH merge, ALLGREEN strategy)"
-            echo "- Pull request reviews required (1 approval)"
+            echo "Rulesets are configured based on \`.github/update-config.yml\` in the target repository."
+            echo "Each branch with \`ruleset.enabled: true\` receives:"
+            echo "- Required status checks (configurable)"
+            echo "- Merge queue settings (optional, configurable)"
+            echo "- Bypass actors for automation"
             echo ""
 
             echo "### Results"
             echo ""
-            if [[ "$JOB_STATUS" == "success" ]]; then
-              echo "**Status:** Completed successfully"
-            elif [[ "$JOB_STATUS" == "failure" ]]; then
-              echo "**Status:** Completed with errors"
+
+            if [[ "$PREPARE_RESULT" == "success" ]]; then
+              if [[ "$HAS_BRANCHES" == "true" ]]; then
+                if [[ "$MATRIX_RESULT" == "success" ]]; then
+                  echo "**Status:** All branch rulesets updated successfully"
+                elif [[ "$MATRIX_RESULT" == "failure" ]]; then
+                  echo "**Status:** Some branch rulesets failed to update"
+                else
+                  echo "**Status:** $MATRIX_RESULT"
+                fi
+              else
+                echo "**Status:** No branches required ruleset updates"
+              fi
             else
-              echo "**Status:** $JOB_STATUS"
+              echo "**Status:** Preparation failed - $PREPARE_RESULT"
             fi
 
-            echo ""
-            echo "**Branches Updated:** $BRANCHES_UPDATED"
-            echo ""
-            echo "**Branches Skipped:** $BRANCHES_SKIPPED"
-
-            if [[ -n "$BRANCHES_FAILED" && "$BRANCHES_FAILED" != "none" ]]; then
+            if [[ -n "$SKIPPED_BRANCHES" && "$SKIPPED_BRANCHES" != "[]" ]]; then
               echo ""
-              echo "**Branches Failed:** $BRANCHES_FAILED"
+              echo "**Skipped Branches:** $(echo "$SKIPPED_BRANCHES" | jq -r 'join(", ")')"
             fi
 
             echo ""
