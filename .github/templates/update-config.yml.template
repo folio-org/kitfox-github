@@ -6,7 +6,7 @@ update_config:
   pr_reviewers:
     - folio-org/kitfox
   ruleset:
-    enabled: false
+    enabled: true
     pattern: "{0}-eureka-ci"
     required_checks:
       - context: "eureka-ci / validate-application"
