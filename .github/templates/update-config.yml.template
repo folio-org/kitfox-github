@@ -11,7 +11,7 @@ update_config:
     required_checks:
       - context: "eureka-ci / validate-application"
     merge_queue:
-      enabled: false
+      enabled: true
       check_response_timeout_minutes: 60
       grouping_strategy: "ALLGREEN"
       max_entries_to_build: 5
