@@ -35,7 +35,7 @@ outputs:
     description: 'Comma-separated list of PR labels'
     value: ${{ steps.parse.outputs.labels }}
   branch_config:
-    description: 'JSON array of branch descriptors (branch, update_branch, need_pr, pre_release)'
+    description: 'JSON array of branch descriptors'
     value: ${{ steps.parse.outputs.branch_config }}
   config_exists:
     description: 'Whether configuration file exists'
@@ -80,6 +80,23 @@ runs:
         
         get_yq() { yq eval "$1" "$CONFIG" 2>/dev/null | tr -d '\r'; }
         
+        RULESET_DEFAULTS='{
+          "enabled": false,
+          "pattern": "{0}-eureka-ci",
+          "required_checks": [{"context": "eureka-ci / validate-application", "integration_id": null}],
+          "merge_queue": {
+            "enabled": true,
+            "check_response_timeout_minutes": 60,
+            "grouping_strategy": "ALLGREEN",
+            "max_entries_to_build": 5,
+            "max_entries_to_merge": 5,
+            "merge_method": "SQUASH",
+            "min_entries_to_merge": 1,
+            "min_entries_to_merge_wait_minutes": 5
+          },
+          "bypass_actors": [{"actor_id": null, "actor_type": "Integration", "bypass_mode": "always"}]
+        }'
+
         if [[ "${{ steps.check.outputs.exists }}" != "true" ]]; then
           echo "::notice::No configuration found; using defaults"
           {
@@ -103,6 +120,23 @@ runs:
         PR_LABELS=$(yq eval -o=json -I=0 '.update_config.labels // []' "$CONFIG" | jq -r 'join(",")? // ""')
         FORMAT=$(get_yq '.update_config.update_branch_format // "version-update/{0}"')
 
+        RULESET_GLOBAL=$(yq eval -o=json -I=0 '.update_config.ruleset // {}' "$CONFIG")
+        HAS_RULESET_CONFIG=$(echo "$RULESET_GLOBAL" | jq 'length > 0')
+
+        RULESET_CONFIG=$(echo "$RULESET_DEFAULTS" | jq --argjson global "$RULESET_GLOBAL" '
+          def deep_merge(a; b):
+            reduce (b | keys[]) as $key (a;
+              if (.[$key] | type) == "object" and (b[$key] | type) == "object"
+              then .[$key] = deep_merge(.[$key]; b[$key])
+              else .[$key] = b[$key]
+              end
+            );
+          deep_merge(.; $global)
+        ')
+
+        echo "::notice::Has explicit ruleset config: $HAS_RULESET_CONFIG"
+        echo "::notice::Global ruleset config: $(echo "$RULESET_CONFIG" | jq -c .)"
+
         mapfile -t BRANCHES < <(
           echo "$BRANCH_OBJECTS" | jq -r 'map(keys[0]) | unique[]'
         )
@@ -118,6 +152,18 @@ runs:
             descriptor_build_offset=$(echo "$branch_config" | jq -r '.descriptor_build_offset // ""' | tr -d '\r')
             rely_on_FAR=$(echo "$branch_config" | jq -r '.rely_on_FAR // false' | tr 'A-Z' 'a-z')
             [[ "$need_pr" == "true" ]] && update_branch=$(echo "$FORMAT" | sed "s/{0}/$branch/") || update_branch=""
+
+            branch_ruleset_override=$(echo "$branch_config" | jq -c '.ruleset // {}')
+            branch_ruleset=$(echo "$RULESET_CONFIG" | jq --argjson override "$branch_ruleset_override" '
+              def deep_merge(a; b):
+                reduce (b | keys[]) as $key (a;
+                  if (.[$key] | type) == "object" and (b[$key] | type) == "object"
+                  then .[$key] = deep_merge(.[$key]; b[$key])
+                  else .[$key] = b[$key]
+                  end
+                );
+              deep_merge(.; $override)
+            ')
 
             if [[ "$enabled" != "true" ]]; then
               echo "::warning::Branch $branch is disabled in configuration, skipping"
@@ -136,13 +182,15 @@ runs:
                 --arg update_branch "$update_branch" \
                 --arg descriptor_build_offset "$descriptor_build_offset" \
                 --argjson rely_on_FAR "$([ "$rely_on_FAR" = "true" ] && echo true || echo false)" \
+                --argjson ruleset "$branch_ruleset" \
                 '. += [{
                   branch: $branch,
                   update_branch: (if $update_branch != "" then $update_branch else null end),
                   need_pr: $need_pr,
                   pre_release: $pre_release,
                   descriptor_build_offset: $descriptor_build_offset,
-                  rely_on_FAR: $rely_on_FAR
+                  rely_on_FAR: $rely_on_FAR,
+                  ruleset: $ruleset
                 }]')
             else
               echo "::warning::Branch not found: $branch"

@@ -1,18 +1,19 @@
 # Branch Ruleset Automation Workflow
 
-**Workflow**: `branch-ruleset-automation.yml`
+**Workflows**: `branch-ruleset-automation.yml` (orchestrator) + `branch-ruleset-automation-flow.yml` (per-branch flow)
 **Purpose**: Automatically configures branch protection rules and merge queue settings
-**Type**: Reusable workflow (`workflow_dispatch`)
+**Type**: `workflow_dispatch` orchestrator calling a reusable `workflow_call` flow
 
 ## Overview
 
-This workflow automatically configures GitHub branch rulesets for release branches based on the repository's update configuration. It sets up:
+This workflow automatically configures GitHub branch rulesets for release branches based on the repository's update configuration. It uses a **two-workflow architecture**: an orchestrator builds a matrix from config and dispatches a per-branch flow that handles the update, notifications, and summary.
 
-1. Required status checks (eureka-ci / validate-application)
-2. Merge queue configuration (SQUASH merge, ALLGREEN strategy)
-3. PR approval requirements
-
-The workflow is typically triggered when the update configuration file changes, ensuring branch protection stays synchronized with repository settings.
+Features:
+1. **Configurable ruleset parameters** via `update-config.yml`
+2. **Matrix-based execution** - one flow job per branch for parallel processing
+3. **Enforcement control** - `enabled: true` activates rulesets, `enabled: false` disables existing ones
+4. **Per-branch notifications** - each branch gets its own Slack notification and summary
+5. **Configurable merge queue** settings per branch
 
 ## Workflow Interface
 
@@ -41,121 +42,118 @@ The workflow is typically triggered when the update configuration file changes, 
 
 | Variable                       | Description                          | Required |
 |--------------------------------|--------------------------------------|----------|
-| `EUREKA_CI_APP_ID`             | GitHub App ID                        | Yes      |
+| `EUREKA_CI_APP_ID`             | GitHub App ID for bypass actors      | Yes      |
 | `SLACK_NOTIF_CHANNEL`          | Team Slack notification channel      | No       |
 | `GENERAL_SLACK_NOTIF_CHANNEL`  | General Slack notification channel   | No       |
 
 ## Workflow Execution Flow
 
-### 1. Update Branch Rulesets
-**Job**: `update-rulesets`
+### 1. Prepare Branch Configurations
+**Job**: `prepare`
 
-Reads configuration and updates branch rulesets for each configured branch.
+Reads configuration and builds a matrix of branches to process.
 
 **Steps**:
 1. Generate GitHub App Token
-2. Get Update Configuration
+2. Get Update Configuration (including ruleset config)
 3. Check Configuration - validates config exists, is enabled, and has branches
-4. Update Branch Rulesets - uses `update-branch-rulesets` action
-
-**Configuration Checks**:
-- Configuration file must exist
-- `enabled` must be `true`
-- At least one branch must be configured
+4. Build Matrix - creates one entry per branch with resolved ruleset config
 
 **Outputs**:
-- `branches_updated`: List of branches where rulesets were created/updated
-- `branches_skipped`: List of branches that were skipped
-- `branches_failed`: List of branches where ruleset update failed
+- `matrix`: JSON matrix for parallel job execution (includes `enforcement` per branch)
+- `has_branches`: Whether any branches need processing
 
-### 2. Send Notifications
-**Job**: `notify`
+### 2. Update Rulesets (Matrix)
+**Job**: `update-rulesets`
 
-Sends Slack notifications with ruleset update results.
+Calls `branch-ruleset-automation-flow.yml` for each branch using matrix strategy.
 
-**Message Format**:
-```
-*app-acquisitions branch ruleset update completed/failed #42*
+**Strategy**:
+- `fail-fast: false` - continue processing other branches if one fails
+- `max-parallel: 5` - limit concurrent jobs
 
-Branches Updated: R1-2025 (created), R2-2025 (updated)
-Config Change: <commit-link>
-```
+Each matrix entry includes `enforcement: active` or `enforcement: disabled` based on `ruleset.enabled` in config.
 
-### 3. Workflow Summary
+### 3. Per-Branch Flow (`branch-ruleset-automation-flow.yml`)
+
+Each flow execution contains three jobs:
+
+1. **Update Ruleset** - Calls `branch-ruleset-management` action with enforcement level
+2. **Send Notifications** - Slack notifications (skipped when outcome is `skipped`)
+3. **Workflow Summary** - Per-branch step summary with notification status
+
+### 4. Workflow Summary (Orchestrator)
 **Job**: `summarize`
 
-Generates a comprehensive workflow summary showing:
-1. Repository information
-2. Ruleset configuration details
-3. Results for each branch
-4. Notification status
+Generates an aggregated summary across all branches.
 
 ## Ruleset Configuration
 
-Each configured branch (with `need_pr: true`) gets a ruleset with:
+Ruleset parameters are now **fully configurable** via `update-config.yml`. See [update-config.md](update-config.md#ruleset-configuration) for complete schema.
 
-### Required Status Check
-
-```yaml
-context: eureka-ci / validate-application
-integration_id: 1671958  # GitHub App ID
-strict: false
-```
-
-### Merge Queue Settings
+### Basic Configuration
 
 ```yaml
-check_response_timeout_minutes: 60
-grouping_strategy: ALLGREEN
-max_entries_to_build: 5
-max_entries_to_merge: 5
-merge_method: SQUASH
-min_entries_to_merge: 1
-min_entries_to_merge_wait_minutes: 5
+update_config:
+  enabled: true
+  ruleset:
+    enabled: true
+    pattern: "{0}-eureka-ci"
+    required_checks:
+      - context: "eureka-ci / validate-application"
+        integration_id: null  # Uses EUREKA_CI_APP_ID variable
+    merge_queue:
+      enabled: true
+      merge_method: "SQUASH"
+      grouping_strategy: "ALLGREEN"
+    bypass_actors:
+      - actor_id: null  # Uses EUREKA_CI_APP_ID variable
+        actor_type: "Integration"
+        bypass_mode: "always"
+
+branches:
+  - R1-2025:
+      enabled: true
+      need_pr: true
+      # Inherits global ruleset config
+  - snapshot:
+      enabled: true
+      need_pr: false
+      ruleset:
+        enabled: true  # Override: create ruleset for non-PR branch
+        merge_queue:
+          enabled: false  # Override: no merge queue for snapshot
 ```
 
-### Bypass Actors
+### Per-Branch Overrides
 
-The Eureka CI GitHub App (ID: 1671958) is configured as a bypass actor with `always` mode, allowing the CI system to perform operations that would otherwise be blocked.
+Each branch can override any global ruleset setting:
 
-## Features
+```yaml
+branches:
+  - R1-2025:
+      enabled: true
+      need_pr: true
+      ruleset:
+        required_checks:
+          - context: "eureka-ci / validate-application"
+          - context: "eureka-ci / release-validation"  # Additional check
+        merge_queue:
+          check_response_timeout_minutes: 120  # Longer timeout
+```
 
-### Automatic Ruleset Creation
+## Enforcement Behavior
 
-For each branch in `release_branches` with `need_pr: true`:
-- Creates ruleset if it doesn't exist
-- Updates existing ruleset if found
+The `ruleset.enabled` setting maps to ruleset enforcement:
 
-### Ruleset Naming Convention
-
-Rulesets are named using the pattern `{branch}-eureka-ci`:
-- `R1-2025-eureka-ci`
-- `R2-2025-eureka-ci`
-
-### Branch Existence Validation
-
-Before creating/updating a ruleset, the workflow verifies the branch exists:
-- Skips non-existent branches (logs as skipped)
-- Continues with other branches
-
-### Need PR Filtering
-
-Only branches with `need_pr: true` get rulesets configured:
-- Branches with `need_pr: false` are skipped
-- Allows mixed strategies in single repository
+| `ruleset.enabled` | Ruleset exists? | Action                          |
+|--------------------|-----------------|--------------------------------------|
+| `true`             | No              | Creates new active ruleset           |
+| `true`             | Yes             | Updates existing ruleset (active)    |
+| `false`            | No              | Skips (nothing to disable)           |
+| `false`            | Yes             | Sets enforcement to `disabled`       |
 
 ## Usage Examples
-
-### Triggered by GitHub App Webhook
-
-This workflow can be triggered when update-config.yml changes:
-
-**Push Events**:
-```yaml
-event_type: push
-files_changed:
-  - .github/update-config.yml
-```
 
 ### Manual Trigger
 
@@ -165,47 +163,15 @@ gh workflow run branch-ruleset-automation.yml \
   -f repo_name=app-acquisitions
 ```
 
-### Configuration File Format
+### Triggered by GitHub App Webhook
 
-`.github/update-config.yml`:
+This workflow can be triggered when update-config.yml changes:
 
 ```yaml
-release_scan:
-  enabled: true
-  release_branches:
-    - name: R1-2025
-      need_pr: true
-      update_branch: version-update/R1-2025
-    - name: R2-2025
-      need_pr: true
-      update_branch: version-update/R2-2025
-    - name: snapshot
-      need_pr: false  # No ruleset created for this branch
+event_type: push
+files_changed:
+  - .github/update-config.yml
 ```
-
-## Error Handling
-
-### Failure Scenarios
-
-**Configuration Issues**:
-- Config file not found - workflow skipped
-- Scanning disabled - workflow skipped
-- No branches configured - workflow skipped
-
-**Branch Issues**:
-- Branch doesn't exist - skipped (continues with others)
-- API errors - recorded as failed
-
-**Ruleset Errors**:
-- Permission denied - recorded as failed
-- API rate limits - recorded as failed
-
-### Partial Success
-
-The workflow supports partial success:
-- Some branches may succeed while others fail
-- Detailed report of each branch's status
-- Notification includes failure details
 
 ## Troubleshooting
 
@@ -214,17 +180,17 @@ The workflow supports partial success:
 **No Rulesets Created**:
 1. Verify update-config.yml exists
 2. Check `enabled: true` in config
-3. Verify branches have `need_pr: true`
+3. For non-PR branches, verify `ruleset.enabled: true` is set
 4. Confirm branches actually exist in repository
 
 **Ruleset Update Failed**:
 1. Check GitHub App has admin permissions
-2. Verify repository allows rulesets
+2. Verify EUREKA_CI_APP_ID variable is set
 3. Review workflow logs for API errors
 
-**Wrong Status Check**:
-1. Verify check context matches workflow output
-2. Check integration ID is correct
+**Matrix Job Failures**:
+- Check individual matrix job logs
+- Other branches continue processing even if one fails
 
 ### Debug Commands
 
@@ -239,22 +205,14 @@ gh api repos/folio-org/app-acquisitions/contents/.github/update-config.yml \
   --jq '.content' | base64 -d
 ```
 
-## Current Limitations
-
-1. **Non-PR Branches**: Rulesets are only created for branches with `need_pr: true`. Support for non-PR branches is planned.
-
-2. **Fixed Parameters**: Merge queue parameters (timeout, strategy, etc.) are currently hardcoded. Future versions will read these from config.
-
-3. **Integration ID**: The GitHub App integration ID is hardcoded. This should be moved to a repository variable.
-
 ## Related Documentation
 
-- **[PR Check](pr-check.md)**: Validation workflow that rulesets enforce
+- **[Update Config Schema](update-config.md)**: Complete configuration schema including ruleset settings
 - **[Merge Queue Check](merge-queue-check.md)**: Merge queue validation
-- **[Update Branch Rulesets Action](../actions/update-branch-rulesets/README.md)**: Ruleset update action
+- **[Branch Ruleset Management Action](../actions/branch-ruleset-management/README.md)**: Ruleset management action
 
 ---
 
-**Last Updated**: December 2025
-**Workflow Version**: 1.0
-**Compatibility**: Requires repository admin permissions
+**Last Updated**: February 2026
+**Workflow Version**: 2.0
+**Compatibility**: Requires repository admin permissions and EUREKA_CI_APP_ID variable
