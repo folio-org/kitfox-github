@@ -24,6 +24,10 @@ inputs:
     description: 'JSON array of bypass actors [{actor_id, actor_type, bypass_mode}]. Use null for actor_id to use default.'
     required: false
     default: '[]'
+  enforcement:
+    description: 'Ruleset enforcement level: active or disabled'
+    required: false
+    default: 'active'
   integration_id:
     description: 'Default integration ID (GitHub App ID) for null actor_id/integration_id values'
     required: true
@@ -33,7 +37,7 @@ inputs:
 
 outputs:
   result:
-    description: 'Operation result: created, updated, skipped, failed'
+    description: 'Operation result: created, updated, disabled, skipped, failed'
     value: ${{ steps.manage.outputs.result }}
   ruleset_id:
     description: 'Ruleset ID (if created or updated)'
@@ -55,6 +59,7 @@ runs:
         INPUT_REQUIRED_CHECKS: ${{ inputs.required_checks }}
         INPUT_MERGE_QUEUE: ${{ inputs.merge_queue }}
         INPUT_BYPASS_ACTORS: ${{ inputs.bypass_actors }}
+        INPUT_ENFORCEMENT: ${{ inputs.enforcement }}
         INPUT_INTEGRATION_ID: ${{ inputs.integration_id }}
       with:
         github-token: ${{ inputs.github_token }}
@@ -62,6 +67,7 @@ runs:
           const [owner, repo] = process.env.INPUT_REPOSITORY.split('/');
           const branch = process.env.INPUT_BRANCH;
           const rulesetPattern = process.env.INPUT_RULESET_PATTERN || '{0}-eureka-ci';
+          const enforcement = process.env.INPUT_ENFORCEMENT || 'active';
           const defaultIntegrationId = parseInt(process.env.INPUT_INTEGRATION_ID, 10);
 
           let requiredChecks, mergeQueueConfig, bypassActors;
@@ -150,6 +156,33 @@ runs:
           }
 
           const existingRuleset = existingRulesets.find(r => r.name === rulesetName);
+
+          if (enforcement === 'disabled') {
+            if (!existingRuleset) {
+              console.log(`No existing ruleset "${rulesetName}" to disable, skipping`);
+              core.setOutput('result', 'skipped');
+              core.setOutput('message', `No existing ruleset "${rulesetName}" to disable`);
+              return;
+            }
+            try {
+              console.log(`Disabling ruleset: ${rulesetName} (ID: ${existingRuleset.id})`);
+              await github.rest.repos.updateRepoRuleset({
+                owner,
+                repo,
+                ruleset_id: existingRuleset.id,
+                enforcement: 'disabled'
+              });
+              core.setOutput('result', 'disabled');
+              core.setOutput('ruleset_id', existingRuleset.id.toString());
+              core.setOutput('message', `Ruleset "${rulesetName}" disabled`);
+            } catch (error) {
+              console.error(`Error disabling ruleset: ${error.message}`);
+              core.setOutput('result', 'failed');
+              core.setOutput('message', `Failed to disable ruleset: ${error.message}`);
+              core.setFailed(`Failed to disable ruleset: ${error.message}`);
+            }
+            return;
+          }
 
           const fullRulesetConfig = {
             name: rulesetName,
