@@ -36,9 +36,9 @@ inputs:
     required: true
 
 outputs:
-  result:
-    description: 'Operation result: created, updated, disabled, skipped, failed'
-    value: ${{ steps.manage.outputs.result }}
+  outcome:
+    description: 'Operation outcome: created, updated, disabled, skipped, failed'
+    value: ${{ steps.manage.outputs.outcome }}
   ruleset_id:
     description: 'Ruleset ID (if created or updated)'
     value: ${{ steps.manage.outputs.ruleset_id }}
@@ -76,7 +76,7 @@ runs:
             mergeQueueConfig = JSON.parse(process.env.INPUT_MERGE_QUEUE || '{}');
             bypassActors = JSON.parse(process.env.INPUT_BYPASS_ACTORS || '[]');
           } catch (error) {
-            core.setOutput('result', 'failed');
+            core.setOutput('outcome', 'failed');
             core.setOutput('message', `Invalid JSON input: ${error.message}`);
             core.setFailed(`Invalid JSON input: ${error.message}`);
             return;
@@ -94,7 +94,7 @@ runs:
           } catch (error) {
             if (error.status === 404) {
               console.log(`Branch ${branch} does not exist`);
-              core.setOutput('result', 'skipped');
+              core.setOutput('outcome', 'skipped');
               core.setOutput('message', `Branch ${branch} does not exist`);
               return;
             }
@@ -160,7 +160,7 @@ runs:
           if (enforcement === 'disabled') {
             if (!existingRuleset) {
               console.log(`No existing ruleset "${rulesetName}" to disable, skipping`);
-              core.setOutput('result', 'skipped');
+              core.setOutput('outcome', 'skipped');
               core.setOutput('message', `No existing ruleset "${rulesetName}" to disable`);
               return;
             }
@@ -172,12 +172,12 @@ runs:
                 ruleset_id: existingRuleset.id,
                 enforcement: 'disabled'
               });
-              core.setOutput('result', 'disabled');
+              core.setOutput('outcome', 'disabled');
               core.setOutput('ruleset_id', existingRuleset.id.toString());
               core.setOutput('message', `Ruleset "${rulesetName}" disabled`);
             } catch (error) {
               console.error(`Error disabling ruleset: ${error.message}`);
-              core.setOutput('result', 'failed');
+              core.setOutput('outcome', 'failed');
               core.setOutput('message', `Failed to disable ruleset: ${error.message}`);
               core.setFailed(`Failed to disable ruleset: ${error.message}`);
             }
@@ -207,7 +207,7 @@ runs:
                 ruleset_id: existingRuleset.id,
                 ...fullRulesetConfig
               });
-              core.setOutput('result', 'updated');
+              core.setOutput('outcome', 'updated');
               core.setOutput('ruleset_id', existingRuleset.id.toString());
               core.setOutput('message', `Ruleset "${rulesetName}" updated successfully`);
             } else {
@@ -217,13 +217,13 @@ runs:
                 repo,
                 ...fullRulesetConfig
               });
-              core.setOutput('result', 'created');
+              core.setOutput('outcome', 'created');
               core.setOutput('ruleset_id', newRuleset.id.toString());
               core.setOutput('message', `Ruleset "${rulesetName}" created successfully`);
             }
           } catch (error) {
             console.error(`Error processing ruleset: ${error.message}`);
-            core.setOutput('result', 'failed');
+            core.setOutput('outcome', 'failed');
             core.setOutput('message', `Failed to ${existingRuleset ? 'update' : 'create'} ruleset: ${error.message}`);
             core.setFailed(`Failed to ${existingRuleset ? 'update' : 'create'} ruleset: ${error.message}`);
           }
