@@ -100,7 +100,7 @@ jobs:
   notify:
     name: Send Notifications
     needs: [update-ruleset]
-    if: always() && !cancelled()
+    if: always() && !cancelled() && needs.update-ruleset.outputs.result != 'skipped'
     runs-on: ubuntu-latest
     outputs:
       team_notif_status: ${{ steps.notify-team.outcome }}
@@ -120,11 +120,6 @@ jobs:
           "color": "good",
           "fields": [
             {
-              "title": "Branch",
-              "value": "${{ inputs.branch }}",
-              "short": true
-            },
-            {
               "title": "Ruleset ID",
               "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/settings/rules/${{ needs.update-ruleset.outputs.ruleset_id }}|${{ needs.update-ruleset.outputs.ruleset_id }}>",
               "short": true
@@ -141,11 +136,6 @@ jobs:
         {
           "color": "danger",
           "fields": [
-            {
-              "title": "Branch",
-              "value": "${{ inputs.branch }}",
-              "short": true
-            },
             {
               "title": "Failure Reason",
               "value": "${{ needs.update-ruleset.outputs.message || 'Check workflow logs for details' }}",
