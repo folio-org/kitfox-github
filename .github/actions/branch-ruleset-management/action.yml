@@ -1,0 +1,196 @@
+name: 'Branch Ruleset Management'
+description: 'Create or update a branch ruleset. Accepts individual parameters and handles all processing internally.'
+
+inputs:
+  repository:
+    description: 'Repository in owner/repo format'
+    required: true
+  branch:
+    description: 'Target branch name to configure ruleset for'
+    required: true
+  ruleset_pattern:
+    description: 'Naming pattern for ruleset ({0} = branch name)'
+    required: false
+    default: '{0}-eureka-ci'
+  required_checks:
+    description: 'JSON array of required status checks [{context, integration_id}]. Use null for integration_id to use default.'
+    required: false
+    default: '[]'
+  merge_queue:
+    description: 'JSON object with merge queue configuration {enabled, check_response_timeout_minutes, grouping_strategy, ...}'
+    required: false
+    default: '{}'
+  bypass_actors:
+    description: 'JSON array of bypass actors [{actor_id, actor_type, bypass_mode}]. Use null for actor_id to use default.'
+    required: false
+    default: '[]'
+  integration_id:
+    description: 'Default integration ID (GitHub App ID) for null actor_id/integration_id values'
+    required: true
+  github_token:
+    description: 'GitHub token with admin permissions'
+    required: true
+
+outputs:
+  result:
+    description: 'Operation result: created, updated, skipped, failed'
+    value: ${{ steps.manage.outputs.result }}
+  ruleset_id:
+    description: 'Ruleset ID (if created or updated)'
+    value: ${{ steps.manage.outputs.ruleset_id }}
+  message:
+    description: 'Human-readable result message'
+    value: ${{ steps.manage.outputs.message }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Manage Branch Ruleset
+      id: manage
+      uses: actions/github-script@v7
+      env:
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        INPUT_RULESET_PATTERN: ${{ inputs.ruleset_pattern }}
+        INPUT_REQUIRED_CHECKS: ${{ inputs.required_checks }}
+        INPUT_MERGE_QUEUE: ${{ inputs.merge_queue }}
+        INPUT_BYPASS_ACTORS: ${{ inputs.bypass_actors }}
+        INPUT_INTEGRATION_ID: ${{ inputs.integration_id }}
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const [owner, repo] = process.env.INPUT_REPOSITORY.split('/');
+          const branch = process.env.INPUT_BRANCH;
+          const rulesetPattern = process.env.INPUT_RULESET_PATTERN || '{0}-eureka-ci';
+          const defaultIntegrationId = parseInt(process.env.INPUT_INTEGRATION_ID, 10);
+
+          let requiredChecks, mergeQueueConfig, bypassActors;
+          try {
+            requiredChecks = JSON.parse(process.env.INPUT_REQUIRED_CHECKS || '[]');
+            mergeQueueConfig = JSON.parse(process.env.INPUT_MERGE_QUEUE || '{}');
+            bypassActors = JSON.parse(process.env.INPUT_BYPASS_ACTORS || '[]');
+          } catch (error) {
+            core.setOutput('result', 'failed');
+            core.setOutput('message', `Invalid JSON input: ${error.message}`);
+            core.setFailed(`Invalid JSON input: ${error.message}`);
+            return;
+          }
+
+          const rulesetName = rulesetPattern.replace('{0}', branch);
+
+          console.log(`Repository: ${owner}/${repo}`);
+          console.log(`Branch: ${branch}`);
+          console.log(`Ruleset name: ${rulesetName}`);
+          console.log(`Default integration ID: ${defaultIntegrationId}`);
+
+          try {
+            await github.rest.repos.getBranch({ owner, repo, branch });
+          } catch (error) {
+            if (error.status === 404) {
+              console.log(`Branch ${branch} does not exist`);
+              core.setOutput('result', 'skipped');
+              core.setOutput('message', `Branch ${branch} does not exist`);
+              return;
+            }
+            throw error;
+          }
+
+          const resolvedChecks = requiredChecks.map(check => ({
+            ...check,
+            integration_id: check.integration_id ?? defaultIntegrationId
+          }));
+
+          const resolvedBypassActors = bypassActors.map(actor => ({
+            ...actor,
+            actor_id: actor.actor_id ?? defaultIntegrationId
+          }));
+
+          const rules = [];
+
+          if (resolvedChecks.length > 0) {
+            rules.push({
+              type: 'required_status_checks',
+              parameters: {
+                required_status_checks: resolvedChecks,
+                strict_required_status_checks_policy: false
+              }
+            });
+          }
+
+          const mergeQueueEnabled = mergeQueueConfig.enabled !== false;
+          if (mergeQueueEnabled && Object.keys(mergeQueueConfig).length > 0) {
+            rules.push({
+              type: 'merge_queue',
+              parameters: {
+                check_response_timeout_minutes: mergeQueueConfig.check_response_timeout_minutes ?? 60,
+                grouping_strategy: mergeQueueConfig.grouping_strategy ?? 'ALLGREEN',
+                max_entries_to_build: mergeQueueConfig.max_entries_to_build ?? 5,
+                max_entries_to_merge: mergeQueueConfig.max_entries_to_merge ?? 5,
+                merge_method: mergeQueueConfig.merge_method ?? 'SQUASH',
+                min_entries_to_merge: mergeQueueConfig.min_entries_to_merge ?? 1,
+                min_entries_to_merge_wait_minutes: mergeQueueConfig.min_entries_to_merge_wait_minutes ?? 5
+              }
+            });
+          }
+
+          console.log(`Rules count: ${rules.length}`);
+          console.log(`Bypass actors count: ${resolvedBypassActors.length}`);
+
+          let existingRulesets = [];
+          try {
+            const { data: rulesets } = await github.rest.repos.getRepoRulesets({
+              owner,
+              repo,
+              includes_parents: false
+            });
+            existingRulesets = rulesets;
+            console.log(`Found ${existingRulesets.length} existing rulesets`);
+          } catch (error) {
+            console.log(`Note: Could not fetch existing rulesets: ${error.message}`);
+          }
+
+          const existingRuleset = existingRulesets.find(r => r.name === rulesetName);
+
+          const fullRulesetConfig = {
+            name: rulesetName,
+            target: 'branch',
+            enforcement: 'active',
+            conditions: {
+              ref_name: {
+                include: [`refs/heads/${branch}`],
+                exclude: []
+              }
+            },
+            rules: rules,
+            bypass_actors: resolvedBypassActors
+          };
+
+          try {
+            if (existingRuleset) {
+              console.log(`Updating existing ruleset: ${rulesetName} (ID: ${existingRuleset.id})`);
+              await github.rest.repos.updateRepoRuleset({
+                owner,
+                repo,
+                ruleset_id: existingRuleset.id,
+                ...fullRulesetConfig
+              });
+              core.setOutput('result', 'updated');
+              core.setOutput('ruleset_id', existingRuleset.id.toString());
+              core.setOutput('message', `Ruleset "${rulesetName}" updated successfully`);
+            } else {
+              console.log(`Creating new ruleset: ${rulesetName}`);
+              const { data: newRuleset } = await github.rest.repos.createRepoRuleset({
+                owner,
+                repo,
+                ...fullRulesetConfig
+              });
+              core.setOutput('result', 'created');
+              core.setOutput('ruleset_id', newRuleset.id.toString());
+              core.setOutput('message', `Ruleset "${rulesetName}" created successfully`);
+            }
+          } catch (error) {
+            console.error(`Error processing ruleset: ${error.message}`);
+            core.setOutput('result', 'failed');
+            core.setOutput('message', `Failed to ${existingRuleset ? 'update' : 'create'} ruleset: ${error.message}`);
+            core.setFailed(`Failed to ${existingRuleset ? 'update' : 'create'} ruleset: ${error.message}`);
+          }
