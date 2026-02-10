@@ -100,7 +100,7 @@ jobs:
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
       fail-fast: false
       max-parallel: 5
-    uses: ./.github/workflows/branch-ruleset-automation-flow.yml
+    uses: ./.github/workflows/branch-ruleset-automation-flow.yml@RANCHER-2694-test #TODO: Switch back to master
     with:
       repo_owner: ${{ inputs.repo_owner }}
       repo_name: ${{ inputs.repo_name }}
