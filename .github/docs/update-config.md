@@ -88,7 +88,7 @@ ruleset:
 
 | Field             | Type    | Default                                 | Description                              |
 |-------------------|---------|-----------------------------------------|------------------------------------------|
-| `enabled`         | boolean | `false`                                 | Create ruleset for this branch           |
+| `enabled`         | boolean | `false`                                 | Enable ruleset for this branch (`false` disables existing) |
 | `pattern`         | string  | `"{0}-eureka-ci"`                       | Ruleset naming pattern (`{0}` = branch)  |
 | `required_checks` | array   | Single eureka-ci check                  | Required status checks                   |
 | `merge_queue`     | object  | See below                               | Merge queue configuration                |
@@ -124,7 +124,7 @@ ruleset:
 
 ## Opt-in Behavior
 
-Rulesets are **opt-in** — no rulesets are created unless explicitly enabled. Repositories without a `ruleset` section or with `ruleset.enabled: false` will not have rulesets managed.
+Rulesets are **opt-in** — no rulesets are created unless explicitly enabled. Setting `ruleset.enabled: false` will disable any existing ruleset (set enforcement to `disabled`). If no ruleset exists, the branch is skipped.
 
 To enable rulesets for a branch, set `ruleset.enabled: true` either globally or per branch:
 

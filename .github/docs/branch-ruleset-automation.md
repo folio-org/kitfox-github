@@ -1,19 +1,19 @@
 # Branch Ruleset Automation Workflow
 
-**Workflow**: `branch-ruleset-automation.yml`
+**Workflows**: `branch-ruleset-automation.yml` (orchestrator) + `branch-ruleset-automation-flow.yml` (per-branch flow)
 **Purpose**: Automatically configures branch protection rules and merge queue settings
-**Type**: Reusable workflow (`workflow_dispatch`)
+**Type**: `workflow_dispatch` orchestrator calling a reusable `workflow_call` flow
 
 ## Overview
 
-This workflow automatically configures GitHub branch rulesets for release branches based on the repository's update configuration. It uses a **matrix strategy** to process branches in parallel, with each branch getting its own job.
+This workflow automatically configures GitHub branch rulesets for release branches based on the repository's update configuration. It uses a **two-workflow architecture**: an orchestrator builds a matrix from config and dispatches a per-branch flow that handles the update, notifications, and summary.
 
 Features:
 1. **Configurable ruleset parameters** via `update-config.yml`
-2. **Matrix-based execution** - one job per branch for parallel processing
-3. **Non-PR branch support** - branches with `need_pr: false` can have rulesets when explicitly enabled
-4. **Configurable merge queue** settings per branch
-5. **Environment variable for App ID** - no hardcoded values
+2. **Matrix-based execution** - one flow job per branch for parallel processing
+3. **Enforcement control** - `enabled: true` activates rulesets, `enabled: false` disables existing ones
+4. **Per-branch notifications** - each branch gets its own Slack notification and summary
+5. **Configurable merge queue** settings per branch
 
 ## Workflow Interface
 
@@ -60,33 +60,32 @@ Reads configuration and builds a matrix of branches to process.
 4. Build Matrix - creates one entry per branch with resolved ruleset config
 
 **Outputs**:
-- `matrix`: JSON matrix for parallel job execution
+- `matrix`: JSON matrix for parallel job execution (includes `enforcement` per branch)
 - `has_branches`: Whether any branches need processing
-- `skipped_branches`: Branches skipped (ruleset disabled)
 
 ### 2. Update Rulesets (Matrix)
 **Job**: `update-rulesets`
 
-Processes each branch in parallel using GitHub Actions matrix strategy.
+Calls `branch-ruleset-automation-flow.yml` for each branch using matrix strategy.
 
 **Strategy**:
 - `fail-fast: false` - continue processing other branches if one fails
 - `max-parallel: 5` - limit concurrent jobs
 
-**Steps per branch**:
-1. Generate GitHub App Token
-2. Update Branch Ruleset using `branch-ruleset-management` action
-3. Report Result to step summary
+Each matrix entry includes `enforcement: active` or `enforcement: disabled` based on `ruleset.enabled` in config.
 
-### 3. Send Notifications
-**Job**: `notify`
+### 3. Per-Branch Flow (`branch-ruleset-automation-flow.yml`)
 
-Sends Slack notifications with ruleset update results.
+Each flow execution contains three jobs:
 
-### 4. Workflow Summary
+1. **Update Ruleset** - Calls `branch-ruleset-management` action with enforcement level
+2. **Send Notifications** - Slack notifications (skipped when outcome is `skipped`)
+3. **Workflow Summary** - Per-branch step summary with notification status
+
+### 4. Workflow Summary (Orchestrator)
 **Job**: `summarize`
 
-Generates a comprehensive workflow summary showing aggregated results.
+Generates an aggregated summary across all branches.
 
 ## Ruleset Configuration
 
@@ -143,23 +142,16 @@ branches:
           check_response_timeout_minutes: 120  # Longer timeout
 ```
 
-## Backward Compatibility
+## Enforcement Behavior
 
-For repositories without a `ruleset` section in their configuration:
+The `ruleset.enabled` setting maps to ruleset enforcement:
 
-- Branches with `need_pr: true` - get rulesets with default settings (same as before)
-- Branches with `need_pr: false` - no ruleset created (same as before)
-
-To enable rulesets for non-PR branches, explicitly add:
-
-```yaml
-branches:
-  - snapshot:
-      enabled: true
-      need_pr: false
-      ruleset:
-        enabled: true  # Explicitly enable ruleset
-```
+| `ruleset.enabled` | Ruleset exists? | Action                          |
+|--------------------|-----------------|--------------------------------------|
+| `true`             | No              | Creates new active ruleset           |
+| `true`             | Yes             | Updates existing ruleset (active)    |
+| `false`            | No              | Skips (nothing to disable)           |
+| `false`            | Yes             | Sets enforcement to `disabled`       |
 
 ## Usage Examples
 
@@ -216,9 +208,8 @@ gh api repos/folio-org/app-acquisitions/contents/.github/update-config.yml \
 ## Related Documentation
 
 - **[Update Config Schema](update-config.md)**: Complete configuration schema including ruleset settings
-- **[PR Check](pr-check.md)**: Validation workflow that includes ruleset validation
 - **[Merge Queue Check](merge-queue-check.md)**: Merge queue validation
-- **[Branch Ruleset Management Action](../actions/branch-ruleset-management/README.md)**: New ruleset management action
+- **[Branch Ruleset Management Action](../actions/branch-ruleset-management/README.md)**: Ruleset management action
 
 ---
 

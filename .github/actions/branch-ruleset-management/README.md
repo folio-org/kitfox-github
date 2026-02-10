@@ -25,6 +25,7 @@ Creates or updates GitHub branch rulesets. Accepts individual configuration para
       }
     bypass_actors: |
       [{"actor_id": null, "actor_type": "Integration", "bypass_mode": "always"}]
+    enforcement: active
     integration_id: ${{ vars.EUREKA_CI_APP_ID }}
     github_token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -39,6 +40,7 @@ Creates or updates GitHub branch rulesets. Accepts individual configuration para
 | `required_checks` | No        | `[]`            | JSON array of required status checks                               |
 | `merge_queue`     | No        | `{}`            | JSON object with merge queue configuration                         |
 | `bypass_actors`   | No        | `[]`            | JSON array of bypass actors                                        |
+| `enforcement`     | No        | `active`        | Ruleset enforcement level: `active` or `disabled`                  |
 | `integration_id`  | Yes       | -               | Default integration ID for null `actor_id`/`integration_id` values |
 | `github_token`    | Yes       | -               | GitHub token with admin permissions                                |
 
@@ -46,7 +48,7 @@ Creates or updates GitHub branch rulesets. Accepts individual configuration para
 
 | Output       | Description                                                 |
 |--------------|-------------------------------------------------------------|
-| `result`     | Operation result: `created`, `updated`, `skipped`, `failed` |
+| `outcome`    | Operation outcome: `created`, `updated`, `disabled`, `skipped`, `failed` |
 | `ruleset_id` | Ruleset ID (if created or updated)                          |
 | `message`    | Human-readable result message                               |
 
@@ -104,6 +106,7 @@ Use `null` for `actor_id` to use the default from `integration_id` input.
     required_checks: ${{ toJson(matrix.ruleset.required_checks) }}
     merge_queue: ${{ toJson(matrix.ruleset.merge_queue) }}
     bypass_actors: ${{ toJson(matrix.ruleset.bypass_actors) }}
+    enforcement: ${{ matrix.enforcement }}
     integration_id: ${{ vars.EUREKA_CI_APP_ID }}
     github_token: ${{ steps.app-token.outputs.token }}
 ```
@@ -115,4 +118,5 @@ The action handles internally:
 2. **Integration ID resolution** - Replaces `null` values with the default
 3. **Rules array construction** - Builds `required_status_checks` and `merge_queue` rules
 4. **Branch existence check** - Skips if branch doesn't exist
-5. **Create/update logic** - Creates new or updates existing ruleset
+5. **Enforcement handling** - Disables existing ruleset when `enforcement: disabled`, skips if no ruleset exists
+6. **Create/update logic** - Creates new or updates existing active ruleset
