@@ -119,13 +119,8 @@ jobs:
               "short": true
             },
             {
-              "title": "Result",
-              "value": "${{ needs.update-ruleset.outputs.result }}",
-              "short": true
-            },
-            {
               "title": "Ruleset ID",
-              "value": "${{ needs.update-ruleset.outputs.ruleset_id }}",
+              "value": "<https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/settings/rules/${{ needs.update-ruleset.outputs.ruleset_id }}|${{ needs.update-ruleset.outputs.ruleset_id }}>",
               "short": true
             }${{ inputs.head_sha != '' && format(',
             {{
