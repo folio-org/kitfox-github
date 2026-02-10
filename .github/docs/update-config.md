@@ -71,7 +71,7 @@ ruleset:
   required_checks:
     - context: "eureka-ci / validate-application"
   merge_queue:
-    enabled: false
+    enabled: true
     check_response_timeout_minutes: 60
     grouping_strategy: "ALLGREEN"
     max_entries_to_build: 5
@@ -98,7 +98,7 @@ ruleset:
 
 | Field                              | Type    | Default      | Description                              |
 |------------------------------------|---------|--------------|------------------------------------------|
-| `enabled`                          | boolean | `false`      | Enable merge queue for this branch       |
+| `enabled`                          | boolean | `true`       | Enable merge queue for this branch       |
 | `check_response_timeout_minutes`   | integer | `60`         | Timeout waiting for status checks        |
 | `grouping_strategy`                | string  | `"ALLGREEN"` | How to group entries: `ALLGREEN`, `HEADGREEN` |
 | `max_entries_to_build`             | integer | `5`          | Max concurrent builds                    |

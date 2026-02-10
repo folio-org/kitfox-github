@@ -85,7 +85,7 @@ runs:
           "pattern": "{0}-eureka-ci",
           "required_checks": [{"context": "eureka-ci / validate-application", "integration_id": null}],
           "merge_queue": {
-            "enabled": false,
+            "enabled": true,
             "check_response_timeout_minutes": 60,
             "grouping_strategy": "ALLGREEN",
             "max_entries_to_build": 5,
