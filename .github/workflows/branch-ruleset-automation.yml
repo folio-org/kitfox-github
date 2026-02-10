@@ -30,7 +30,6 @@ jobs:
     outputs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
       has_branches: ${{ steps.build-matrix.outputs.has_branches }}
-      skipped_branches: ${{ steps.build-matrix.outputs.skipped_branches }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -56,27 +55,25 @@ jobs:
           set -eo pipefail
 
           MATRIX_ENTRIES="[]"
-          SKIPPED_BRANCHES="[]"
 
           while IFS= read -r branch_entry; do
             branch=$(echo "$branch_entry" | jq -r '.branch')
             ruleset=$(echo "$branch_entry" | jq -c '.ruleset // {}')
 
             ruleset_enabled=$(echo "$ruleset" | jq -r '.enabled')
-
+            enforcement="active"
             if [[ "$ruleset_enabled" != "true" ]]; then
-              echo "::notice::Skipping branch $branch (ruleset.enabled=false)"
-              SKIPPED_BRANCHES=$(echo "$SKIPPED_BRANCHES" | jq -c --arg b "$branch (ruleset disabled)" '. += [$b]')
-              continue
+              enforcement="disabled"
             fi
 
             entry=$(jq -n \
               --arg branch "$branch" \
+              --arg enforcement "$enforcement" \
               --argjson ruleset "$ruleset" \
-              '{branch: $branch, ruleset: $ruleset}')
+              '{branch: $branch, enforcement: $enforcement, ruleset: $ruleset}')
 
             MATRIX_ENTRIES=$(echo "$MATRIX_ENTRIES" | jq -c --argjson entry "$entry" '. += [$entry]')
-            echo "::notice::Prepared matrix entry for branch: $branch"
+            echo "::notice::Prepared matrix entry for branch: $branch (enforcement: $enforcement)"
           done < <(echo "$BRANCH_CONFIG" | jq -c '.[]')
 
           BRANCH_COUNT=$(echo "$MATRIX_ENTRIES" | jq 'length')
@@ -90,7 +87,6 @@ jobs:
             echo "has_branches=false" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "skipped_branches=$(echo "$SKIPPED_BRANCHES" | jq -c .)" >> "$GITHUB_OUTPUT"
 
   update-rulesets:
     name: Update Ruleset - ${{ matrix.branch }}
@@ -110,6 +106,7 @@ jobs:
       required_checks: ${{ toJson(matrix.ruleset.required_checks) }}
       merge_queue: ${{ toJson(matrix.ruleset.merge_queue) }}
       bypass_actors: ${{ toJson(matrix.ruleset.bypass_actors) }}
+      enforcement: ${{ matrix.enforcement }}
     secrets: inherit
 
   summarize:
@@ -123,7 +120,6 @@ jobs:
           MATRIX_RESULT: ${{ needs.update-rulesets.result }}
           PREPARE_RESULT: ${{ needs.prepare.result }}
           HAS_BRANCHES: ${{ needs.prepare.outputs.has_branches }}
-          SKIPPED_BRANCHES: ${{ needs.prepare.outputs.skipped_branches }}
         run: |
           {
             echo "### Branch Ruleset Automation Summary"
@@ -148,11 +144,6 @@ jobs:
               fi
             else
               echo "**Status:** Preparation failed - $PREPARE_RESULT"
-            fi
-
-            if [[ -n "$SKIPPED_BRANCHES" && "$SKIPPED_BRANCHES" != "[]" ]]; then
-              echo ""
-              echo "**Skipped Branches:** $(echo "$SKIPPED_BRANCHES" | jq -r 'join(", ")')"
             fi
 
             echo ""
