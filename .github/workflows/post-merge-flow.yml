@@ -211,7 +211,7 @@ jobs:
     if: always() && !cancelled() && needs.pre-check.outputs.should_process == 'true'
     runs-on: ubuntu-latest
     outputs:
-      branch_deleted: ${{ steps.delete-branch.outputs.deleted }}
+      deleted: ${{ steps.delete-branch.outputs.deleted }}
       failure_reason: ${{ steps.delete-branch.outputs.failure_reason }}
     steps:
       - name: Generate GitHub App Token
