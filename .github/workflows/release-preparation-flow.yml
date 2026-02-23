@@ -221,14 +221,21 @@ jobs:
           echo "::notice::Updating $APPLICATION_TEMPLATE_FILE with ^VERSION placeholders and preRelease flags"
 
           jq '
-            .modules     |= map(.version = "^VERSION" | .preRelease = "false")
-            | .uiModules   |= map(.version = "^VERSION" | .preRelease = "false")
+            if .modules then .modules |= map(.version = "^VERSION" | .preRelease = "false") else . end
+            | if .uiModules then .uiModules |= map(.version = "^VERSION" | .preRelease = "false") else . end
             | if .dependencies then .dependencies |= map(.version = "^VERSION" | .preRelease = "false") else . end
-          ' "$APPLICATION_TEMPLATE_FILE" > temp.json && mv temp.json "$APPLICATION_TEMPLATE_FILE"
+          ' "$APPLICATION_TEMPLATE_FILE" > temp.json
+          mv temp.json "$APPLICATION_TEMPLATE_FILE"
 
           echo "::group::Updated template"
           cat "$APPLICATION_TEMPLATE_FILE"
           echo "::endgroup::"
+
+          if git diff --quiet "$APPLICATION_TEMPLATE_FILE"; then
+            echo "::warning::$APPLICATION_TEMPLATE_FILE was not modified by the jq transform"
+          else
+            echo "::notice::$APPLICATION_TEMPLATE_FILE successfully modified"
+          fi
 
       - name: Update POM Version
         id: update-pom
