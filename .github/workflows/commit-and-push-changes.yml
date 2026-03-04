@@ -162,11 +162,14 @@ jobs:
               continue
             fi
 
-            if [ -f "$file" ]; then
+            if [ -d "$file" ]; then
+              echo "::notice::Deleting directory $file"
+              rm -rf "$file"
+            elif [ -f "$file" ]; then
               echo "::notice::Deleting $file"
               rm "$file"
             else
-              echo "::notice::File $file not found, skipping"
+              echo "::notice::$file not found, skipping"
             fi
           done <<< "$FILES_TO_DELETE"
 

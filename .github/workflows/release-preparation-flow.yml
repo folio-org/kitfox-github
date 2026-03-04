@@ -384,6 +384,8 @@ jobs:
       source_branch: ${{ needs.update-template.outputs.source_branch }}
       deleted_files: |
         application.lock.json
+        .github
+        ${{ inputs.app_name }}.template.json
     secrets: inherit
 
   commit-config:
