@@ -218,12 +218,12 @@ jobs:
             exit 1
           fi
 
-          echo "::notice::Updating $APPLICATION_TEMPLATE_FILE with ^VERSION placeholders and preRelease flags"
+          echo "::notice::Updating $APPLICATION_TEMPLATE_FILE with ^VERSION_<previous_version> placeholders and preRelease flags"
 
           jq '
-            if .modules then .modules |= map(.version = "^VERSION" | .preRelease = "false") else . end
-            | if .uiModules then .uiModules |= map(.version = "^VERSION" | .preRelease = "false") else . end
-            | if .dependencies then .dependencies |= map(.version = "^VERSION" | .preRelease = "false") else . end
+            if .modules then .modules |= map(.version = ("^VERSION_" + .version) | .preRelease = "false") else . end
+            | if .uiModules then .uiModules |= map(.version = ("^VERSION_" + .version) | .preRelease = "false") else . end
+            | if .dependencies then .dependencies |= map(.version = ("^VERSION_" + .version) | .preRelease = "false") else . end
           ' "$APPLICATION_TEMPLATE_FILE" > temp.json
           mv temp.json "$APPLICATION_TEMPLATE_FILE"
 
