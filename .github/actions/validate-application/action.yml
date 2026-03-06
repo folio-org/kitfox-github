@@ -118,21 +118,6 @@ runs:
 
         echo "::notice::Application descriptors fetched for validation"
 
-    - name: Include Target App Descriptor
-      if: steps.fetch-app-descriptors.outcome == 'success'
-      shell: bash
-      env:
-        APP_NAME: ${{ inputs.app_name }}
-        APP_DESCRIPTOR_PATH: ${{ inputs.app_descriptor_path != '' && inputs.app_descriptor_path || format('/tmp/app-descriptors/{0}', inputs.app_descriptor_artifact_file_name) }}
-      run: |
-        set -eo pipefail
-        if [ -f "$APP_DESCRIPTOR_PATH" ]; then
-          cp "$APP_DESCRIPTOR_PATH" "/tmp/app-descriptors/${APP_NAME}.json"
-          echo "::notice::Included target app descriptor in dependency validation: $APP_NAME"
-        else
-          echo "::warning::Target app descriptor not found at $APP_DESCRIPTOR_PATH, skipping inclusion"
-        fi
-
     - name: Validate Application Module Interface Integrity
       id: validate-interfaces
       shell: bash

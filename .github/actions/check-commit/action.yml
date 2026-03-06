@@ -107,6 +107,7 @@ runs:
       shell: bash
       env:
         DESCRIPTOR_FILE: "application.lock.json"
+        APP_NAME: ${{ inputs.repo_name }}
       run: |
         set -eo pipefail
 
@@ -119,7 +120,12 @@ runs:
 
         echo "::notice::Found existing application descriptor: $DESCRIPTOR_FILE"
         echo "exists=true" >> "$GITHUB_OUTPUT"
-        echo "descriptor_file=$DESCRIPTOR_FILE" >> "$GITHUB_OUTPUT"
+
+        mkdir -p /tmp/app-descriptors
+        ARTIFACT_FILE="${APP_NAME}-$(jq -r '.version' "$DESCRIPTOR_FILE").json"
+        cp "$DESCRIPTOR_FILE" "/tmp/app-descriptors/${ARTIFACT_FILE}"
+        echo "descriptor_file=/tmp/app-descriptors/${ARTIFACT_FILE}" >> "$GITHUB_OUTPUT"
+        echo "::notice::Copied descriptor to /tmp/app-descriptors/${ARTIFACT_FILE}"
 
     - name: Check Protected Files
       id: check-protected
