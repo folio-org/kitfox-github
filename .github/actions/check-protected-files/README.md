@@ -139,14 +139,14 @@ Messages are semicolon-separated for multiple violations.
 
 The action logs violations but does not fail:
 - Violations are reported via outputs
-- Calling workflow decides how to handle violations
-- Typically used with `check-run-create` to create failure status
+- Calling workflow/action decides how to handle violations
+- Used by `check-commit` action which finalizes the check run based on violation status
 
 ## Related Documentation
 
-- **[Check Run Create Action](../check-run-create/README.md)**: Creates check run based on violations
-- **[PR Check Workflow](../../docs/pr-check.md)**: Uses this action
-- **[Merge Queue Check Workflow](../../docs/merge-queue-check.md)**: Uses this action
+- **[Check Commit Action](../check-commit/README.md)**: Uses this action for protected file validation
+- **[PR Check Workflow](../../docs/pr-check.md)**: Uses this action via check-commit
+- **[Merge Queue Check Workflow](../../docs/merge-queue-check.md)**: Uses this action via check-commit
 
 ---
 

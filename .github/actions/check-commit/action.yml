@@ -42,7 +42,7 @@ outputs:
     value: ${{ steps.validate.outputs.validation_passed }}
   failure_reason:
     description: 'Reason for failure'
-    value: ${{ steps.check-descriptor.outputs.exists != 'true' && steps.check-descriptor.outputs.failure_reason || steps.check-protected.outputs.has_violation == 'true' && steps.check-protected.outputs.violation_reason || steps.validate.outputs.failure_reason || 'Check workflow logs for details' }}
+    value: ${{ steps.check-protected.outputs.has_violations == 'true' && steps.check-protected.outputs.violations || steps.validate.outputs.failure_reason || 'Check workflow logs for details' }}
   check_run_id:
     description: 'Created check run ID'
     value: ${{ steps.create-check.outputs.check_run_id }}
@@ -54,7 +54,7 @@ outputs:
     value: ${{ steps.fetch-platform.outputs.platform_found }}
   protected_file_violation:
     description: 'Whether protected files were violated'
-    value: ${{ steps.check-protected.outputs.has_violation }}
+    value: ${{ steps.check-protected.outputs.has_violations }}
 
 runs:
   using: 'composite'
@@ -102,6 +102,17 @@ runs:
           console.log(`Created check run with ID: ${checkRun.id}`);
           core.setOutput('check_run_id', checkRun.id);
 
+    - name: Check Protected Files
+      id: check-protected
+      uses: folio-org/kitfox-github/.github/actions/check-protected-files@master
+      with:
+        check_type: ${{ inputs.check_type }}
+        repo_owner: ${{ inputs.repo_owner }}
+        repo_name: ${{ inputs.repo_name }}
+        pr_number: ${{ inputs.pr_number }}
+        head_sha: ${{ inputs.head_sha }}
+        github_token: ${{ inputs.github_token }}
+
     - name: Check Existing Descriptor
       id: check-descriptor
       shell: bash
@@ -112,9 +123,8 @@ runs:
         set -eo pipefail
 
         if [[ ! -f "$DESCRIPTOR_FILE" ]]; then
-          echo "::error::Application descriptor not found: $DESCRIPTOR_FILE"
+          echo "::notice::Application descriptor not found: $DESCRIPTOR_FILE"
           echo "exists=false" >> "$GITHUB_OUTPUT"
-          echo "failure_reason=Application descriptor file not found: $DESCRIPTOR_FILE" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
@@ -126,39 +136,6 @@ runs:
         cp "$DESCRIPTOR_FILE" "/tmp/app-descriptors/${ARTIFACT_FILE}"
         echo "descriptor_file=/tmp/app-descriptors/${ARTIFACT_FILE}" >> "$GITHUB_OUTPUT"
         echo "::notice::Copied descriptor to /tmp/app-descriptors/${ARTIFACT_FILE}"
-
-    - name: Check Protected Files
-      id: check-protected
-      if: steps.check-descriptor.outputs.exists == 'true'
-      shell: bash
-      env:
-        CHECK_TYPE: ${{ inputs.check_type }}
-        PR_NUMBER: ${{ inputs.pr_number }}
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-        REPO_OWNER: ${{ inputs.repo_owner }}
-        REPO_NAME: ${{ inputs.repo_name }}
-      run: |
-        set -eo pipefail
-        violations=""
-
-        if [[ "$CHECK_TYPE" == "merge_queue" ]]; then
-          if git diff --name-status HEAD~1 HEAD 2>/dev/null | grep -E "^D.*application\.template\.json$"; then
-            violations="application.template.json: template file deletion not allowed"
-          fi
-        else
-          files=$(gh api "repos/$REPO_OWNER/$REPO_NAME/pulls/$PR_NUMBER/files" --jq '.[] | select(.status == "removed") | .filename' 2>/dev/null || true)
-          if echo "$files" | grep -q "application.template.json"; then
-            violations="application.template.json: template file deletion not allowed"
-          fi
-        fi
-
-        if [[ -n "$violations" ]]; then
-          echo "::error::Protected file violation: $violations"
-          echo "has_violation=true" >> "$GITHUB_OUTPUT"
-          echo "violation_reason=$violations" >> "$GITHUB_OUTPUT"
-        else
-          echo "has_violation=false" >> "$GITHUB_OUTPUT"
-        fi
 
     - name: Fetch Platform Descriptor
       id: fetch-platform
@@ -238,14 +215,13 @@ runs:
         CHECK_RUN_ID: ${{ steps.create-check.outputs.check_run_id }}
         WORKFLOW_RUN_URL: ${{ inputs.workflow_run_url }}
         DESCRIPTOR_EXISTS: ${{ steps.check-descriptor.outputs.exists }}
-        DESCRIPTOR_FAILURE_REASON: ${{ steps.check-descriptor.outputs.failure_reason }}
         VALIDATION_PASSED: ${{ steps.validate.outputs.validation_passed }}
         FAILURE_REASON: ${{ steps.validate.outputs.failure_reason }}
         PLATFORM_FOUND: ${{ steps.fetch-platform.outputs.platform_found }}
         FETCH_ERROR: ${{ steps.fetch-platform.outputs.fetch_error }}
         FETCH_OUTCOME: ${{ steps.fetch-platform.outcome }}
-        PROTECTED_VIOLATION: ${{ steps.check-protected.outputs.has_violation }}
-        PROTECTED_VIOLATION_REASON: ${{ steps.check-protected.outputs.violation_reason }}
+        PROTECTED_VIOLATION: ${{ steps.check-protected.outputs.has_violations }}
+        PROTECTED_VIOLATION_REASON: ${{ steps.check-protected.outputs.violations }}
       with:
         github-token: ${{ inputs.github_token }}
         script: |
@@ -258,7 +234,6 @@ runs:
           const repoName = process.env.REPO_NAME;
 
           const descriptorExists = process.env.DESCRIPTOR_EXISTS;
-          const descriptorFailureReason = process.env.DESCRIPTOR_FAILURE_REASON;
           const validationPassed = process.env.VALIDATION_PASSED;
           const failureReason = process.env.FAILURE_REASON;
           const platformFound = process.env.PLATFORM_FOUND;
@@ -269,18 +244,18 @@ runs:
 
           let conclusion, title, summary;
 
-          if (descriptorExists !== 'true') {
+          if (protectedViolation === 'true') {
             conclusion = 'failure';
-            title = 'Descriptor Not Found';
-            summary = descriptorFailureReason || 'Application descriptor file not found';
+            title = 'Protected File Violation';
+            summary = protectedViolationReason || 'Protected file modification detected';
+          } else if (descriptorExists !== 'true') {
+            conclusion = 'success';
+            title = 'Non-Update Approved';
+            summary = 'No application descriptor found - this is a non-update commit. Validation skipped.';
           } else if (fetchError === 'true' || fetchOutcome === 'failure') {
             conclusion = 'failure';
             title = 'Platform Descriptor Fetch Failed';
             summary = `Failed to fetch platform descriptor from branch ${baseBranch}. This might be a temporary issue. Please retry.`;
-          } else if (protectedViolation === 'true') {
-            conclusion = 'failure';
-            title = 'Protected File Violation';
-            summary = protectedViolationReason || 'Protected file modification detected';
           } else if (validationPassed === 'false') {
             conclusion = 'failure';
             title = 'Verification Failed';
@@ -346,7 +321,7 @@ runs:
             details_url: process.env.WORKFLOW_RUN_URL
           };
 
-          if (descriptorExists !== 'true' || fetchError === 'true' || protectedViolation === 'true' || validationPassed === 'false') {
+          if (fetchError === 'true' || protectedViolation === 'true' || validationPassed === 'false') {
             updateParams.actions = [{
               label: 'Re-run Validation',
               description: 'Trigger a new validation check',
