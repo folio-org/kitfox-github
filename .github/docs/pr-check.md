@@ -6,12 +6,9 @@
 
 ## Overview
 
-This workflow provides comprehensive automated validation for pull requests targeting configured release branches. It's designed to be triggered by a GitHub App webhook when PRs are opened or when check suites are requested. The workflow supports two distinct validation paths:
+This workflow provides comprehensive automated validation for pull requests targeting configured release branches. It's designed to be triggered by a GitHub App webhook when PRs are opened or when check suites are requested.
 
-1. **Update PRs**: PRs from the configured update branch undergo full application descriptor validation
-2. **Non-Update PRs**: Other PRs are checked only for protected file violations
-
-The workflow validates application descriptors, checks module interface integrity, verifies dependencies, enforces protected file policies, and provides detailed feedback through GitHub Check Runs.
+The workflow validates application descriptors, checks module interface integrity, verifies dependencies, enforces protected file policies, and provides detailed feedback through GitHub Check Runs. For commits without an application descriptor, the check run completes with a "Non-Update Approved" success status.
 
 ## Workflow Interface
 
@@ -68,51 +65,27 @@ Validates the PR configuration and determines if validation should proceed, and 
 - Skip if release scanning disabled
 - Skip if target branch not in `release_branches`
 - Skip if `need_pr=false` for the branch
-- Determine if PR is from update branch (update PR) or other branch (non-update PR)
-- Check for required PR labels (if configured)
 
 **Outputs**:
 - `validation_status`: `success`, `skipped`, or `failure`
 - `validation_message`: Detailed message about the validation status
-- `is_update_pr`: Whether this is an update PR (from configured update branch)
 - `head_branch`: PR head branch name
 - `base_branch`: PR base (target) branch name
 
-### 2. Non-Update PR Check
-**Job**: `non-update-check`
-
-Runs only for non-update PRs. Validates that protected files are not deleted.
-
-**Condition**: `validation_status == 'success' && is_update_pr == 'false'`
-
-**Protected Files**:
-- `application.lock.json` - deletion not allowed
-- `application.template.json` - deletion not allowed
-
-**Steps**:
-1. Generate GitHub App Token
-2. Check Protected Files - uses `check-protected-files` action
-3. Create Check Run - uses `check-run-create` action
-4. Send Slack notifications if violations found
-
-**Outputs**:
-- `has_violations`: Whether protected file violations were found
-- `violations`: Semicolon-separated violation messages
-
-### 3. Update PR Check
+### 2. PR Check
 **Job**: `check`
 
-Runs only for update PRs. Performs full application descriptor validation.
+Performs application validation using the `check-commit` action.
 
-**Condition**: `validation_status == 'success' && is_update_pr == 'true'`
+**Condition**: `validation_status == 'success'`
 
 **Steps**:
 1. Generate GitHub App Token
 2. Checkout Repository
 3. Check Commit - uses `check-commit` action which:
    - Creates GitHub Check Run
-   - Validates descriptor existence
    - Checks protected files
+   - Validates descriptor existence (non-update commits get "Non-Update Approved" success)
    - Fetches platform descriptor
    - Validates application via `validate-application` action
    - Finalizes check run with results
@@ -121,12 +94,12 @@ Runs only for update PRs. Performs full application descriptor validation.
 - `validation_passed`: Whether all validations passed
 - `failure_reason`: Reason for failure if applicable
 
-### 4. Send Notifications
+### 3. Send Notifications
 **Job**: `notify`
 
-Sends Slack notifications to configured channels about update PR validation results.
+Sends Slack notifications to configured channels about validation results.
 
-**Condition**: Runs for update PRs regardless of check outcome
+**Condition**: Runs when pre-check passes, regardless of check outcome
 
 **Message Format**:
 ```
@@ -143,7 +116,7 @@ Commit: ee30528...
 - Green: Check passed and validation succeeded
 - Red: Check failed or validation failed
 
-### 5. Workflow Summary
+### 4. Workflow Summary
 **Job**: `summarize`
 
 Generates a comprehensive workflow summary in the GitHub Actions UI.
@@ -158,20 +131,13 @@ Generates a comprehensive workflow summary in the GitHub Actions UI.
 
 ## Features
 
-### Dual Validation Paths
+### Unified Validation Path
 
-The workflow intelligently routes PRs through different validation paths:
+All PRs go through the same `check-commit` action which handles both scenarios:
 
-**Update PRs** (from configured update branch):
-- Full application descriptor validation
-- Module interface integrity checks
-- Dependency validation against platform descriptor
-- GitHub Check Run with detailed results
-
-**Non-Update PRs** (from other branches):
-- Protected file deletion detection
-- Quick validation without expensive checks
-- Immediate check run result
+- **Update PRs** (descriptor present): Full application descriptor validation, module interface integrity checks, dependency validation against platform descriptor
+- **Non-update PRs** (no descriptor): Check run completes with "Non-Update Approved" success status
+- **Protected file violations**: Detected for all PRs regardless of descriptor presence
 
 ### Protected File Enforcement
 
@@ -196,7 +162,7 @@ release_scan:
 
 ### Interactive Re-run Capability
 
-For update PRs, the workflow adds a "Re-run Validation" action button in failed check runs:
+The workflow adds a "Re-run Validation" action button in failed check runs:
 1. User clicks "Re-run Validation" button
 2. GitHub sends `check_run.requested_action` webhook event
 3. GitHub App webhook handler receives the event
@@ -252,15 +218,12 @@ release_scan:
 - PR not found or commit not in PR
 - Configuration file missing
 - Target branch not configured
-- Missing required PR labels
 
-**Non-Update PR Violations**:
+**Protected File Violations**:
 - Protected file deletion detected
 - Check run created with failure status
-- Slack notification sent
 
-**Update PR Validation Failures**:
-- Descriptor not found
+**Validation Failures**:
 - Platform descriptor fetch failed
 - Module interface validation failed
 - Dependency validation failed
@@ -286,11 +249,6 @@ release_scan:
 2. Verify `enabled: true` in configuration
 3. Confirm target branch in `release_branches`
 4. Verify `need_pr: true` for the branch
-5. Check PR has required labels (if configured)
-
-**Non-Update PR Blocked**:
-1. Review which protected files were modified
-2. Ensure PR doesn't delete `application.lock.json` or `application.template.json`
 
 **Re-run Button Doesn't Work**:
 1. Verify webhook handler configured for `check_run.requested_action`
@@ -320,7 +278,6 @@ gh api repos/folio-org/app-acquisitions/contents/.github/update-config.yml \
 - **[Post-Merge Flow](post-merge-flow.md)**: Post-merge descriptor publishing
 - **[Check Commit Action](../actions/check-commit/README.md)**: Full validation action
 - **[Check Protected Files Action](../actions/check-protected-files/README.md)**: Protected file detection
-- **[Check Run Create Action](../actions/check-run-create/README.md)**: Check run creation
 
 ---
 

@@ -6,12 +6,9 @@
 
 ## Overview
 
-This workflow validates commits that have entered GitHub's merge queue. It ensures that commits in the queue meet all requirements before being merged into release branches. The workflow supports two distinct validation paths:
+This workflow validates commits that have entered GitHub's merge queue. It ensures that commits in the queue meet all requirements before being merged into release branches.
 
-1. **Update Commits**: Commits that modify `application.lock.json` undergo full application descriptor validation
-2. **Non-Update Commits**: Other commits are checked only for protected file violations
-
-The workflow integrates with GitHub Check Runs to provide merge queue status feedback.
+The workflow integrates with GitHub Check Runs to provide merge queue status feedback. For commits without an application descriptor, the check run completes with a "Non-Update Approved" success status.
 
 ## Workflow Interface
 
@@ -58,51 +55,26 @@ Validates the configuration and determines which validation path to use.
 **Steps**:
 1. Print Input Parameters
 2. Generate GitHub App Token
-3. Checkout Repository (with fetch-depth: 2 for diff comparison)
-4. Get Update Configuration
-5. Validate Configuration
+3. Get Update Configuration
+4. Validate Configuration
 
 **Validation Logic**:
 - Skip if configuration file not found
 - Skip if release scanning disabled
 - Skip if target branch not in `release_branches`
 - Skip if `need_pr=false` for the branch
-- Determine if commit modifies `application.lock.json` (update vs non-update)
 
 **Outputs**:
 - `validation_status`: `success` or `skipped`
 - `validation_message`: Detailed message about the validation status
-- `is_update_commit`: Whether this commit modifies `application.lock.json`
 - `base_branch`: Target branch
 
-### 2. Non-Update Check
-**Job**: `non-update-check`
-
-Runs only for non-update commits. Validates that protected files are not deleted.
-
-**Condition**: `validation_status == 'success' && is_update_commit == 'false'`
-
-**Protected Files**:
-- `application.lock.json` - deletion not allowed
-- `application.template.json` - deletion not allowed
-
-**Steps**:
-1. Generate GitHub App Token
-2. Checkout Repository (fetch-depth: 2)
-3. Check Protected Files - uses `check-protected-files` action with `check_type: merge_queue`
-4. Create Check Run - uses `check-run-create` action
-5. Send Slack notifications if violations found
-
-**Outputs**:
-- `has_violations`: Whether protected file violations were found
-- `violations`: Semicolon-separated violation messages
-
-### 3. Update Commit Check
+### 2. Commit Check
 **Job**: `check`
 
-Runs only for update commits. Performs full application descriptor validation.
+Performs application validation using the `check-commit` action.
 
-**Condition**: `validation_status == 'success' && is_update_commit == 'true'`
+**Condition**: `validation_status == 'success'`
 
 **Steps**:
 1. Generate GitHub App Token
@@ -113,12 +85,12 @@ Runs only for update commits. Performs full application descriptor validation.
 - `validation_passed`: Whether all validations passed
 - `failure_reason`: Reason for failure if applicable
 
-### 4. Send Notifications
+### 3. Send Notifications
 **Job**: `notify`
 
-Sends Slack notifications to configured channels about update commit validation results.
+Sends Slack notifications to configured channels about validation results.
 
-**Condition**: Runs for update commits regardless of check outcome
+**Condition**: Runs when pre-check passes, regardless of check outcome
 
 **Message Format**:
 ```
@@ -128,7 +100,7 @@ Target branch: R2-2025
 Commit: ee30528...
 ```
 
-### 5. Workflow Summary
+### 4. Workflow Summary
 **Job**: `summarize`
 
 Generates a comprehensive workflow summary in the GitHub Actions UI.
@@ -141,26 +113,13 @@ Generates a comprehensive workflow summary in the GitHub Actions UI.
 
 ## Features
 
-### Update vs Non-Update Detection
+### Unified Validation Path
 
-The workflow determines commit type by checking if `application.lock.json` was modified:
+All commits go through the same `check-commit` action which handles both scenarios:
 
-```bash
-git diff --name-only HEAD~1 HEAD | grep -q "application.lock.json"
-```
-
-- **Update Commit**: Modifies `application.lock.json` - full validation
-- **Non-Update Commit**: Doesn't modify lock file - protected file check only
-
-### Protected File Enforcement
-
-For merge queue, uses `git diff` to detect protected file deletions:
-
-```bash
-git diff --name-status HEAD~1 HEAD
-```
-
-Files with status "D" (deleted) that match protected file names trigger violations.
+- **Update commits** (descriptor present): Full application descriptor validation, module interface integrity checks, dependency validation against platform descriptor
+- **Non-update commits** (no descriptor): Check run completes with "Non-Update Approved" success status
+- **Protected file violations**: Detected for all commits regardless of descriptor presence
 
 ### GitHub Check Run Integration
 
@@ -203,13 +162,12 @@ release_scan:
 - Branch not configured - check skipped
 - `need_pr=false` for branch - check skipped
 
-**Non-Update Commit Violations**:
+**Protected File Violations**:
 - Protected file deletion detected
 - Check run created with failure status
 - Merge queue entry blocked
 
-**Update Commit Validation Failures**:
-- Descriptor not found
+**Validation Failures**:
 - Platform descriptor fetch failed
 - Module interface validation failed
 - Dependency validation failed
