@@ -36,6 +36,9 @@ outputs:
   skip_reason:
     description: 'Reason for skipping if PR does not exist'
     value: ${{ steps.pr-info.outputs.skip_reason }}
+  body:
+    description: 'Body/description of the pull request'
+    value: ${{ steps.pr-info.outputs.body }}
 
 runs:
   using: 'composite'
@@ -82,6 +85,7 @@ runs:
             core.setOutput('base_ref', pr.base.ref);
             core.setOutput('labels', JSON.stringify(labels));
             core.setOutput('state', pr.state);
+            core.setOutput('body', pr.body || '');
 
           } catch (error) {
             console.log(`Failed to fetch PR #${prNumber}: ${error.message}`);

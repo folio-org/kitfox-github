@@ -32,6 +32,7 @@ The workflows follow a layered architecture:
 ┌─────────────────────────────────────────────────────────────┐
 │                        Flow Layer                           │
 │  • application-update-flow.yml                              │
+│  • release-application-version-flow.yml                     │
 │  • release-pr-check.yml                                     │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -98,6 +99,20 @@ The workflows follow a layered architecture:
 **File**: [`application-update-flow.yml`](workflows/application-update-flow.yml)
 **Purpose**: Core application update flow implementation for all branch types
 **Documentation**: [Application Update Flow Guide](docs/application-update-flow.md)
+
+#### Release Application Version Flow
+**File**: [`release-application-version-flow.yml`](workflows/release-application-version-flow.yml)
+**Purpose**: Creates GitHub Releases with git tags and application-descriptor.json assets
+**Documentation**: [Release Application Version Flow Guide](docs/release-application-version-flow.md)
+
+**Key Features**:
+- Creates `v{version}` tag on specified commit
+- Uploads `application-descriptor.json` as release asset
+- Idempotent re-runs (skips if release exists)
+- SNAPSHOT version guard
+- Built-in Slack notifications and workflow summary
+- Dry-run mode for testing
+- Called automatically from post-merge-flow or manually via per-app-repo wrapper
 
 **Key Features**:
 - Coordinates update, verification, and commit operations
@@ -319,6 +334,7 @@ Workflows implement comprehensive error handling:
 
 #### Flow Layer
 - **[Application Update Flow](docs/application-update-flow.md)**: Core application update flow implementation
+- **[Release Application Version Flow](docs/release-application-version-flow.md)**: GitHub Release creation with tagging and asset upload
 
 #### Core Utilities
 - **[Commit and Push Changes](docs/commit-and-push-changes.md)**: Git operations management
@@ -337,5 +353,5 @@ Workflows implement comprehensive error handling:
 ---
 
 **Infrastructure Team**: Kitfox DevOps
-**Last Updated**: November 2025
+**Last Updated**: March 2026
 **Purpose**: Workflow Implementation and Usage Guide

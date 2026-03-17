@@ -10,6 +10,7 @@ This workflow handles post-merge operations for update PRs. When a PR from the c
 
 1. Publishes the merged application descriptor to FOLIO Application Registry (FAR)
 2. Deletes the update branch to keep the repository clean
+3. Creates a GitHub Release with git tag and `application-descriptor.json` asset
 
 The workflow validates that the merge was successful and that the PR originated from the correct update branch before proceeding.
 
@@ -76,6 +77,7 @@ Validates merge status and configuration before proceeding.
 - `base_branch`: Target branch the PR was merged into
 - `head_branch`: PR head branch (update branch)
 - `update_branch`: Configured update branch name
+- `pr_body`: PR description body (used as release notes)
 
 ### 2. Publish to FAR
 **Job**: `publish`
@@ -113,7 +115,25 @@ Deletes the merged update branch.
 - `branch_deleted`: `true`, `false`, or `skipped`
 - `failure_reason`: Reason if deletion failed
 
-### 4. Send Notifications
+### 4. Create Release
+**Job**: `release`
+
+Creates a GitHub Release with git tag and `application-descriptor.json` asset.
+
+**Condition**: `should_process == 'true'` and descriptor exists and FAR publish succeeded
+
+**Implementation**: Calls `release-application-version-flow.yml` reusable workflow.
+
+See [Release Application Version Flow](release-application-version-flow.md) for full details.
+
+**Outputs** (from flow):
+- `release_created`: `true`, `false`, `skipped`, or `dry_run`
+- `release_url`: URL to the GitHub Release
+- `tag_name`: Tag name (e.g., `v1.0.28`)
+- `app_version`: Application version (e.g., `1.0.28`)
+- `failure_reason`: Reason if release failed
+
+### 5. Send Notifications
 **Job**: `notify`
 
 Sends Slack notifications with post-merge results.
@@ -129,6 +149,7 @@ PR Number: #97
 Descriptor ID: app-acquisitions-2.0.5
 Commit: ee30528...
 Branch Cleanup: Deleted
+Release: v2.0.5
 Descriptor URL: <link>
 ```
 
@@ -136,7 +157,7 @@ Descriptor URL: <link>
 - Green: Publish succeeded and branch cleanup succeeded
 - Red: Any operation failed
 
-### 5. Workflow Summary
+### 6. Workflow Summary
 **Job**: `summarize`
 
 Generates a comprehensive workflow summary in the GitHub Actions UI.
@@ -145,7 +166,8 @@ Generates a comprehensive workflow summary in the GitHub Actions UI.
 1. Descriptor Publish Summary - repository, PR, commit, merge status
 2. Pre-Check Status - configuration validation results
 3. Publication Status - descriptor and FAR publishing results
-4. Notification Status - Slack notification delivery status
+4. Release Status - tag, version, release URL
+5. Notification Status - Slack notification delivery status
 
 ## Features
 
@@ -155,6 +177,15 @@ After successful merge, the update branch is automatically deleted:
 - Keeps repository clean
 - Prevents stale branches from accumulating
 - Handles cleanup failures gracefully
+
+### GitHub Release
+
+After successful FAR publish, creates a GitHub Release:
+- Tags the merge commit with `v{version}` (e.g., `v1.0.28`)
+- Uploads `application-descriptor.json` as release asset
+- Matches existing Jenkins release convention
+- Idempotent: safely skips if release already exists
+- See [Release Application Version Flow](release-application-version-flow.md) for details
 
 ### FAR Publishing
 
@@ -264,10 +295,11 @@ gh api repos/folio-org/app-acquisitions/contents/application.lock.json \
 
 - **[PR Check](pr-check.md)**: Validation for pull requests
 - **[Merge Queue Check](merge-queue-check.md)**: Validation for merge queue commits
+- **[Release Application Version Flow](release-application-version-flow.md)**: GitHub Release creation
 - **[Publish App Descriptor Action](../actions/publish-app-descriptor/README.md)**: FAR publishing
 
 ---
 
-**Last Updated**: December 2025
+**Last Updated**: March 2026
 **Workflow Version**: 1.0
 **Compatibility**: GitHub App webhook integration required

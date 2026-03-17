@@ -46,6 +46,7 @@ jobs:
       base_branch: ${{ steps.pr-info.outputs.base_ref || inputs.base_branch }}
       head_branch: ${{ steps.pr-info.outputs.head_ref }}
       update_branch: ${{ steps.validate-config.outputs.update_branch }}
+      pr_body: ${{ steps.pr-info.outputs.body }}
     steps:
       - name: Check Merge Status
         id: check-merge
@@ -246,9 +247,25 @@ jobs:
             echo "failure_reason=Failed to delete update branch: $HEAD_BRANCH" >> "$GITHUB_OUTPUT"
           fi
 
+  release:
+    name: Create Release
+    needs: [pre-check, publish]
+    if: >-
+      needs.pre-check.outputs.should_process == 'true' &&
+      needs.publish.outputs.descriptor_exists == 'true' &&
+      needs.publish.outputs.publish_status == 'success'
+    uses: folio-org/kitfox-github/.github/workflows/release-application-version-flow.yml@master
+    with:
+      repo_owner: ${{ inputs.repo_owner }}
+      repo_name: ${{ inputs.repo_name }}
+      commit_sha: ${{ inputs.head_sha }}
+      base_branch: ${{ needs.pre-check.outputs.base_branch }}
+      release_notes: ${{ needs.pre-check.outputs.pr_body }}
+    secrets: inherit
+
   notify:
     name: Send Notifications
-    needs: [pre-check, publish, cleanup-branch]
+    needs: [pre-check, publish, cleanup-branch, release]
     if: always() && !cancelled() && needs.pre-check.outputs.should_process == 'true'
     runs-on: ubuntu-latest
     outputs:
@@ -292,7 +309,12 @@ jobs:
               "title": "Branch Cleanup",
               "value": "${{ needs.cleanup-branch.outputs.deleted == 'true' && 'Deleted' || (needs.cleanup-branch.outputs.deleted == 'skipped' && 'Skipped' || 'Failed') }}",
               "short": true
-            }${{ needs.publish.outputs.descriptor_url != '' && format(',
+            }${{ needs.release.outputs.release_created == 'true' && format(',
+            {{
+              "title": "Release",
+              "value": "<{0}|{1}>",
+              "short": true
+            }}', needs.release.outputs.release_url, needs.release.outputs.tag_name) || '' }}${{ needs.publish.outputs.descriptor_url != '' && format(',
             {{
               "title": "Descriptor URL",
               "value": "<{0}|View in FAR>",
@@ -377,7 +399,7 @@ jobs:
 
   summarize:
     name: Workflow Summary
-    needs: [pre-check, publish, notify, cleanup-branch]
+    needs: [pre-check, publish, notify, cleanup-branch, release]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -392,6 +414,11 @@ jobs:
           FAILURE_REASON: ${{ needs.publish.outputs.failure_reason }}
           PUBLISH_STATUS: ${{ needs.publish.outputs.publish_status }}
           DESCRIPTOR_URL: ${{ needs.publish.outputs.descriptor_url }}
+          RELEASE_CREATED: ${{ needs.release.outputs.release_created }}
+          RELEASE_URL: ${{ needs.release.outputs.release_url }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          APP_VERSION: ${{ needs.release.outputs.app_version }}
+          RELEASE_FAILURE_REASON: ${{ needs.release.outputs.failure_reason }}
         run: |
           {
             echo "### Descriptor Publish Summary"
@@ -434,6 +461,25 @@ jobs:
               else
                 echo "- **Descriptor Found:** No"
                 echo "- **Error:** Application descriptor (application.lock.json) not found"
+              fi
+              echo ""
+
+              echo "### Release Status"
+              echo ""
+              if [[ "$RELEASE_CREATED" == "true" ]]; then
+                echo "- **Release Created:** Yes"
+                echo "- **Tag:** [$TAG_NAME]($RELEASE_URL)"
+                echo "- **Version:** \`$APP_VERSION\`"
+              elif [[ "$RELEASE_CREATED" == "skipped" ]]; then
+                echo "- **Release:** Skipped (tag already exists)"
+                if [[ -n "$RELEASE_URL" ]]; then
+                  echo "- **Existing Release:** [$TAG_NAME]($RELEASE_URL)"
+                fi
+              elif [[ -n "$RELEASE_FAILURE_REASON" ]]; then
+                echo "- **Release Created:** No"
+                echo "- **Failure Reason:** $RELEASE_FAILURE_REASON"
+              else
+                echo "- **Release:** Skipped (publish or pre-check failed)"
               fi
               echo ""
             fi
