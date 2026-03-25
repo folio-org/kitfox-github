@@ -25,6 +25,7 @@ This action retrieves comprehensive information about a GitHub pull request usin
 | `labels`           | JSON array of label names                            |
 | `state`            | State of the pull request (open, closed)             |
 | `skip_reason`      | Reason for skipping if PR does not exist             |
+| `body`             | Body/description of the pull request                 |
 
 ## Usage
 
@@ -137,6 +138,7 @@ base_ref: 'main'
 labels: '["bug", "priority-high", "release"]'
 state: 'open'
 skip_reason: ''
+body: 'Following modules were updated: mod-finance-storage-8.8.7'
 ```
 
 When the action fails:

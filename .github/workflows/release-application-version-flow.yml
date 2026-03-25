@@ -1,0 +1,393 @@
+name: Release Application Version (Flow)
+
+on:
+  workflow_call:
+    inputs:
+      repo_owner:
+        description: 'Repository owner (organization)'
+        required: true
+        type: string
+      repo_name:
+        description: 'Repository name (e.g., app-acquisitions)'
+        required: true
+        type: string
+      commit_sha:
+        description: 'Commit SHA to tag (empty = branch HEAD)'
+        required: false
+        type: string
+        default: ''
+      base_branch:
+        description: 'Branch to checkout and release from'
+        required: false
+        type: string
+        default: ''
+      release_notes:
+        description: 'Release notes body text'
+        required: false
+        type: string
+        default: ''
+      dry_run:
+        description: 'Simulate without creating tag/release'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      release_created:
+        description: 'Whether release was created (true/false/skipped)'
+        value: ${{ jobs.create-release.outputs.release_created }}
+      release_url:
+        description: 'URL of the created GitHub Release'
+        value: ${{ jobs.create-release.outputs.release_url }}
+      tag_name:
+        description: 'Tag name created (e.g., v1.0.28)'
+        value: ${{ jobs.create-release.outputs.tag_name }}
+      app_version:
+        description: 'Application version (e.g., 1.0.28)'
+        value: ${{ jobs.create-release.outputs.app_version }}
+      failure_reason:
+        description: 'Reason for failure if any'
+        value: ${{ jobs.create-release.outputs.failure_reason }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-app-version-${{ inputs.repo_owner }}-${{ inputs.repo_name }}
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.check-existing.outputs.release_created || steps.create-release.outputs.release_created || 'false' }}
+      release_url: ${{ steps.check-existing.outputs.release_url || steps.create-release.outputs.release_url || '' }}
+      tag_name: ${{ steps.extract-version.outputs.tag_name || '' }}
+      app_version: ${{ steps.extract-version.outputs.app_version || '' }}
+      failure_reason: ${{ steps.validate-descriptor.outputs.failure_reason || steps.extract-version.outputs.failure_reason || steps.create-release.outputs.failure_reason || '' }}
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ inputs.repo_owner }}
+          repositories: ${{ inputs.repo_name }}
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+          ref: ${{ inputs.commit_sha || inputs.base_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Validate Descriptor
+        id: validate-descriptor
+        run: |
+          if [[ ! -f "application.lock.json" ]]; then
+            echo "::error::application.lock.json not found in repository"
+            echo "failure_reason=application.lock.json not found in repository" >> "$GITHUB_OUTPUT"
+            echo "descriptor_exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::notice::Found application.lock.json"
+          echo "descriptor_exists=true" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Version
+        id: extract-version
+        if: steps.validate-descriptor.outputs.descriptor_exists == 'true'
+        run: |
+          set -eo pipefail
+
+          APP_VERSION=$(jq -r '.version' application.lock.json)
+
+          if [[ -z "$APP_VERSION" || "$APP_VERSION" == "null" ]]; then
+            echo "::error::Could not extract version from application.lock.json"
+            echo "failure_reason=Could not extract version from application.lock.json" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$APP_VERSION" == *"SNAPSHOT"* ]]; then
+            echo "::error::Cannot create release for SNAPSHOT version: $APP_VERSION"
+            echo "failure_reason=Cannot create release for SNAPSHOT version: $APP_VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TAG_NAME="v${APP_VERSION}"
+
+          echo "::notice::Version: $APP_VERSION, Tag: $TAG_NAME"
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_valid=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check Existing Tag and Release
+        id: check-existing
+        if: steps.extract-version.outputs.version_valid == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+          TAG_NAME: ${{ steps.extract-version.outputs.tag_name }}
+        run: |
+          if gh release view "$TAG_NAME" --repo "$REPO" --json url --jq '.url' 2>/dev/null; then
+            EXISTING_URL=$(gh release view "$TAG_NAME" --repo "$REPO" --json url --jq '.url')
+            echo "::notice::Release $TAG_NAME already exists at $EXISTING_URL"
+            echo "release_created=skipped" >> "$GITHUB_OUTPUT"
+            echo "release_url=$EXISTING_URL" >> "$GITHUB_OUTPUT"
+            echo "already_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No existing release found for $TAG_NAME"
+            echo "already_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine Commit SHA
+        id: resolve-sha
+        if: steps.extract-version.outputs.version_valid == 'true' && steps.check-existing.outputs.already_exists == 'false'
+        run: |
+          if [[ -n "${{ inputs.commit_sha }}" ]]; then
+            COMMIT_SHA="${{ inputs.commit_sha }}"
+          else
+            COMMIT_SHA=$(git rev-parse HEAD)
+          fi
+
+          echo "::notice::Target commit: $COMMIT_SHA"
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Release Asset
+        if: steps.extract-version.outputs.version_valid == 'true' && steps.check-existing.outputs.already_exists == 'false'
+        run: |
+          cp application.lock.json application-descriptor.json
+          echo "::notice::Prepared application-descriptor.json ($(wc -c < application-descriptor.json) bytes)"
+
+      - name: Create GitHub Release
+        id: create-release
+        if: steps.extract-version.outputs.version_valid == 'true' && steps.check-existing.outputs.already_exists == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
+          TAG_NAME: ${{ steps.extract-version.outputs.tag_name }}
+          COMMIT_SHA: ${{ steps.resolve-sha.outputs.commit_sha }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "::notice::[DRY RUN] Would create release $TAG_NAME targeting $COMMIT_SHA"
+            echo "release_created=dry_run" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -z "$RELEASE_NOTES" ]]; then
+            RELEASE_NOTES="Release $TAG_NAME"
+          fi
+
+          if gh release create "$TAG_NAME" \
+            --repo "$REPO" \
+            --title "$TAG_NAME" \
+            --notes "$RELEASE_NOTES" \
+            --target "$COMMIT_SHA" \
+            application-descriptor.json; then
+
+            RELEASE_URL=$(gh release view "$TAG_NAME" --repo "$REPO" --json url --jq '.url')
+            echo "::notice::Release created: $RELEASE_URL"
+            echo "release_created=true" >> "$GITHUB_OUTPUT"
+            echo "release_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Failed to create release $TAG_NAME"
+            echo "release_created=false" >> "$GITHUB_OUTPUT"
+            echo "failure_reason=Failed to create GitHub release $TAG_NAME" >> "$GITHUB_OUTPUT"
+          fi
+
+
+  notify:
+    name: Send Notifications
+    needs: [create-release]
+    if: always() && !cancelled() && !inputs.dry_run
+    runs-on: ubuntu-latest
+    outputs:
+      team_channel: ${{ steps.get-vars.outputs.team_channel }}
+    env:
+      RELEASE_SUCCESS: ${{ needs.create-release.outputs.release_created == 'true' }}
+      TITLE_TEXT: "${{ inputs.repo_name }} release ${{ needs.create-release.outputs.release_created == 'true' && 'published' || (needs.create-release.outputs.release_created == 'skipped' && 'skipped (exists)' || 'failed') }}"
+      TITLE_BLOCK: |
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*${{ inputs.repo_name }} release ${{ needs.create-release.outputs.release_created == 'true' && 'published' || (needs.create-release.outputs.release_created == 'skipped' && 'skipped (exists)' || 'failed') }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+          }
+        }
+      ATTACHMENT: |
+        {
+          "color": "${{ needs.create-release.outputs.release_created == 'true' && 'good' || (needs.create-release.outputs.release_created == 'skipped' && 'warning' || 'danger') }}",
+          "fields": [
+            {
+              "title": "Tag",
+              "value": "${{ needs.create-release.outputs.release_url != '' && format('<{0}|{1}>', needs.create-release.outputs.release_url, needs.create-release.outputs.tag_name) || needs.create-release.outputs.tag_name || 'N/A' }}",
+              "short": true
+            },
+            {
+              "title": "Version",
+              "value": "${{ needs.create-release.outputs.app_version || 'N/A' }}",
+              "short": true
+            },
+            {
+              "title": "Branch",
+              "value": "${{ inputs.base_branch != '' && format('<https://github.com/{0}/{1}/tree/{2}|{2}>', inputs.repo_owner, inputs.repo_name, inputs.base_branch) || 'N/A' }}",
+              "short": true
+            },
+            {
+              "title": "Commit",
+              "value": "${{ inputs.commit_sha != '' && format('<https://github.com/{0}/{1}/commit/{2}|{2}>', inputs.repo_owner, inputs.repo_name, inputs.commit_sha) || 'N/A' }}",
+              "short": true
+            }${{ needs.create-release.outputs.failure_reason != '' && format(',
+            {{
+              "title": "Failure Reason",
+              "value": "{0}",
+              "short": false
+            }}', needs.create-release.outputs.failure_reason) || '' }}
+          ],
+          "footer": "Eureka CI/CD"
+        }
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ inputs.repo_owner }}
+          repositories: ${{ inputs.repo_name }}
+
+      - name: Get Repository Variables
+        id: get-vars
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            try {
+              const { data: variable } = await github.rest.actions.getRepoVariable({
+                owner: '${{ inputs.repo_owner }}',
+                repo: '${{ inputs.repo_name }}',
+                name: 'SLACK_NOTIF_CHANNEL'
+              });
+              console.log(`Found SLACK_NOTIF_CHANNEL: ${variable.value}`);
+              core.setOutput('team_channel', variable.value);
+            } catch (error) {
+              console.log(`SLACK_NOTIF_CHANNEL not found or not accessible: ${error.message}`);
+              core.setOutput('team_channel', '');
+            }
+
+      - name: Send to Team Channel
+        if: steps.get-vars.outputs.team_channel != ''
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ steps.get-vars.outputs.team_channel }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ env.ATTACHMENT }}
+              ]
+            }
+
+      - name: Send to General Channel
+        if: vars.GENERAL_SLACK_NOTIF_CHANNEL != ''
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}",
+              "text": "${{ env.TITLE_TEXT }}",
+              "blocks": [
+                ${{ env.TITLE_BLOCK }}
+              ],
+              "attachments": [
+                ${{ env.ATTACHMENT }}
+              ]
+            }
+
+
+  summarize:
+    name: Workflow Summary
+    needs: [create-release, notify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Workflow Summary
+        env:
+          RELEASE_CREATED: ${{ needs.create-release.outputs.release_created }}
+          RELEASE_URL: ${{ needs.create-release.outputs.release_url }}
+          TAG_NAME: ${{ needs.create-release.outputs.tag_name }}
+          APP_VERSION: ${{ needs.create-release.outputs.app_version }}
+          FAILURE_REASON: ${{ needs.create-release.outputs.failure_reason }}
+        run: |
+          {
+            echo "### Release Application Version Summary"
+            echo ""
+            echo "**Repository:** \`${{ inputs.repo_owner }}/${{ inputs.repo_name }}\`"
+            if [[ -n "${{ inputs.base_branch }}" ]]; then
+              echo "**Branch:** \`${{ inputs.base_branch }}\`"
+            fi
+            if [[ -n "${{ inputs.commit_sha }}" ]]; then
+              echo "**Commit:** [\`${{ inputs.commit_sha }}\`](https://github.com/${{ inputs.repo_owner }}/${{ inputs.repo_name }}/commit/${{ inputs.commit_sha }})"
+            fi
+            echo ""
+
+            echo "### Release Status"
+            echo ""
+            if [[ "$RELEASE_CREATED" == "true" ]]; then
+              echo "✅ **Release Created**"
+              echo "- **Tag:** [$TAG_NAME]($RELEASE_URL)"
+              echo "- **Version:** \`$APP_VERSION\`"
+            elif [[ "$RELEASE_CREATED" == "skipped" ]]; then
+              echo "ℹ️ **Release Skipped** (already exists)"
+              if [[ -n "$RELEASE_URL" ]]; then
+                echo "- **Existing Release:** [$TAG_NAME]($RELEASE_URL)"
+              fi
+            elif [[ "$RELEASE_CREATED" == "dry_run" ]]; then
+              echo "🏃 **Dry Run** — would create release $TAG_NAME"
+              echo "- **Version:** \`$APP_VERSION\`"
+            else
+              echo "❌ **Release Failed**"
+              if [[ -n "$FAILURE_REASON" ]]; then
+                echo "- **Reason:** $FAILURE_REASON"
+              fi
+            fi
+            echo ""
+
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "### 🏃 Dry Run Mode"
+              echo "This was a dry run — no tag or release was created"
+              echo ""
+            fi
+
+            echo "### Notification Status"
+            echo ""
+            if [[ -n "${{ needs.notify.outputs.team_channel }}" ]]; then
+              echo "**Team Channel** (\`${{ needs.notify.outputs.team_channel }}\`): Sent"
+            else
+              echo "**Team Channel:** Not configured"
+            fi
+            if [[ -n "${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}" ]]; then
+              echo "**General Channel** (\`${{ vars.GENERAL_SLACK_NOTIF_CHANNEL }}\`): Sent"
+            else
+              echo "**General Channel:** Not configured"
+            fi
+
+            echo ""
+            echo "---"
+            echo ""
+            echo "**Workflow Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } >> $GITHUB_STEP_SUMMARY
