@@ -347,6 +347,7 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
         with:
           app_name: ${{ inputs.app_name }}
+          artifact_name: ${{ inputs.app_name }}-${{ inputs.branch }}-descriptor
           build_number: ${{ steps.build-number.outputs.value }}
           use_input_generator_version: true #TODO: remove sometime later
           upload_state_file: false
@@ -373,7 +374,7 @@ jobs:
             cp pom.xml /tmp/state-file-upload/
           fi
 
-          echo "artifact_name=${APP_NAME}-state-file" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${APP_NAME}-${{ inputs.branch }}-state-file" >> "$GITHUB_OUTPUT"
 
       - name: Upload State File
         if: steps.generate.outputs.generated == 'true'
