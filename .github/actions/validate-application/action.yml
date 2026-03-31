@@ -31,10 +31,18 @@ inputs:
   far_url:
     description: 'FAR API URL base'
     required: true
+  skip_interface_validation:
+    description: 'Skip module interface integrity validation'
+    required: false
+    default: 'false'
+  skip_dependency_validation:
+    description: 'Dependency validation mode: false = run and block, true = skip entirely, bypass = run but treat failure as warning'
+    required: false
+    default: 'false'
 outputs:
   validation_passed:
     description: 'Whether all validations passed'
-    value: ${{ steps.validate-interfaces.outputs.validation_passed == 'true' && (steps.validate-dependencies.outputs.validation_passed == 'true' || steps.validate-dependencies.outcome == 'skipped') }}
+    value: ${{ (steps.validate-interfaces.outputs.validation_passed == 'true' || steps.validate-interfaces.outcome == 'skipped') && (steps.validate-dependencies.outputs.validation_passed == 'true' || steps.validate-dependencies.outcome == 'skipped') }}
   failure_reason:
     description: 'Reason for failure'
     value: ${{ steps.fetch-app-descriptors.outputs.failure_reason || steps.validate-interfaces.outputs.failure_reason || steps.validate-dependencies.outputs.failure_reason || '' }}
@@ -67,7 +75,7 @@ runs:
 
     - name: Fetch Application Descriptors from FAR
       id: fetch-app-descriptors
-      if: inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true' && (inputs.platform_descriptor_path != '' || steps.download-platform-descriptor.outcome == 'success')
+      if: inputs.skip_dependency_validation != 'true' && inputs.rely_on_FAR != 'true' && inputs.use_platform_descriptor == 'true' && (inputs.platform_descriptor_path != '' || steps.download-platform-descriptor.outcome == 'success')
       shell: bash
       env:
         APP_NAME: ${{ inputs.app_name }}
@@ -120,6 +128,7 @@ runs:
 
     - name: Validate Application Module Interface Integrity
       id: validate-interfaces
+      if: inputs.skip_interface_validation != 'true'
       shell: bash
       env:
         APP_DESCRIPTOR_FILE: ${{ inputs.app_descriptor_path != '' && inputs.app_descriptor_path || format('/tmp/app-descriptors/{0}', inputs.app_descriptor_artifact_file_name) }}
@@ -154,14 +163,16 @@ runs:
 
     - name: Validate Application Dependencies Integrity
       id: validate-dependencies
-      if: (inputs.use_platform_descriptor == 'true' && steps.fetch-app-descriptors.outcome == 'success') || inputs.rely_on_FAR == 'true'
+      if: inputs.skip_dependency_validation != 'true' && ((inputs.use_platform_descriptor == 'true' && steps.fetch-app-descriptors.outcome == 'success') || inputs.rely_on_FAR == 'true')
       shell: bash
       env:
         RELY_ON_FAR: ${{ inputs.rely_on_FAR }}
         FAR_API_URL: "${{ inputs.far_url }}/applications"
+        BYPASS_MODE: ${{ inputs.skip_dependency_validation == 'bypass' && 'true' || 'false' }}
       run: |
         set -eo pipefail
         echo "::notice::Validate application dependencies integrity"
+        [[ "$BYPASS_MODE" == "true" ]] && echo "::notice::Running in bypass mode — failures will not block the update"
 
         resp_file="$(mktemp)"
 
@@ -176,15 +187,21 @@ runs:
         )"
 
         if ! [[ "$http_code" =~ ^2[0-9]{2}$ ]]; then
-          echo "::error::Dependencies integrity validation request failed (HTTP $http_code)"
-
-          [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
-
-          echo "failure_reason=Dependencies integrity validation request failed (HTTP $http_code)" >> "$GITHUB_OUTPUT"
-          exit 1
+          if [[ "$BYPASS_MODE" == "true" ]]; then
+            echo "::warning::Dependencies integrity validation failed (HTTP $http_code) — bypassed"
+            [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
+            echo "validation_passed=true" >> "$GITHUB_OUTPUT"
+            echo "validation_bypassed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Dependencies integrity validation request failed (HTTP $http_code)"
+            [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
+            echo "failure_reason=Dependencies integrity validation request failed (HTTP $http_code)" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+        else
+          echo "::notice::Dependencies integrity validation passed"
+          echo "validation_passed=true" >> "$GITHUB_OUTPUT"
         fi
 
-        echo "::notice::Dependencies integrity validation passed"
-        echo "validation_passed=true" >> "$GITHUB_OUTPUT"
         [[ "$RELY_ON_FAR" == "true" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
         rm -f "$resp_file"
