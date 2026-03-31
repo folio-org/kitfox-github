@@ -1,8 +1,92 @@
 name: Application Update (Orchestrator)
 
-run-name: ${{ inputs.app_name }} update on ${{ inputs.branch }}
+run-name: ${{ inputs.app_name }} update on ${{ inputs.branch }} ${{ github.event_name == 'workflow_dispatch' && '[manual]' || '' }}
 
 on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository (org/repo format)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to update'
+        required: true
+        type: string
+      update_branch:
+        description: 'Update branch name (used when need_pr = true)'
+        required: false
+        type: string
+        default: ''
+      need_pr:
+        description: 'Whether the update should be performed through a PR'
+        required: false
+        type: boolean
+        default: false
+      pre_release:
+        description: 'Pre-release mode (true = snapshot and release, only = snapshot-only, false = release only)'
+        required: false
+        type: string
+        default: 'false'
+      workflow_run_number:
+        description: 'Workflow run number for display'
+        required: false
+        type: string
+        default: ''
+      descriptor_build_offset:
+        description: 'Offset to apply to application artifact version (snapshot only)'
+        required: false
+        type: string
+        default: ''
+      rely_on_FAR:
+        description: 'Whether to rely on FAR for application descriptor dependencies'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Perform dry run without making changes'
+        required: false
+        type: boolean
+        default: false
+      pr_reviewers:
+        description: 'Comma-separated list of reviewers'
+        required: false
+        type: string
+        default: ''
+      pr_labels:
+        description: 'Comma-separated list of labels to add to PR'
+        required: false
+        type: string
+        default: ''
+      skip_interface_validation:
+        description: 'Skip module interface integrity validation'
+        required: false
+        type: boolean
+        default: false
+      skip_dependency_validation:
+        description: 'Dependency validation: false = run and block, true = skip, bypass = run but warn only'
+        required: false
+        type: choice
+        default: 'false'
+        options:
+          - 'false'
+          - 'true'
+          - 'bypass'
+      publish:
+        description: 'Whether to publish descriptor to FAR'
+        required: false
+        type: boolean
+        default: true
+      release:
+        description: 'Whether to create/update release PR (only with need_pr)'
+        required: false
+        type: boolean
+        default: true
+
   workflow_call:
     inputs:
       app_name:
@@ -62,6 +146,26 @@ on:
         required: false
         type: string
         default: ''
+      skip_interface_validation:
+        description: 'Skip module interface integrity validation'
+        required: false
+        type: boolean
+        default: false
+      skip_dependency_validation:
+        description: 'Dependency validation: false = run and block, true = skip, bypass = run but warn only'
+        required: false
+        type: string
+        default: 'false'
+      publish:
+        description: 'Whether to publish descriptor to FAR'
+        required: false
+        type: boolean
+        default: true
+      release:
+        description: 'Whether to create/update release PR (only with need_pr)'
+        required: false
+        type: boolean
+        default: true
     outputs:
       update_result:
         description: 'Result of the update (success/failure/skipped)'
@@ -129,6 +233,10 @@ jobs:
       dry_run: ${{ inputs.dry_run }}
       pr_reviewers: ${{ inputs.pr_reviewers }}
       pr_labels: ${{ inputs.pr_labels }}
+      skip_interface_validation: ${{ inputs.skip_interface_validation }}
+      skip_dependency_validation: ${{ inputs.skip_dependency_validation }}
+      publish: ${{ inputs.publish }}
+      release: ${{ inputs.release }}
     secrets: inherit
 
   notify:
