@@ -193,6 +193,12 @@ on:
       is_infrastructure_error:
         description: 'Whether error is infrastructure-related'
         value: ${{ jobs.update.outputs.is_infrastructure_error }}
+      dependency_validation_bypassed:
+        description: 'Whether dependency validation failure was bypassed'
+        value: ${{ jobs.update.outputs.dependency_validation_bypassed }}
+      bypass_warning:
+        description: 'Warning message when dependency validation was bypassed'
+        value: ${{ jobs.update.outputs.bypass_warning }}
       notification_outcome:
         description: 'Outcome of the notification'
         value: ${{ jobs.notify.outputs.notification_outcome }}
@@ -247,7 +253,7 @@ jobs:
             "text": "*${{ inputs.app_name }} `${{ inputs.branch }}` ${{ needs.update.result == 'success' && 'updated' || 'failed' }}* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>"
           }
         }
-      SUCCESS_ATTACHMENT_NON_PR: |
+      SUCCESS_FIELDS_NON_PR: |
         {
           "color": "good",
           "fields": [
@@ -272,14 +278,15 @@ jobs:
               "short": true
             }
           ]
-        },
+        }
+      SUCCESS_FOOTER_NON_PR: |
         {
           "color": "good",
           "mrkdwn_in": ["text"],
           "text": ${{ toJSON(needs.update.outputs.updated_modules) }},
           "footer": "Eureka CI/CD"
         }
-      SUCCESS_ATTACHMENT_PR: |
+      SUCCESS_FIELDS_PR: |
         {
           "color": "good",
           "fields": [
@@ -309,7 +316,8 @@ jobs:
           "color": "good",
           "mrkdwn_in": ["text"],
           "text": ${{ toJSON(needs.update.outputs.updated_modules) }}
-        },
+        }
+      SUCCESS_FOOTER_PR: |
         {
           "color": "${{ needs.update.outputs.failed_reviewers != '' && 'warning' || 'good' }}",
           "mrkdwn_in": ["text"],
@@ -334,6 +342,12 @@ jobs:
           ],
           "footer": "Eureka CI/CD"
         }
+      BYPASS_WARNING: |
+        {
+          "color": "warning",
+          "mrkdwn_in": ["text"],
+          "text": "Dependency validation failed but was bypassed: ${{ needs.update.outputs.bypass_warning || 'check workflow logs' }}"
+        }
     steps:
       - name: Notify Team Channel
         id: notify-team
@@ -354,7 +368,7 @@ jobs:
                 ${{ env.TITLE_BLOCK }}
               ],
               "attachments": [
-                ${{ needs.update.result != 'success' && env.FAILURE_ATTACHMENT || (needs.update.outputs.pr_created == 'true' && env.SUCCESS_ATTACHMENT_PR || env.SUCCESS_ATTACHMENT_NON_PR) }}
+                ${{ needs.update.result != 'success' && env.FAILURE_ATTACHMENT || format('{0}{1},{2}', (needs.update.outputs.pr_created == 'true' && env.SUCCESS_FIELDS_PR || env.SUCCESS_FIELDS_NON_PR), (needs.update.outputs.dependency_validation_bypassed == 'true' && format(',{0}', env.BYPASS_WARNING) || ''), (needs.update.outputs.pr_created == 'true' && env.SUCCESS_FOOTER_PR || env.SUCCESS_FOOTER_NON_PR)) }}
               ]
             }
 
@@ -377,7 +391,7 @@ jobs:
                 ${{ env.TITLE_BLOCK }}
               ],
               "attachments": [
-                ${{ needs.update.result != 'success' && env.FAILURE_ATTACHMENT || (needs.update.outputs.pr_created == 'true' && env.SUCCESS_ATTACHMENT_PR || env.SUCCESS_ATTACHMENT_NON_PR) }}
+                ${{ needs.update.result != 'success' && env.FAILURE_ATTACHMENT || format('{0}{1},{2}', (needs.update.outputs.pr_created == 'true' && env.SUCCESS_FIELDS_PR || env.SUCCESS_FIELDS_NON_PR), (needs.update.outputs.dependency_validation_bypassed == 'true' && format(',{0}', env.BYPASS_WARNING) || ''), (needs.update.outputs.pr_created == 'true' && env.SUCCESS_FOOTER_PR || env.SUCCESS_FOOTER_NON_PR)) }}
               ]
             }
 
