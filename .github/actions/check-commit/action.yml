@@ -32,6 +32,14 @@ inputs:
   far_url:
     description: 'FAR API URL base'
     required: true
+  skip_interface_validation:
+    description: 'Skip module interface integrity validation'
+    required: false
+    default: 'false'
+  skip_dependency_validation:
+    description: 'Dependency validation mode: false / true / bypass'
+    required: false
+    default: 'false'
   workflow_run_url:
     description: 'URL to the workflow run for details link'
     required: true
@@ -52,6 +60,12 @@ outputs:
   platform_found:
     description: 'Whether platform descriptor was found'
     value: ${{ steps.fetch-platform.outputs.platform_found }}
+  dependency_validation_bypassed:
+    description: 'Whether dependency validation failure was bypassed'
+    value: ${{ steps.validate.outputs.dependency_validation_bypassed }}
+  bypass_warning:
+    description: 'Warning message when dependency validation was bypassed'
+    value: ${{ steps.validate.outputs.bypass_warning }}
   protected_file_violation:
     description: 'Whether protected files were violated'
     value: ${{ steps.check-protected.outputs.has_violations }}
@@ -200,6 +214,8 @@ runs:
         use_platform_descriptor: ${{ steps.fetch-platform.outputs.platform_found == 'true' && 'true' || 'false' }}
         rely_on_FAR: 'false'
         far_url: ${{ inputs.far_url }}
+        skip_interface_validation: ${{ inputs.skip_interface_validation }}
+        skip_dependency_validation: ${{ inputs.skip_dependency_validation }}
 
     - name: Finalize Check Run
       if: always()
