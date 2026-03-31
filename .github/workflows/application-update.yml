@@ -413,6 +413,8 @@ jobs:
       PR_URL: ${{ needs.update.outputs.pr_url }}
       COMMIT_SHA: ${{ needs.update.outputs.commit_sha }}
       FAILURE_REASON: ${{ needs.update.outputs.failure_reason }}
+      BYPASS_WARNING: ${{ needs.update.outputs.bypass_warning }}
+      DEPENDENCY_VALIDATION_BYPASSED: ${{ needs.update.outputs.dependency_validation_bypassed }}
       TEAM_NOTIF_STATUS: ${{ needs.notify.outputs.team_notif_status || 'skipped' }}
       TEAM_NOTIF_STATUS_ICON: >-
         ${{
@@ -475,6 +477,13 @@ jobs:
                 echo "\`\`\`"
                 echo ""
               fi
+            fi
+
+            if [[ "$DEPENDENCY_VALIDATION_BYPASSED" == "true" ]]; then
+              echo "### Dependency Validation Bypassed"
+              echo ""
+              echo "$BYPASS_WARNING"
+              echo ""
             fi
 
             if [[ "${{ inputs.dry_run }}" == "true" ]]; then
