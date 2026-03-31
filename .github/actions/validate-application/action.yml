@@ -198,7 +198,15 @@ runs:
             [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
             echo "validation_passed=true" >> "$GITHUB_OUTPUT"
             echo "validation_bypassed=true" >> "$GITHUB_OUTPUT"
-            echo "bypass_warning=Dependencies integrity validation failed (HTTP $http_code)" >> "$GITHUB_OUTPUT"
+            error_details=""
+            if [[ -s "$resp_file" ]]; then
+              error_details=$(jq -r '[.errors[]?.parameters[]? | "\(.key): \(.value)"] | join(", ")' "$resp_file" 2>/dev/null || true)
+            fi
+            if [[ -n "$error_details" ]]; then
+              echo "bypass_warning=Dependencies integrity validation failed (HTTP $http_code): $error_details" >> "$GITHUB_OUTPUT"
+            else
+              echo "bypass_warning=Dependencies integrity validation failed (HTTP $http_code)" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "::error::Dependencies integrity validation request failed (HTTP $http_code)"
             [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
