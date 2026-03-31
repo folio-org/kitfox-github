@@ -128,6 +128,9 @@ on:
       is_infrastructure_error:
         description: 'Whether the error is infrastructure-related (true/false)'
         value: ${{ jobs.update-application.outputs.is_infrastructure_error }}
+      dependency_validation_bypassed:
+        description: 'Whether dependency validation failure was bypassed'
+        value: ${{ jobs.verify-application.outputs.dependency_validation_bypassed }}
       workflow_status:
         description: 'Overall workflow status'
         value: ${{ 
@@ -408,6 +411,7 @@ jobs:
       validation_passed: ${{ steps.validate.outputs.validation_passed }}
       failure_reason: ${{ steps.validate.outputs.failure_reason || steps.publish.outputs.failure-reason }}
       publish_status: ${{ steps.publish.outputs.publish-status }}
+      dependency_validation_bypassed: ${{ steps.validate.outputs.dependency_validation_bypassed }}
     steps:
       - name: Fetch Platform Descriptor
         id: fetch-platform
