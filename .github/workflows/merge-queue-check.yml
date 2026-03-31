@@ -224,7 +224,7 @@ jobs:
                 "short": false
               }}', needs.check.outputs.failure_reason) || '' }}
             ],
-            "footer": "Eureka CI/CD - Merge Queue"
+            "footer": "Eureka CI/CD"
           }
           EOF
           )
