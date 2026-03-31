@@ -62,8 +62,11 @@ Validates merge status and configuration before proceeding.
 3. Get Pull Request Information
 4. Get Update Configuration
 5. Validate Configuration
+6. Find Previous Release Tag - looks up latest release via `gh release list`
+7. Compare with Previous Release - uses `compare-state-files` action to compute module diff between previous tag and current branch
+8. Build Release Notes - formats module diff as "Updated Modules:" list; falls back to listing all modules for first releases
 
-**Validation Logic**:
+**Validation Logic** (steps 1-5):
 - Skip if PR was closed without merging (`merged != 'true'`)
 - Skip if configuration file not found
 - Skip if release scanning disabled
@@ -77,7 +80,7 @@ Validates merge status and configuration before proceeding.
 - `base_branch`: Target branch the PR was merged into
 - `head_branch`: PR head branch (update branch)
 - `update_branch`: Configured update branch name
-- `pr_body`: PR description body (used as release notes)
+- `release_notes`: Computed release notes (module diff via `compare-state-files`)
 
 ### 2. Publish to FAR
 **Job**: `publish`
@@ -301,5 +304,5 @@ gh api repos/folio-org/app-acquisitions/contents/application.lock.json \
 ---
 
 **Last Updated**: March 2026
-**Workflow Version**: 1.0
+**Workflow Version**: 1.1 (Release notes via compare-state-files)
 **Compatibility**: GitHub App webhook integration required
