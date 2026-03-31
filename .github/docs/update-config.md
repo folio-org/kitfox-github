@@ -44,6 +44,10 @@ branches:
       pre_release: string
       descriptor_build_offset: string
       rely_on_FAR: boolean
+      skip_interface_validation: boolean
+      skip_dependency_validation: string
+      publish: boolean
+      release: boolean
       ruleset: object  # Per-branch ruleset overrides
 ```
 
@@ -54,6 +58,10 @@ branches:
 | `pre_release`             | string  | No       | `""`    | Filter: `"only"`, `"true"`, `"false"`            |
 | `descriptor_build_offset` | string  | No       | `""`    | Build number offset for descriptors              |
 | `rely_on_FAR`             | boolean | No       | `false` | Use FOLIO Application Registry for validation    |
+| `skip_interface_validation` | boolean | No     | `false` | Skip module interface integrity validation       |
+| `skip_dependency_validation`| string  | No     | `false` | Dependency validation mode: `false` / `true` / `bypass` |
+| `publish`                 | boolean | No       | `true`  | Whether to publish descriptor to FAR after validation |
+| `release`                 | boolean | No       | `true`  | Whether to create GitHub release after PR merge (tags, release notes) |
 | `ruleset`                 | object  | No       | -       | Branch-specific ruleset configuration overrides  |
 
 ## Ruleset Configuration
@@ -257,5 +265,5 @@ Global `update_config.ruleset` settings are merged with per-branch `ruleset` ove
 
 ---
 
-**Last Updated**: February 2026
-**Schema Version**: 2.0
+**Last Updated**: March 2026
+**Schema Version**: 3.0

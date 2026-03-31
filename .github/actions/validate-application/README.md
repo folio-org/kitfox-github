@@ -23,6 +23,8 @@ This action performs comprehensive validation of application descriptors includi
 | `use_platform_descriptor`           | Whether platform descriptor should be used for dependency validation       | No        | `true`                |
 | `rely_on_FAR`                       | Whether to rely on FAR for application descriptor dependencies             | No        | `false`               |
 | `far_url`                           | FAR API URL base                                                           | **Yes**   | -                     |
+| `skip_interface_validation`         | Skip module interface integrity validation                                 | No        | `false`               |
+| `skip_dependency_validation`        | Dependency validation mode: `false` / `true` / `bypass`                   | No        | `false`               |
 
 ## Outputs
 
@@ -42,6 +44,18 @@ The action adapts its validation behavior based on input availability:
 5. **Rely on FAR**: Fetches all dependencies from FAR instead of platform descriptor
 
 This allows for flexible validation scenarios, from simple interface validation to full dependency checks.
+
+### Skipping Validation Steps
+
+Both validation steps can be individually controlled:
+
+- `skip_interface_validation`: `true` to skip, `false` to run (default)
+- `skip_dependency_validation` supports three modes:
+  - `false` (default) — validation runs and blocks the update on failure
+  - `true` — validation is skipped entirely
+  - `bypass` — validation runs but failure is treated as a warning; the update proceeds regardless
+
+Bypass mode is recommended for snapshot branches to avoid deadlocks during coordinated interface version changes while preserving validation visibility. When a validation step is skipped or bypassed, the `validation_passed` output treats it as passed.
 
 ## Usage
 

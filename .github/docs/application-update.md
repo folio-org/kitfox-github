@@ -2,7 +2,7 @@
 
 **Workflow**: `application-update.yml`
 **Purpose**: Unified configuration-driven orchestrator for updating FOLIO application module dependencies
-**Type**: Reusable workflow (`workflow_call`)
+**Type**: Reusable workflow (`workflow_call` and `workflow_dispatch`)
 
 ## 🎯 Overview
 
@@ -29,6 +29,9 @@ All branch-specific configuration (pre-release mode, build offsets, PR requireme
 | `use_github_app`          | Use GitHub App for authentication                    | No       | boolean | `false`             |
 | `pr_reviewers`            | Comma-separated list of reviewers                    | No       | string  | `''`                |
 | `pr_labels`               | Comma-separated list of PR labels                    | No       | string  | `''`                |
+| `skip_interface_validation` | Skip module interface integrity validation         | No       | boolean | `false`             |
+| `skip_dependency_validation`| Dependency validation mode: `false` / `true` / `bypass` | No | string | `false`         |
+| `publish`                 | Whether to publish descriptor to FAR                 | No       | boolean | `true`              |
 | `is_scheduled`            | Whether this is a scheduled run                      | No       | boolean | `false`             |
 
 ### Outputs

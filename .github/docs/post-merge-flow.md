@@ -81,6 +81,7 @@ Validates merge status and configuration before proceeding.
 - `head_branch`: PR head branch (update branch)
 - `update_branch`: Configured update branch name
 - `release_notes`: Computed release notes (module diff via `compare-state-files`)
+- `release`: Whether to create GitHub release (from `update-config.yml`, default: `true`)
 
 ### 2. Publish to FAR
 **Job**: `publish`
@@ -123,7 +124,7 @@ Deletes the merged update branch.
 
 Creates a GitHub Release with git tag and `application-descriptor.json` asset.
 
-**Condition**: `should_process == 'true'` and descriptor exists and FAR publish succeeded
+**Condition**: `should_process == 'true'` and `release` is not `false` and descriptor exists and FAR publish succeeded. The `release` flag is read from the branch config in `update-config.yml` (default: `true`). Set `release: false` to skip GitHub release creation while still publishing to FAR.
 
 **Implementation**: Calls `release-application-version-flow.yml` reusable workflow.
 
@@ -188,6 +189,7 @@ After successful FAR publish, creates a GitHub Release:
 - Uploads `application-descriptor.json` as release asset
 - Matches existing Jenkins release convention
 - Idempotent: safely skips if release already exists
+- Can be disabled per-branch via `release: false` in `update-config.yml`
 - See [Release Application Version Flow](release-application-version-flow.md) for details
 
 ### FAR Publishing

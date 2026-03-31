@@ -46,6 +46,7 @@ jobs:
       base_branch: ${{ steps.pr-info.outputs.base_ref || inputs.base_branch }}
       head_branch: ${{ steps.pr-info.outputs.head_ref }}
       update_branch: ${{ steps.validate-config.outputs.update_branch }}
+      release: ${{ steps.validate-config.outputs.release }}
       release_notes: ${{ steps.build-notes.outputs.notes }}
     steps:
       - name: Check Merge Status
@@ -124,6 +125,7 @@ jobs:
           BRANCH_ENTRY=$(echo "$BRANCH_CONFIG" | jq -r ".[] | select(.branch == \"$TARGET_BRANCH\")")
           NEED_PR=$(echo "$BRANCH_ENTRY" | jq -r ".need_pr // false")
           UPDATE_BRANCH=$(echo "$BRANCH_ENTRY" | jq -r ".update_branch // empty")
+          RELEASE=$(echo "$BRANCH_ENTRY" | jq -r ".release // true")
 
           if [[ "$NEED_PR" != "true" ]]; then
             echo "should_process=false" >> "$GITHUB_OUTPUT"
@@ -140,8 +142,9 @@ jobs:
           fi
 
           echo "update_branch=$UPDATE_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
           echo "should_process=true" >> "$GITHUB_OUTPUT"
-          echo "::notice::Configuration validation successful for branch $TARGET_BRANCH (update_branch: $UPDATE_BRANCH)"
+          echo "::notice::Configuration validation successful for branch $TARGET_BRANCH (update_branch: $UPDATE_BRANCH, release: $RELEASE)"
 
       - name: Find Previous Release Tag
         id: prev-release
@@ -308,6 +311,7 @@ jobs:
     needs: [pre-check, publish]
     if: >-
       needs.pre-check.outputs.should_process == 'true' &&
+      needs.pre-check.outputs.release != 'false' &&
       needs.publish.outputs.descriptor_exists == 'true' &&
       needs.publish.outputs.publish_status == 'success'
     uses: folio-org/kitfox-github/.github/workflows/release-application-version-flow.yml@master

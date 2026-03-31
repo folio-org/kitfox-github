@@ -27,6 +27,9 @@ This workflow implements the core update flow for FOLIO applications. It coordin
 | `use_github_app`          | Use GitHub App for authentication                    | No       | boolean | `false`             |
 | `pr_reviewers`            | Comma-separated list of reviewers                    | No       | string  | `''`                |
 | `pr_labels`               | Comma-separated list of PR labels                    | No       | string  | `''`                |
+| `skip_interface_validation` | Skip module interface integrity validation         | No       | boolean | `false`             |
+| `skip_dependency_validation`| Dependency validation mode: `false` / `true` / `bypass` | No | string | `false`         |
+| `publish`                 | Whether to publish descriptor to FAR                 | No       | boolean | `true`              |
 
 ### Outputs
 
@@ -112,6 +115,7 @@ Uses the `generate-application-descriptor` action with `generation_mode: update`
 - Validation passed
 - Not in dry-run mode
 - Not in PR mode (PRs don't publish to FAR)
+- `publish` is not set to `false`
 
 **Process**:
 - Publishes application descriptor to FAR registry
@@ -310,8 +314,8 @@ jobs:
 - **Mode Detection**: Automatically adjusts behavior based on `need_pr`
 
 ### Comprehensive Validation
-- **Interface Integrity**: Validates module interfaces via FAR
-- **Dependency Integrity**: Validates all dependencies together
+- **Interface Integrity**: Validates module interfaces via FAR (skippable via `skip_interface_validation`)
+- **Dependency Integrity**: Validates all dependencies together (skippable or bypassable via `skip_dependency_validation`)
 - **Platform Integration**: Uses platform descriptor for context
 - **Error Reporting**: Detailed failure reasons
 
@@ -476,5 +480,5 @@ Solution: Check repository permissions and GitHub API status
 ---
 
 **Last Updated**: March 2026
-**Workflow Version**: 2.2 (Stale PR cleanup, branch-specific artifacts)
+**Workflow Version**: 3.0 (Validation Skip + Publish/Release Controls + Manual Dispatch)
 **Compatibility**: All FOLIO application repositories
