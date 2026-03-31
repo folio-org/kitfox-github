@@ -153,8 +153,8 @@ runs:
             rely_on_FAR=$(echo "$branch_config" | jq -r '.rely_on_FAR // false' | tr 'A-Z' 'a-z')
             skip_interface_validation=$(echo "$branch_config" | jq -r '.skip_interface_validation // false' | tr 'A-Z' 'a-z')
             skip_dependency_validation=$(echo "$branch_config" | jq -r '.skip_dependency_validation // false' | tr 'A-Z' 'a-z')
-            publish=$(echo "$branch_config" | jq -r '.publish // true' | tr 'A-Z' 'a-z')
-            release=$(echo "$branch_config" | jq -r '.release // true' | tr 'A-Z' 'a-z')
+            publish=$(echo "$branch_config" | jq -r 'if has("publish") then .publish else true end' | tr 'A-Z' 'a-z')
+            release=$(echo "$branch_config" | jq -r 'if has("release") then .release else true end' | tr 'A-Z' 'a-z')
             [[ "$need_pr" == "true" ]] && update_branch=$(echo "$FORMAT" | sed "s/{0}/$branch/") || update_branch=""
 
             branch_ruleset_override=$(echo "$branch_config" | jq -c '.ruleset // {}')
