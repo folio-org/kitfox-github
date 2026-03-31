@@ -79,11 +79,6 @@ on:
         required: false
         type: boolean
         default: true
-      release:
-        description: 'Whether to create/update release PR (only with need_pr)'
-        required: false
-        type: boolean
-        default: true
     outputs:
       updated:
         description: 'Whether the application was updated'
@@ -450,8 +445,7 @@ jobs:
       always() &&
       !cancelled() &&
       needs.update-application.outputs.updated == 'true' &&
-      (needs.prepare-context.outputs.need_pr == 'true' || needs.verify-application.result == 'success') &&
-      (needs.prepare-context.outputs.need_pr != 'true' || inputs.release != false)
+      (needs.prepare-context.outputs.need_pr == 'true' || needs.verify-application.result == 'success')
     uses: ./.github/workflows/commit-and-push-changes.yml
     with:
       repo: ${{ inputs.repo }}
@@ -475,8 +469,7 @@ jobs:
       !inputs.dry_run &&
       !cancelled() &&
       needs.prepare-context.outputs.need_pr == 'true' &&
-      needs.update-application.outputs.updated == 'true' &&
-      inputs.release != false
+      (needs.update-application.outputs.updated == 'true' || needs.prepare-context.outputs.pr_exists == 'true')
     runs-on: ubuntu-latest
     outputs:
       pr_created: ${{ steps.create-pr.outputs.pr_created == 'true' }}
