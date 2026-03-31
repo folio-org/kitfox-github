@@ -151,6 +151,10 @@ runs:
             pre_release=$(echo "$branch_config" | jq -r '.pre_release // ""' | tr -d '\r')
             descriptor_build_offset=$(echo "$branch_config" | jq -r '.descriptor_build_offset // ""' | tr -d '\r')
             rely_on_FAR=$(echo "$branch_config" | jq -r '.rely_on_FAR // false' | tr 'A-Z' 'a-z')
+            skip_interface_validation=$(echo "$branch_config" | jq -r '.skip_interface_validation // false' | tr 'A-Z' 'a-z')
+            skip_dependency_validation=$(echo "$branch_config" | jq -r '.skip_dependency_validation // false' | tr 'A-Z' 'a-z')
+            publish=$(echo "$branch_config" | jq -r '.publish // true' | tr 'A-Z' 'a-z')
+            release=$(echo "$branch_config" | jq -r '.release // true' | tr 'A-Z' 'a-z')
             [[ "$need_pr" == "true" ]] && update_branch=$(echo "$FORMAT" | sed "s/{0}/$branch/") || update_branch=""
 
             branch_ruleset_override=$(echo "$branch_config" | jq -c '.ruleset // {}')
@@ -182,6 +186,10 @@ runs:
                 --arg update_branch "$update_branch" \
                 --arg descriptor_build_offset "$descriptor_build_offset" \
                 --argjson rely_on_FAR "$([ "$rely_on_FAR" = "true" ] && echo true || echo false)" \
+                --argjson skip_interface_validation "$([ "$skip_interface_validation" = "true" ] && echo true || echo false)" \
+                --arg skip_dependency_validation "$skip_dependency_validation" \
+                --argjson publish "$([ "$publish" = "true" ] && echo true || echo false)" \
+                --argjson release "$([ "$release" = "true" ] && echo true || echo false)" \
                 --argjson ruleset "$branch_ruleset" \
                 '. += [{
                   branch: $branch,
@@ -190,6 +198,10 @@ runs:
                   pre_release: $pre_release,
                   descriptor_build_offset: $descriptor_build_offset,
                   rely_on_FAR: $rely_on_FAR,
+                  skip_interface_validation: $skip_interface_validation,
+                  skip_dependency_validation: $skip_dependency_validation,
+                  publish: $publish,
+                  release: $release,
                   ruleset: $ruleset
                 }]')
             else
