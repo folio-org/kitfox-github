@@ -32,6 +32,8 @@ This action performs comprehensive validation of application descriptors includi
 |---------------------|----------------------------------------------------|
 | `validation_passed` | Whether all validations passed (`true` or `false`) |
 | `failure_reason`    | Detailed reason for failure if validation failed   |
+| `dependency_validation_bypassed` | Whether dependency validation failure was bypassed |
+| `bypass_warning`  | Warning message with error details when validation was bypassed |
 
 ## Conditional Validation Logic
 

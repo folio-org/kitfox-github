@@ -46,6 +46,8 @@ This workflow implements the core update flow for FOLIO applications. It coordin
 | `commit_sha`              | Commit SHA                                                                |
 | `error_category`          | Error classification (`NONE`, `INFRASTRUCTURE`, `MODULE_NOT_FOUND`, etc.) |
 | `is_infrastructure_error` | Whether error is infrastructure-related (`true`/`false`)                  |
+| `dependency_validation_bypassed` | Whether dependency validation failure was bypassed                   |
+| `bypass_warning`          | Warning message with error details when validation was bypassed           |
 
 ### Permissions
 

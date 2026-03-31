@@ -50,6 +50,8 @@ All branch-specific configuration (pre-release mode, build offsets, PR requireme
 | `failure_reason`          | Reason for failure (validation or publishing errors)                      |
 | `error_category`          | Error classification (`NONE`, `INFRASTRUCTURE`, `MODULE_NOT_FOUND`, etc.) |
 | `is_infrastructure_error` | Whether error is infrastructure-related (`true`/`false`)                  |
+| `dependency_validation_bypassed` | Whether dependency validation failure was bypassed                   |
+| `bypass_warning`          | Warning message with error details when validation was bypassed           |
 | `notification_outcome`    | Outcome of the notification                                               |
 
 ### Permissions
