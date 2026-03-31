@@ -49,6 +49,9 @@ outputs:
   dependency_validation_bypassed:
     description: 'Whether dependency validation failure was bypassed'
     value: ${{ steps.validate-dependencies.outputs.validation_bypassed == 'true' }}
+  bypass_warning:
+    description: 'Warning message when dependency validation was bypassed'
+    value: ${{ steps.validate-dependencies.outputs.bypass_warning }}
 
 runs:
   using: 'composite'
@@ -195,6 +198,7 @@ runs:
             [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
             echo "validation_passed=true" >> "$GITHUB_OUTPUT"
             echo "validation_bypassed=true" >> "$GITHUB_OUTPUT"
+            echo "bypass_warning=Dependencies integrity validation failed (HTTP $http_code)" >> "$GITHUB_OUTPUT"
           else
             echo "::error::Dependencies integrity validation request failed (HTTP $http_code)"
             [[ -s "$resp_file" ]] && cat "$resp_file" >&2 || echo "(empty response body)" >&2
