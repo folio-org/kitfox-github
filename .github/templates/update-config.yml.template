@@ -29,6 +29,10 @@ branches:
       need_pr: false
       pre_release: "only"
       descriptor_build_offset: "100200000000000"
-      # rely_on_FAR: "false"
+      # rely_on_FAR: false
+      # skip_interface_validation: false
+      # skip_dependency_validation: bypass
+      # publish: true
+      # release: true
       ruleset:
         enabled: false
