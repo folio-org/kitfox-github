@@ -131,6 +131,9 @@ on:
       dependency_validation_bypassed:
         description: 'Whether dependency validation failure was bypassed'
         value: ${{ jobs.verify-application.outputs.dependency_validation_bypassed }}
+      bypass_warning:
+        description: 'Warning message when dependency validation was bypassed'
+        value: ${{ jobs.verify-application.outputs.bypass_warning }}
       workflow_status:
         description: 'Overall workflow status'
         value: ${{ 
@@ -412,6 +415,7 @@ jobs:
       failure_reason: ${{ steps.validate.outputs.failure_reason || steps.publish.outputs.failure-reason }}
       publish_status: ${{ steps.publish.outputs.publish-status }}
       dependency_validation_bypassed: ${{ steps.validate.outputs.dependency_validation_bypassed }}
+      bypass_warning: ${{ steps.validate.outputs.bypass_warning }}
     steps:
       - name: Fetch Platform Descriptor
         id: fetch-platform
