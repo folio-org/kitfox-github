@@ -79,11 +79,13 @@ Performs application validation using the `check-commit` action.
 **Steps**:
 1. Generate GitHub App Token
 2. Checkout Repository (fetch-depth: 2)
-3. Check Commit - uses `check-commit` action with `check_type: merge_queue`
+3. Check Commit - uses `check-commit` action with `check_type: merge_queue` (respects `skip_interface_validation` and `skip_dependency_validation` from branch config)
 
 **Outputs**:
 - `validation_passed`: Whether all validations passed
 - `failure_reason`: Reason for failure if applicable
+- `dependency_validation_bypassed`: Whether dependency validation failure was bypassed
+- `bypass_warning`: Warning message with error details when bypassed
 
 ### 3. Send Notifications
 **Job**: `notify`

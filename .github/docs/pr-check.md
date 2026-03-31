@@ -87,12 +87,14 @@ Performs application validation using the `check-commit` action.
    - Checks protected files
    - Validates descriptor existence (non-update commits get "Non-Update Approved" success)
    - Fetches platform descriptor
-   - Validates application via `validate-application` action
+   - Validates application via `validate-application` action (respects `skip_interface_validation` and `skip_dependency_validation` from branch config)
    - Finalizes check run with results
 
 **Outputs**:
 - `validation_passed`: Whether all validations passed
 - `failure_reason`: Reason for failure if applicable
+- `dependency_validation_bypassed`: Whether dependency validation failure was bypassed
+- `bypass_warning`: Warning message with error details when bypassed
 
 ### 3. Send Notifications
 **Job**: `notify`

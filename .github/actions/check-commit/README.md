@@ -25,6 +25,8 @@ The action supports two contexts:
 | `pr_number`        | PR number (for PR context messaging)             | No        | `''`     |
 | `head_branch`      | Head branch name (for PR context messaging)      | No        | `''`     |
 | `far_url`          | FAR API URL base                                 | Yes       | -        |
+| `skip_interface_validation` | Skip module interface integrity validation | No | `false` |
+| `skip_dependency_validation` | Dependency validation mode: `false` / `true` / `bypass` | No | `false` |
 | `workflow_run_url` | URL to the workflow run for details link         | Yes       | -        |
 
 ## Outputs
@@ -37,6 +39,8 @@ The action supports two contexts:
 | `descriptor_exists`         | Whether descriptor file exists (`true`/`false`)|
 | `platform_found`            | Whether platform descriptor was found          |
 | `protected_file_violation`  | Whether protected files were violated          |
+| `dependency_validation_bypassed` | Whether dependency validation failure was bypassed |
+| `bypass_warning`            | Warning message when dependency validation was bypassed |
 
 ## Execution Flow
 
