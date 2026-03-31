@@ -362,6 +362,7 @@ jobs:
         uses: folio-org/kitfox-github/.github/actions/generate-application-descriptor@master
         with:
           app_name: ${{ inputs.app_name }}
+          artifact_name: ${{ inputs.app_name }}-${{ inputs.branch }}-descriptor
           build_number: ${{ steps.build-number.outputs.value }}
           use_input_generator_version: true #TODO: remove sometime later
           upload_state_file: false
@@ -388,7 +389,7 @@ jobs:
             cp pom.xml /tmp/state-file-upload/
           fi
 
-          echo "artifact_name=${APP_NAME}-state-file" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${APP_NAME}-${{ inputs.branch }}-state-file" >> "$GITHUB_OUTPUT"
 
       - name: Upload State File
         if: steps.generate.outputs.generated == 'true'
@@ -479,6 +480,15 @@ jobs:
       successful_reviewers: ${{ steps.create-pr.outputs.successful_reviewers || steps.update-pr.outputs.successful_reviewers || '' }}
       failed_reviewers: ${{ steps.create-pr.outputs.failed_reviewers || steps.update-pr.outputs.failed_reviewers || '' }}
     steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.app_name }}
+
       - name: Compare Application Versions
         id: compare
         uses: folio-org/kitfox-github/.github/actions/compare-state-files@master
@@ -488,16 +498,22 @@ jobs:
           base-source: ${{ inputs.branch }}
           head-source-type: 'branch'
           head-source: ${{ inputs.update_branch }}
-          github-token: ${{ github.token }}
+          github-token: ${{ steps.app-token.outputs.token }}
 
-      - name: Generate App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.EUREKA_CI_APP_ID }}
-          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ inputs.app_name }}
+      - name: Close Stale PR
+        if: |
+          steps.compare.outputs.has-changes == 'false' &&
+          needs.prepare-context.outputs.pr_exists == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ inputs.repo }}
+          PR_NUMBER: ${{ needs.prepare-context.outputs.pr_number }}
+        run: |
+          echo "::notice::No differences between update and base branch. Closing stale PR #$PR_NUMBER."
+          gh pr comment "$PR_NUMBER" --repo "$REPO" \
+            --body "Closing: all module versions are already up to date. No changes needed."
+          gh pr close "$PR_NUMBER" --repo "$REPO" --delete-branch
+          echo "::notice::PR #$PR_NUMBER closed and update branch deleted."
 
       - name: Create PR if needed
         id: create-pr

@@ -144,8 +144,9 @@ Uses the `generate-application-descriptor` action with `generation_mode: update`
 - Updates were found OR an existing PR exists
 
 **Stale PR Cleanup**:
-- Compares update branch against base branch
-- If no differences and a PR exists: closes the PR with a comment and deletes the update branch
+- Compares update branch against base branch using `compare-state-files`
+- If no differences between branches and a PR exists: closes the PR with a comment and deletes the update branch
+- Prevents outdated PRs from being accidentally merged after modules are pinned or changes are reverted
 
 **PR Creation Logic**:
 - Creates PR if it doesn't exist and updates are available
@@ -320,9 +321,16 @@ jobs:
 
 ### Intelligent PR Management
 - **PR Reuse**: Updates existing PRs instead of creating duplicates
-- **Branch Management**: Creates update branches as needed
+- **Stale PR Cleanup**: Closes PRs when update branch matches base branch (no pending changes)
+- **Branch Management**: Creates update branches as needed; deletes stale update branches
 - **Reviewer Assignment**: Supports users and teams
 - **Label Management**: Applies configured labels
+
+### Branch-Specific Artifact Naming
+- Artifacts include branch name to prevent conflicts in parallel matrix runs
+- Descriptor artifact: `{app_name}-{branch}-descriptor`
+- State file artifact: `{app_name}-{branch}-state-file`
+- Allows multiple branches (e.g., `snapshot` + `R1-2025-ci`) to run simultaneously for the same app
 
 ### Rollback Capability
 - **Cleanup on Failure**: Removes published descriptors if commit fails
