@@ -35,6 +35,8 @@ jobs:
       validation_status: ${{ steps.validate.outputs.status }}
       validation_message: ${{ steps.validate.outputs.message }}
       base_branch: ${{ inputs.base_branch }}
+      skip_interface_validation: ${{ steps.validate.outputs.skip_interface_validation }}
+      skip_dependency_validation: ${{ steps.validate.outputs.skip_dependency_validation }}
     steps:
       - name: Print Input Parameters
         run: |
@@ -105,6 +107,10 @@ jobs:
             exit 0
           fi
 
+          SKIP_IFACE=$(echo "$BRANCH_ENTRY" | jq -r '.skip_interface_validation // false')
+          SKIP_DEP=$(echo "$BRANCH_ENTRY" | jq -r '.skip_dependency_validation // "false"')
+          echo "skip_interface_validation=$SKIP_IFACE" >> "$GITHUB_OUTPUT"
+          echo "skip_dependency_validation=$SKIP_DEP" >> "$GITHUB_OUTPUT"
           echo "status=success" >> "$GITHUB_OUTPUT"
           echo "message=Configuration validation passed" >> "$GITHUB_OUTPUT"
           echo "::notice::Configuration validation successful"
@@ -118,6 +124,8 @@ jobs:
     outputs:
       validation_passed: ${{ steps.check-commit.outputs.validation_passed }}
       failure_reason: ${{ steps.check-commit.outputs.failure_reason }}
+      dependency_validation_bypassed: ${{ steps.check-commit.outputs.dependency_validation_bypassed }}
+      bypass_warning: ${{ steps.check-commit.outputs.bypass_warning }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -147,6 +155,8 @@ jobs:
           github_token: ${{ steps.app-token.outputs.token }}
           check_type: merge_queue
           far_url: ${{ vars.FAR_URL }}
+          skip_interface_validation: ${{ needs.pre-check.outputs.skip_interface_validation }}
+          skip_dependency_validation: ${{ needs.pre-check.outputs.skip_dependency_validation }}
           workflow_run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 
@@ -203,6 +213,8 @@ jobs:
         env:
           BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
           FAILURE_REASON: ${{ needs.check.outputs.failure_reason }}
+          BYPASS_WARNING: ${{ needs.check.outputs.bypass_warning }}
+          DEPENDENCY_BYPASSED: ${{ needs.check.outputs.dependency_validation_bypassed }}
         run: |
           ATTACHMENT=$(cat <<EOF
           {
@@ -232,6 +244,15 @@ jobs:
           echo "$ATTACHMENT" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
 
+          if [[ "$DEPENDENCY_BYPASSED" == "true" ]]; then
+            BYPASS_ATTACH='{"color":"warning","mrkdwn_in":["text"],"text":"Dependency validation failed but was bypassed: '"$BYPASS_WARNING"'"}'
+            echo "BYPASS_ATTACHMENT<<EOF" >> "$GITHUB_ENV"
+            echo "$BYPASS_ATTACH," >> "$GITHUB_ENV"
+            echo "EOF" >> "$GITHUB_ENV"
+          else
+            echo "BYPASS_ATTACHMENT=" >> "$GITHUB_ENV"
+          fi
+
       - name: Send to Team Channel
         if: steps.get-vars.outputs.team_channel != ''
         continue-on-error: true
@@ -248,7 +269,7 @@ jobs:
                 ${{ env.TITLE_BLOCK }}
               ],
               "attachments": [
-                ${{ env.ATTACHMENT }}
+                ${{ env.BYPASS_ATTACHMENT }}${{ env.ATTACHMENT }}
               ]
             }
 
@@ -268,7 +289,7 @@ jobs:
                 ${{ env.TITLE_BLOCK }}
               ],
               "attachments": [
-                ${{ env.ATTACHMENT }}
+                ${{ env.BYPASS_ATTACHMENT }}${{ env.ATTACHMENT }}
               ]
             }
 
@@ -287,6 +308,8 @@ jobs:
           CHECK_RESULT: ${{ needs.check.result }}
           VALIDATION_PASSED: ${{ needs.check.outputs.validation_passed }}
           FAILURE_REASON: ${{ needs.check.outputs.failure_reason }}
+          DEPENDENCY_BYPASSED: ${{ needs.check.outputs.dependency_validation_bypassed }}
+          BYPASS_WARNING: ${{ needs.check.outputs.bypass_warning }}
           BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
         run: |
           {
@@ -344,6 +367,13 @@ jobs:
               echo "**Application Check:** Cancelled"
             else
               echo "**Application Check:** Skipped"
+            fi
+
+            if [[ "$DEPENDENCY_BYPASSED" == "true" ]]; then
+              echo ""
+              echo "### Dependency Validation Bypassed"
+              echo ""
+              echo "$BYPASS_WARNING"
             fi
 
             echo ""
