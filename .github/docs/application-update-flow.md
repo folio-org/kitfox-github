@@ -30,7 +30,6 @@ This workflow implements the core update flow for FOLIO applications. It coordin
 | `skip_interface_validation` | Skip module interface integrity validation         | No       | boolean | `false`             |
 | `skip_dependency_validation`| Dependency validation mode: `false` / `true` / `bypass` | No | string | `false`         |
 | `publish`                 | Whether to publish descriptor to FAR                 | No       | boolean | `true`              |
-| `release`                 | Whether to create/update release PR (with `need_pr`) | No       | boolean | `true`              |
 
 ### Outputs
 
@@ -142,7 +141,11 @@ Uses the `generate-application-descriptor` action with `generation_mode: update`
 **Execution Conditions**:
 - PR mode enabled (`need_pr: true`)
 - Not in dry-run mode
-- `release` is not set to `false`
+- Updates were found OR an existing PR exists
+
+**Stale PR Cleanup**:
+- Compares update branch against base branch
+- If no differences and a PR exists: closes the PR with a comment and deletes the update branch
 
 **PR Creation Logic**:
 - Creates PR if it doesn't exist and updates are available

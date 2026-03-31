@@ -32,7 +32,6 @@ All branch-specific configuration (pre-release mode, build offsets, PR requireme
 | `skip_interface_validation` | Skip module interface integrity validation         | No       | boolean | `false`             |
 | `skip_dependency_validation`| Dependency validation mode: `false` / `true` / `bypass` | No | string | `false`         |
 | `publish`                 | Whether to publish descriptor to FAR                 | No       | boolean | `true`              |
-| `release`                 | Whether to create/update release PR (with `need_pr`) | No       | boolean | `true`              |
 | `is_scheduled`            | Whether this is a scheduled run                      | No       | boolean | `false`             |
 
 ### Outputs

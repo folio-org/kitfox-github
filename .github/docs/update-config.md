@@ -61,7 +61,7 @@ branches:
 | `skip_interface_validation` | boolean | No     | `false` | Skip module interface integrity validation       |
 | `skip_dependency_validation`| string  | No     | `false` | Dependency validation mode: `false` / `true` / `bypass` |
 | `publish`                 | boolean | No       | `true`  | Whether to publish descriptor to FAR after validation |
-| `release`                 | boolean | No       | `true`  | Whether to create/update release PR (only with `need_pr: true`) |
+| `release`                 | boolean | No       | `true`  | Whether to create GitHub release after PR merge (tags, release notes) |
 | `ruleset`                 | object  | No       | -       | Branch-specific ruleset configuration overrides  |
 
 ## Ruleset Configuration
