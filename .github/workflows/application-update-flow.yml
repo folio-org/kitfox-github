@@ -340,6 +340,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [[ ! -f "application.lock.json" ]]; then
+            echo "::notice::No application.lock.json found, skipping version bump (generator will use generateFromJson with current pom version)"
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           current="$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)"
 
           if [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(.*)$ ]]; then
