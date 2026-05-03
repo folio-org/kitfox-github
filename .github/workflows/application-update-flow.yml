@@ -279,9 +279,9 @@ jobs:
       app_descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
       artifact_name: ${{ steps.generate.outputs.artifact_name }}
       state_file_artifact_name: ${{ steps.upload-state.outputs.artifact_name }}
-      failure_reason: ${{ steps.generate.outputs.failure_reason || '' }}
-      error_category: ${{ steps.generate.outputs.error_category }}
-      is_infrastructure_error: ${{ steps.generate.outputs.is_infrastructure_error }}
+      failure_reason: ${{ steps.bump-version.outputs.failure_reason || steps.generate.outputs.failure_reason || '' }}
+      error_category: ${{ steps.bump-version.outputs.error_category || steps.generate.outputs.error_category }}
+      is_infrastructure_error: ${{ (steps.bump-version.outputs.is_infrastructure_error == 'true' || steps.generate.outputs.is_infrastructure_error == 'true') && 'true' || 'false' }}
     steps:
       - name: Checkout Application Repository
         uses: actions/checkout@v4
@@ -346,7 +346,38 @@ jobs:
             exit 0
           fi
 
-          current="$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)"
+          fail_infra() {
+            local phase="$1"
+            local log_file="$2"
+            echo "::endgroup::" || true
+            sync || true
+            local err=""
+            if [[ -s "$log_file" ]]; then
+              err=$({ grep -E "(ERROR|FAILURE|Exception)" "$log_file" 2>/dev/null || true; } | head -3 | tr '\n' ' ')
+            fi
+            echo "::error::Maven $phase failed (classified as INFRASTRUCTURE): ${err:-see log above}"
+            {
+              echo "is_infrastructure_error=true"
+              echo "error_category=INFRASTRUCTURE"
+              echo "failure_reason=Maven $phase failed during version bump: ${err:-no output captured}"
+              echo "bumped=false"
+            } >> "$GITHUB_OUTPUT"
+            rm -f "$log_file"
+            exit 1
+          }
+
+          echo "::group::Reading current pom.xml version"
+          eval_stdout=$(mktemp)
+          eval_log=$(mktemp)
+          if ! mvn -B -ntp -DforceStdout help:evaluate -Dexpression=project.version >"$eval_stdout" 2>"$eval_log"; then
+            cat "$eval_log" >&2 || true
+            rm -f "$eval_stdout"
+            fail_infra "help:evaluate" "$eval_log"
+          fi
+          current=$(<"$eval_stdout")
+          echo "Current version: $current"
+          rm -f "$eval_stdout" "$eval_log"
+          echo "::endgroup::"
 
           if [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(.*)$ ]]; then
             major="${BASH_REMATCH[1]}"
@@ -355,19 +386,27 @@ jobs:
             rest="${BASH_REMATCH[4]}"   # includes any suffix like -SNAPSHOT, -RC1, +build, etc.
           else
             echo "::error::Unsupported version format (expected X.Y.Z...): $current"
+            echo "failure_reason=Unsupported pom version format: $current" >> "$GITHUB_OUTPUT"
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           new_version="${major}.${minor}.$((patch + 1))${rest}"
 
           echo "::group::Updating pom.xml version"
-          mvn -q versions:set -DnewVersion="$new_version" -DgenerateBackupPoms=false
+          set_log=$(mktemp)
+          if ! mvn -B -ntp -q versions:set -DnewVersion="$new_version" -DgenerateBackupPoms=false 2>&1 | tee "$set_log"; then
+            fail_infra "versions:set" "$set_log"
+          fi
+          rm -f "$set_log"
           echo "::endgroup::"
 
           echo "::notice::Version bumped: $current -> $new_version"
-          echo "bumped=true" >> "$GITHUB_OUTPUT"
-          echo "old_version=$current" >> "$GITHUB_OUTPUT"
-          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
+          {
+            echo "bumped=true"
+            echo "old_version=$current"
+            echo "new_version=$new_version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Generate Descriptor
         id: generate
