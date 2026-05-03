@@ -369,12 +369,12 @@ jobs:
           echo "::group::Reading current pom.xml version"
           eval_stdout=$(mktemp)
           eval_log=$(mktemp)
-          if ! mvn -B -ntp -DforceStdout help:evaluate -Dexpression=project.version >"$eval_stdout" 2>"$eval_log"; then
+          if ! mvn -B -ntp -q -DforceStdout help:evaluate -Dexpression=project.version >"$eval_stdout" 2>"$eval_log"; then
             cat "$eval_log" >&2 || true
             rm -f "$eval_stdout"
             fail_infra "help:evaluate" "$eval_log"
           fi
-          current=$(<"$eval_stdout")
+          current=$(tr -d '[:space:]' <"$eval_stdout")
           echo "Current version: $current"
           rm -f "$eval_stdout" "$eval_log"
           echo "::endgroup::"
@@ -385,8 +385,9 @@ jobs:
             patch="${BASH_REMATCH[3]}"
             rest="${BASH_REMATCH[4]}"   # includes any suffix like -SNAPSHOT, -RC1, +build, etc.
           else
-            echo "::error::Unsupported version format (expected X.Y.Z...): $current"
-            echo "failure_reason=Unsupported pom version format: $current" >> "$GITHUB_OUTPUT"
+            sanitized="${current//$'\n'/ }"
+            echo "::error::Unsupported version format (expected X.Y.Z...): $sanitized"
+            echo "failure_reason=Unsupported pom version format: $sanitized" >> "$GITHUB_OUTPUT"
             echo "bumped=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
