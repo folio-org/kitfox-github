@@ -42,9 +42,9 @@ This workflow implements the core update flow for FOLIO applications. It coordin
 | `updated_modules`         | List of updated modules                                                   |
 | `pr_created`              | Whether a PR was created                                                  |
 | `pr_url`                  | URL of created/updated PR                                                 |
-| `failure_reason`          | Reason for failure (validation or publishing errors)                      |
+| `failure_reason`          | Reason for failure (version read, version bump, validation, or publishing errors) |
 | `commit_sha`              | Commit SHA                                                                |
-| `error_category`          | Error classification (`NONE`, `INFRASTRUCTURE`, `MODULE_NOT_FOUND`, etc.) |
+| `error_category`          | Error classification (`NONE`, `INFRASTRUCTURE`, `POM_NOT_FOUND`, `INVALID_VERSION_FORMAT`, `MODULE_NOT_FOUND`, ...) |
 | `is_infrastructure_error` | Whether error is infrastructure-related (`true`/`false`)                  |
 | `dependency_validation_bypassed` | Whether dependency validation failure was bypassed                   |
 | `bypass_warning`          | Warning message with error details when validation was bypassed           |
@@ -80,6 +80,8 @@ Determines the source branch and checks for existing PRs:
 Uses the `generate-application-descriptor` action with `generation_mode: update`:
 
 **Process**:
+- Reads current pom version via the `collect-app-version` action (`skip_checkout: true`); failures are classified as `INFRASTRUCTURE` (transient mvn) or `INVALID_VERSION_FORMAT` / `POM_NOT_FOUND` (application-level)
+- Increments patch version and runs `mvn versions:set` (PR-mode runs only); `mvn` failures here are classified as `INFRASTRUCTURE`
 - Resolves version constraints from `application.template.json` (^2.0.0 → 2.3.1)
 - Full module synchronization (add/remove/upgrade/downgrade)
 - Validates Docker images and NPM packages exist
@@ -215,6 +217,8 @@ NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}-SNAPSHOT.${BUILD_NUMBER}"
 NEW_PATCH=$((PATCH + 1))
 NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
 ```
+
+> The increment is performed by `mvn versions:set` after reading current `major`/`minor`/`patch` from the [`collect-app-version`](../actions/collect-app-version/README.md) action's outputs.
 
 ## 🛡️ Validation and Quality Assurance
 
@@ -481,6 +485,6 @@ Solution: Check repository permissions and GitHub API status
 
 ---
 
-**Last Updated**: March 2026
-**Workflow Version**: 3.0 (Validation Skip + Publish/Release Controls + Manual Dispatch)
+**Last Updated**: May 2026
+**Workflow Version**: 3.1 (Reuse `collect-app-version` action + Infrastructure Error Classification for Version Bump)
 **Compatibility**: All FOLIO application repositories
