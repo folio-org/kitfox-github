@@ -51,12 +51,13 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
 
 ### Outputs
 
-| Output          | Description                                      |
-|-----------------|--------------------------------------------------|
-| `app_name`      | Application name (pass-through from input)       |
-| `app_version`   | Determined application version for release       |
-| `source_branch` | Source branch used for release preparation       |
-| `commit_sha`    | SHA of the commit on the new release branch      |
+| Output           | Description                                      |
+|------------------|--------------------------------------------------|
+| `app_name`       | Application name (pass-through from input)       |
+| `app_version`    | Determined application version for release       |
+| `source_branch`  | Source branch used for release preparation       |
+| `commit_sha`     | SHA of the commit on the new release branch      |
+| `failure_reason` | Specific reason for failure if any               |
 
 ## 🔄 Workflow Execution Flow
 
@@ -71,9 +72,10 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
    - Detects default branch using GitHub API: `gh api repos/{repo} --jq .default_branch`
 
 2. **Version Determination**
-   - Collects version from source branch (previous release or snapshot)
-   - Calculates new release version (typically major version increment)
-   - Handles snapshot version logic if enabled
+   - Reads current version from source branch via the [`collect-app-version`](../actions/collect-app-version/README.md) action
+   - Optionally reads default-branch version (snapshot fallback case) via the same action
+   - Calculates new release version (typically major version increment, or minor bump for snapshot fallback)
+   - If the action fails (mvn error, missing pom, unparseable version), the actual `failure_reason` from the action propagates through the job's `failure_reason` output instead of the generic `"Template update or branch verification failed"` fallback
 
 3. **Template Update**
    - Updates `application.template.json`:
@@ -546,11 +548,12 @@ new_patch=0
 - **[Release Preparation (Public Wrapper)](release-preparation.md)**: Public wrapper with notifications
 - **[Distributed Orchestration](distributed-orchestration.md)**: Cross-repository coordination
 - **[Commit and Push Changes](commit-and-push-changes.md)**: Reusable commit workflow
+- **[Collect Application Version Action](../actions/collect-app-version/README.md)**: Reads version from pom.xml; classifies failures as `INFRASTRUCTURE` / `POM_NOT_FOUND` / `INVALID_VERSION_FORMAT`
 - **[Security Implementation](security-implementation.md)**: Authorization patterns
 - **[FOLIO Release Process](https://folio-org.atlassian.net/wiki/spaces/FOLIJET/pages/886178625/Release+preparation)**: Official documentation
 
 ---
 
-**Last Updated**: October 2025
-**Workflow Version**: 1.0 (Flow extraction)
+**Last Updated**: May 2026
+**Workflow Version**: 1.1 (Propagate `failure_reason` from `collect-app-version` action through job-level output)
 **Compatibility**: All FOLIO application repositories with application.template.json

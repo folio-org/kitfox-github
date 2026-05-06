@@ -85,7 +85,13 @@ jobs:
       app_version: ${{ steps.determine-new-version.outputs.new_version }}
       source_branch: ${{ steps.verify-branches.outputs.source_branch }}
       default_branch: ${{ steps.verify-branches.outputs.default_branch }}
-      failure_reason: ${{ steps.verify-branches.outputs.error || steps.update-template.outputs.error }}
+      failure_reason: >-
+        ${{
+          steps.verify-branches.outputs.error ||
+          steps.collect-previous-version.outputs.failure_reason ||
+          steps.collect-default-branch-version.outputs.failure_reason ||
+          steps.update-template.outputs.error
+        }}
 
     env:
       PREV_BRANCH: ${{ inputs.previous_release_branch }}

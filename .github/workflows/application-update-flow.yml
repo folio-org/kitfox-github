@@ -279,9 +279,9 @@ jobs:
       app_descriptor_file_name: ${{ steps.generate.outputs.descriptor_file_name }}
       artifact_name: ${{ steps.generate.outputs.artifact_name }}
       state_file_artifact_name: ${{ steps.upload-state.outputs.artifact_name }}
-      failure_reason: ${{ steps.bump-version.outputs.failure_reason || steps.generate.outputs.failure_reason || '' }}
-      error_category: ${{ steps.bump-version.outputs.error_category || steps.generate.outputs.error_category }}
-      is_infrastructure_error: ${{ (steps.bump-version.outputs.is_infrastructure_error == 'true' || steps.generate.outputs.is_infrastructure_error == 'true') && 'true' || 'false' }}
+      failure_reason: ${{ steps.current-version.outputs.failure_reason || steps.bump-version.outputs.failure_reason || steps.generate.outputs.failure_reason || '' }}
+      error_category: ${{ steps.current-version.outputs.error_category || steps.bump-version.outputs.error_category || steps.generate.outputs.error_category }}
+      is_infrastructure_error: ${{ (steps.current-version.outputs.is_infrastructure_error == 'true' || steps.bump-version.outputs.is_infrastructure_error == 'true' || steps.generate.outputs.is_infrastructure_error == 'true') && 'true' || 'false' }}
     steps:
       - name: Checkout Application Repository
         uses: actions/checkout@v4
@@ -330,6 +330,19 @@ jobs:
             echo "value=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Collect Current Version
+        id: current-version
+        if: |
+          needs.prepare-context.outputs.need_pr == 'true' &&
+          needs.prepare-context.outputs.pr_exists != 'true' &&
+          needs.prepare-context.outputs.update_branch_exists != 'true'
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
+        with:
+          skip_checkout: 'true'
+          app_name: ${{ inputs.repo }}
+          branch: ${{ needs.prepare-context.outputs.target_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Increment Application Patch Version
         id: bump-version
         if: |
@@ -337,6 +350,12 @@ jobs:
           needs.prepare-context.outputs.pr_exists != 'true' &&
           needs.prepare-context.outputs.update_branch_exists != 'true'
         shell: bash
+        env:
+          CURRENT_VERSION: ${{ steps.current-version.outputs.version }}
+          MAJOR: ${{ steps.current-version.outputs.major }}
+          MINOR: ${{ steps.current-version.outputs.minor }}
+          PATCH: ${{ steps.current-version.outputs.patch }}
+          IS_SNAPSHOT: ${{ steps.current-version.outputs.is_snapshot }}
         run: |
           set -euo pipefail
 
@@ -346,66 +365,28 @@ jobs:
             exit 0
           fi
 
-          fail_infra() {
-            local phase="$1"
-            local log_file="$2"
-            echo "::endgroup::" || true
-            sync || true
-            local err=""
-            if [[ -s "$log_file" ]]; then
-              err=$({ grep -E "(ERROR|FAILURE|Exception)" "$log_file" 2>/dev/null || true; } | head -3 | tr '\n' ' ')
-            fi
-            echo "::error::Maven $phase failed (classified as INFRASTRUCTURE): ${err:-see log above}"
+          suffix=""
+          [[ "$IS_SNAPSHOT" == "true" ]] && suffix="-SNAPSHOT"
+          new_version="${MAJOR}.${MINOR}.$((PATCH + 1))${suffix}"
+
+          echo "::group::Updating pom.xml version"
+          if ! mvn -B -ntp -q versions:set -DnewVersion="$new_version" -DgenerateBackupPoms=false; then
+            echo "::endgroup::"
+            echo "::error::Maven versions:set failed (classified as INFRASTRUCTURE)"
             {
               echo "is_infrastructure_error=true"
               echo "error_category=INFRASTRUCTURE"
-              echo "failure_reason=Maven $phase failed during version bump: ${err:-no output captured}"
+              echo "failure_reason=Maven versions:set failed during version bump"
               echo "bumped=false"
             } >> "$GITHUB_OUTPUT"
-            rm -f "$log_file"
-            exit 1
-          }
-
-          echo "::group::Reading current pom.xml version"
-          eval_stdout=$(mktemp)
-          eval_log=$(mktemp)
-          if ! mvn -B -ntp -q -DforceStdout help:evaluate -Dexpression=project.version >"$eval_stdout" 2>"$eval_log"; then
-            cat "$eval_log" >&2 || true
-            rm -f "$eval_stdout"
-            fail_infra "help:evaluate" "$eval_log"
-          fi
-          current=$(tr -d '[:space:]' <"$eval_stdout")
-          echo "Current version: $current"
-          rm -f "$eval_stdout" "$eval_log"
-          echo "::endgroup::"
-
-          if [[ "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(.*)$ ]]; then
-            major="${BASH_REMATCH[1]}"
-            minor="${BASH_REMATCH[2]}"
-            patch="${BASH_REMATCH[3]}"
-            rest="${BASH_REMATCH[4]}"   # includes any suffix like -SNAPSHOT, -RC1, +build, etc.
-          else
-            sanitized="${current//$'\n'/ }"
-            echo "::error::Unsupported version format (expected X.Y.Z...): $sanitized"
-            echo "failure_reason=Unsupported pom version format: $sanitized" >> "$GITHUB_OUTPUT"
-            echo "bumped=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
-
-          new_version="${major}.${minor}.$((patch + 1))${rest}"
-
-          echo "::group::Updating pom.xml version"
-          set_log=$(mktemp)
-          if ! mvn -B -ntp -q versions:set -DnewVersion="$new_version" -DgenerateBackupPoms=false 2>&1 | tee "$set_log"; then
-            fail_infra "versions:set" "$set_log"
-          fi
-          rm -f "$set_log"
           echo "::endgroup::"
 
-          echo "::notice::Version bumped: $current -> $new_version"
+          echo "::notice::Version bumped: $CURRENT_VERSION -> $new_version"
           {
             echo "bumped=true"
-            echo "old_version=$current"
+            echo "old_version=$CURRENT_VERSION"
             echo "new_version=$new_version"
           } >> "$GITHUB_OUTPUT"
 
