@@ -42,12 +42,13 @@ The workflow validates that the merge was successful and that the PR originated 
 
 ### Variables
 
-| Variable                       | Description                          | Required |
-|--------------------------------|--------------------------------------|----------|
-| `EUREKA_CI_APP_ID`             | GitHub App ID                        | Yes      |
-| `FAR_URL`                      | FOLIO Application Registry URL       | Yes      |
-| `SLACK_NOTIF_CHANNEL`          | Team Slack notification channel      | No       |
-| `GENERAL_SLACK_NOTIF_CHANNEL`  | General Slack notification channel   | No       |
+| Variable                       | Description                                              | Required |
+|--------------------------------|----------------------------------------------------------|----------|
+| `EUREKA_CI_APP_ID`             | GitHub App ID                                            | Yes      |
+| `FAR_URL`                      | FOLIO Application Registry URL                           | Yes      |
+| `SLACK_NOTIF_CHANNEL`          | Team Slack notification channel (per-repo)               | No       |
+| `GENERAL_SLACK_NOTIF_CHANNEL`  | General Slack notification channel (org-level)           | No       |
+| `APP_RELEASE_SLACK_CHANNEL`    | Org-wide channel for release announcements (org-level)   | No       |
 
 ## Workflow Execution Flow
 
@@ -113,11 +114,15 @@ Deletes the merged update branch.
 
 **Steps**:
 1. Generate GitHub App Token
-2. Delete Update Branch via GitHub API
+2. Delete Update Branch via GitHub API. The step first checks whether the ref still exists; a missing ref is treated as a non-failure (already-deleted state).
 
 **Outputs**:
-- `branch_deleted`: `true`, `false`, or `skipped`
-- `failure_reason`: Reason if deletion failed
+- `deleted`: One of:
+  - `true` — branch existed and was deleted
+  - `already_deleted` — branch ref was missing before deletion attempt (non-failure)
+  - `skipped` — no head branch info available
+  - `false` — delete attempt failed (permission/API error)
+- `failure_reason`: Reason if deletion failed (only set when `deleted=false`)
 
 ### 4. Create Release
 **Job**: `release`
@@ -144,7 +149,12 @@ Sends Slack notifications with post-merge results.
 
 **Condition**: Runs if `should_process == 'true'`
 
-**Message Format**:
+**Channels**:
+- `SLACK_NOTIF_CHANNEL` (per-repo) — team summary message
+- `GENERAL_SLACK_NOTIF_CHANNEL` (org-level) — general summary message
+- `APP_RELEASE_SLACK_CHANNEL` (org-level) — release announcement, sent **only when `release_created == 'true'`** (i.e., a new release was actually created — not on `skipped`, `dry_run`, or `false`)
+
+**Summary Message Format** (team and general channels):
 ```
 *app-acquisitions post-merge completed/failed #42*
 
@@ -157,9 +167,16 @@ Release: v2.0.5
 Descriptor URL: <link>
 ```
 
-**Color Coding**:
-- Green: Publish succeeded and branch cleanup succeeded
-- Red: Any operation failed
+The `Branch Cleanup` field renders as `Deleted`, `Previously deleted`, `Skipped`, or `Failed` depending on the `cleanup-branch.deleted` output.
+
+**Release Announcement Format** (`APP_RELEASE_SLACK_CHANNEL` only):
+```
+`app-acquisitions v2.0.5` released https://github.com/folio-org/app-acquisitions/releases/tag/v2.0.5
+```
+
+**Color Coding** (summary messages):
+- Green: Publish succeeded and branch cleanup did not fail (any of `true`, `already_deleted`, `skipped`)
+- Red: Publish failed or branch cleanup returned `false`
 
 ### 6. Workflow Summary
 **Job**: `summarize`
@@ -305,6 +322,6 @@ gh api repos/folio-org/app-acquisitions/contents/application.lock.json \
 
 ---
 
-**Last Updated**: March 2026
-**Workflow Version**: 1.1 (Release notes via compare-state-files)
+**Last Updated**: May 2026
+**Workflow Version**: 1.2 (Graceful already-deleted cleanup; release announcements to `APP_RELEASE_SLACK_CHANNEL`)
 **Compatibility**: GitHub App webhook integration required
