@@ -87,22 +87,36 @@ jobs:
 
 ## Inputs
 
-| Input      | Description                                               | Required  | Default                          |
-|------------|-----------------------------------------------------------|-----------|----------------------------------|
-| `app_name` | Full repository path (e.g., `folio-org/app-platform`)     | ✅         | \-                               |
-| `branch`   | Branch name to collect version from                       | ✅         | \-                               |
-| `token`    | GitHub token with repository read permissions             | ❌         | `${{ github.token }}` if not set |
+| Input           | Description                                                                              | Required | Default                          |
+|-----------------|------------------------------------------------------------------------------------------|----------|----------------------------------|
+| `app_name`      | Full repository path (e.g., `folio-org/app-platform`)                                    | ✅       | \-                               |
+| `branch`        | Branch name to collect version from                                                      | ✅       | \-                               |
+| `token`         | GitHub token with repository read permissions                                            | ❌       | `${{ github.token }}` if not set |
+| `skip_checkout` | Skip the internal `actions/checkout` when the caller already has the repo in workspace   | ❌       | `'false'`                        |
 
 ## Outputs
 
-| Output         | Description                          | Example             |
-|----------------|--------------------------------------|---------------------|
-| `version`      | Complete version string from pom.xml | `1.2.3-SNAPSHOT.45` |
-| `major`        | Major version number                 | `1`                 |
-| `minor`        | Minor version number                 | `2`                 |
-| `patch`        | Patch version number                 | `3`                 |
-| `is_snapshot`  | Whether this is a SNAPSHOT version   | `true` or `false`   |
-| `build_number` | Build number (for SNAPSHOT versions) | `45`                |
+| Output                    | Description                                                                            | Example             |
+|---------------------------|----------------------------------------------------------------------------------------|---------------------|
+| `version`                 | Complete version string from pom.xml                                                   | `1.2.3-SNAPSHOT.45` |
+| `major`                   | Major version number                                                                   | `1`                 |
+| `minor`                   | Minor version number                                                                   | `2`                 |
+| `patch`                   | Patch version number                                                                   | `3`                 |
+| `is_snapshot`             | Whether this is a SNAPSHOT version                                                     | `true` or `false`   |
+| `build_number`            | Build number (for SNAPSHOT versions)                                                   | `45`                |
+| `is_infrastructure_error` | `true` only when `mvn` itself failed (treat as transient); `false` on success or app-level failures | `true` or `false`   |
+| `error_category`          | `NONE` \| `INFRASTRUCTURE` \| `POM_NOT_FOUND` \| `INVALID_VERSION_FORMAT`              | `NONE`              |
+| `failure_reason`          | Standard failure message when the read failed (empty on success)                       | `Failed to read application version via mvn` |
+
+The action always exits 1 on any failure, but classifies the cause so callers can route notifications differently:
+
+| Failure                                     | Exit | `is_infrastructure_error` | `error_category`         |
+|---------------------------------------------|------|---------------------------|--------------------------|
+| `pom.xml` not found in workspace            | 1    | `false`                   | `POM_NOT_FOUND`          |
+| `mvn` exit non-zero (likely transient)      | 1    | `true`                    | `INFRASTRUCTURE`         |
+| Version doesn't match `X.Y.Z[-SNAPSHOT[.N]]`| 1    | `false`                   | `INVALID_VERSION_FORMAT` |
+
+Callers that suppress noisy team-channel notifications on transient failures (see `application-update-flow.yml`) should gate on `is_infrastructure_error == 'true'` only — the two app-level categories should still surface to the team because they indicate real configuration/setup bugs.
 
 ## Version Format Support
 

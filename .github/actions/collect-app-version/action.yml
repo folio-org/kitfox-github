@@ -10,6 +10,10 @@ inputs:
   token:
     description: 'GitHub token with organization read permissions'
     required: false
+  skip_checkout:
+    description: 'Skip checkout when caller already has the repo in the workspace'
+    required: false
+    default: 'false'
 
 outputs:
   version:
@@ -30,15 +34,25 @@ outputs:
   build_number:
     description: 'Build number'
     value: ${{ steps.collect-version.outputs.build_number }}
+  is_infrastructure_error:
+    description: 'true only when mvn itself failed (treat as transient)'
+    value: ${{ steps.collect-version.outputs.is_infrastructure_error }}
+  error_category:
+    description: 'NONE | INFRASTRUCTURE (mvn failure) | POM_NOT_FOUND | INVALID_VERSION_FORMAT'
+    value: ${{ steps.collect-version.outputs.error_category }}
+  failure_reason:
+    description: 'Standard failure message if the read failed'
+    value: ${{ steps.collect-version.outputs.failure_reason }}
 
 runs:
   using: 'composite'
   steps:
     - name: Checkout branch
+      if: inputs.skip_checkout != 'true'
       uses: actions/checkout@v4
       with:
         token: ${{ inputs.token || github.token }}
-        repository: ${{ inputs.app_name }}          
+        repository: ${{ inputs.app_name }}
         ref: ${{ inputs.branch }}
         fetch-depth: 0
 
@@ -48,33 +62,60 @@ runs:
       run: |
         set -eo pipefail
 
-        test -f pom.xml || { echo "::error::pom.xml not found in repository"; exit 1; }
+        fail_infra() {
+          local msg="$1"
+          echo "::error::$msg (classified as INFRASTRUCTURE)"
+          {
+            echo "is_infrastructure_error=true"
+            echo "error_category=INFRASTRUCTURE"
+            echo "failure_reason=$msg"
+          } >> "$GITHUB_OUTPUT"
+          exit 1
+        }
 
-        current_version=$(mvn -q \
+        fail_app() {
+          local category="$1"
+          local msg="$2"
+          echo "::error::$msg"
+          {
+            echo "is_infrastructure_error=false"
+            echo "error_category=$category"
+            echo "failure_reason=$msg"
+          } >> "$GITHUB_OUTPUT"
+          exit 1
+        }
+
+        test -f pom.xml || fail_app "POM_NOT_FOUND" "pom.xml not found in repository"
+
+        if ! current_version=$(mvn -B -ntp -q \
                     -Dexec.executable=echo \
                     -Dexec.args='${project.version}' \
                     --non-recursive exec:exec \
-                    -f pom.xml \
-                    || echo unknown)
+                    -f pom.xml); then
+          fail_infra "Failed to read application version via mvn"
+        fi
 
-        echo "::notice::Current version from previous release branch: $current_version"
+        echo "::notice::Current version from pom.xml: $current_version"
 
         if [[ ! $current_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-SNAPSHOT(\.[0-9]+)?)?$ ]]; then
-          echo "::error::Unable to parse version from pom.xml: $current_version"
-          exit 1
+          fail_app "INVALID_VERSION_FORMAT" "Unable to parse version from pom.xml: $current_version"
         fi
 
         IFS='.- ' read -r major minor patch snapshot build <<<"${current_version//-SNAPSHOT/- SNAPSHOT}"
-          
+
         echo "::notice::Major version: $major"
         echo "::notice::Minor version: $minor"
         echo "::notice::Patch version: $patch"
         echo "::notice::Snapshot version: $snapshot"
         echo "::notice::Build number: $build"
 
-        echo "version=$current_version" >> "$GITHUB_OUTPUT"
-        echo "major=$major" >> "$GITHUB_OUTPUT"
-        echo "minor=$minor" >> "$GITHUB_OUTPUT"
-        echo "patch=$patch" >> "$GITHUB_OUTPUT"
-        echo "is_snapshot=$([ "$snapshot" = "SNAPSHOT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-        echo "build_number=$build" >> "$GITHUB_OUTPUT"
+        {
+          echo "version=$current_version"
+          echo "major=$major"
+          echo "minor=$minor"
+          echo "patch=$patch"
+          echo "is_snapshot=$([ "$snapshot" = "SNAPSHOT" ] && echo true || echo false)"
+          echo "build_number=$build"
+          echo "is_infrastructure_error=false"
+          echo "error_category=NONE"
+        } >> "$GITHUB_OUTPUT"
