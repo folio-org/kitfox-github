@@ -299,6 +299,12 @@ jobs:
             exit 0
           fi
 
+          if ! gh api "repos/$REPO/git/refs/heads/$HEAD_BRANCH" --silent 2>/dev/null; then
+            echo "::notice::Branch '$HEAD_BRANCH' was previously deleted"
+            echo "deleted=already_deleted" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           echo "::notice::Deleting merged update branch: $HEAD_BRANCH"
           if gh api -X DELETE "repos/$REPO/git/refs/heads/$HEAD_BRANCH" 2>/dev/null; then
             echo "::notice::Branch '$HEAD_BRANCH' deleted successfully"
@@ -370,7 +376,7 @@ jobs:
             },
             {
               "title": "Branch Cleanup",
-              "value": "${{ needs.cleanup-branch.outputs.deleted == 'true' && 'Deleted' || (needs.cleanup-branch.outputs.deleted == 'skipped' && 'Skipped' || 'Failed') }}",
+              "value": "${{ needs.cleanup-branch.outputs.deleted == 'true' && 'Deleted' || (needs.cleanup-branch.outputs.deleted == 'already_deleted' && 'Previously deleted' || (needs.cleanup-branch.outputs.deleted == 'skipped' && 'Skipped' || 'Failed')) }}",
               "short": true
             }${{ needs.release.outputs.release_created == 'true' && format(',
             {{
@@ -458,6 +464,20 @@ jobs:
               "attachments": [
                 ${{ env.ATTACHMENT }}
               ]
+            }
+
+      - name: Send Release Announcement
+        if: needs.release.outputs.release_created == 'true' && vars.APP_RELEASE_SLACK_CHANNEL != ''
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.EUREKA_CI_SLACK_BOT_TOKEN }}
+          errors: false
+          payload: |
+            {
+              "channel": "${{ vars.APP_RELEASE_SLACK_CHANNEL }}",
+              "text": "`${{ inputs.repo_name }} ${{ needs.release.outputs.tag_name }}` released ${{ needs.release.outputs.release_url }}"
             }
 
   summarize:
