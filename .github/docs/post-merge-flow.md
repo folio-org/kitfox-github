@@ -60,12 +60,11 @@ Validates merge status and configuration before proceeding.
 **Steps**:
 1. Check Merge Status - verify PR was actually merged
 2. Generate GitHub App Token
-3. Get Pull Request Information
+3. Get Pull Request Information - returns `pr.base.sha` and `pr.head.sha` via `get-pr-info` action
 4. Get Update Configuration
 5. Validate Configuration
-6. Find Previous Release Tag - looks up latest release via `gh release list`
-7. Compare with Previous Release - uses `compare-state-files` action to compute module diff between previous tag and current branch
-8. Build Release Notes - formats module diff as "Updated Modules:" list; falls back to listing all modules for first releases
+6. Compare PR State - uses `compare-state-files` action to compute the module diff between `pr.base.sha` (state before the PR) and `pr.head.sha` (state after the PR). Independent of merge strategy; on HTTP error against either SHA the step fails loud
+7. Build Release Notes - formats the module diff as an "Updated Modules:" list; empty when the PR introduces no module changes
 
 **Validation Logic** (steps 1-5):
 - Skip if PR was closed without merging (`merged != 'true'`)
@@ -323,5 +322,5 @@ gh api repos/folio-org/app-acquisitions/contents/application.lock.json \
 ---
 
 **Last Updated**: May 2026
-**Workflow Version**: 1.2 (Graceful already-deleted cleanup; release announcements to `APP_RELEASE_SLACK_CHANNEL`)
+**Workflow Version**: 1.3 (PR-SHA-driven module diff; strict HTTP in `compare-state-files`)
 **Compatibility**: GitHub App webhook integration required
