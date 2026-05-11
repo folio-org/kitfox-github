@@ -62,12 +62,15 @@ runs:
         WORK_DIR: ${{ steps.gen-dir.outputs.work_dir }}
       run: |
         api_url="https://api.github.com/repos/$REPO/contents/$STATE_FILE?ref=$BRANCH"
-        curl -sS -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Accept: application/vnd.github.v3.raw" \
-          "$api_url" -o "$WORK_DIR/base_state.json"
+        if ! curl -fsS -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3.raw" \
+              "$api_url" -o "$WORK_DIR/base_state.json"; then
+          echo "::error::Failed to download $STATE_FILE from $REPO@$BRANCH (HTTP error)"
+          exit 1
+        fi
 
-        if [ $? -ne 0 ] || [ ! -s "$WORK_DIR/base_state.json" ]; then
-          echo "::error::Failed to download $STATE_FILE from branch $BRANCH"
+        if [ ! -s "$WORK_DIR/base_state.json" ]; then
+          echo "::error::Downloaded $STATE_FILE from $REPO@$BRANCH is empty"
           exit 1
         fi
 
@@ -103,12 +106,15 @@ runs:
         WORK_DIR: ${{ steps.gen-dir.outputs.work_dir }}
       run: |
         api_url="https://api.github.com/repos/$REPO/contents/$STATE_FILE?ref=$BRANCH"
-        curl -sS -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Accept: application/vnd.github.v3.raw" \
-          "$api_url" -o "$WORK_DIR/head_state.json"
+        if ! curl -fsS -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github.v3.raw" \
+              "$api_url" -o "$WORK_DIR/head_state.json"; then
+          echo "::error::Failed to download $STATE_FILE from $REPO@$BRANCH (HTTP error)"
+          exit 1
+        fi
 
-        if [ $? -ne 0 ] || [ ! -s "$WORK_DIR/head_state.json" ]; then
-          echo "::error::Failed to download $STATE_FILE from branch $BRANCH"
+        if [ ! -s "$WORK_DIR/head_state.json" ]; then
+          echo "::error::Downloaded $STATE_FILE from $REPO@$BRANCH is empty"
           exit 1
         fi
 
