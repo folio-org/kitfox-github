@@ -1,0 +1,348 @@
+name: Post-Release Bump (Flow)
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application name (e.g., app-acquisitions)'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository (org/repo)'
+        required: true
+        type: string
+      release_branch:
+        description: 'Release branch to read base version from (e.g., R1-2026)'
+        required: true
+        type: string
+      target_branch:
+        description: 'Branch to bump (read current version, edit pom, commit). Default: snapshot.'
+        required: false
+        type: string
+        default: 'snapshot'
+      dry_run:
+        description: 'Perform dry run without committing'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-bump:
+    name: Prepare Bump
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.finalize.outputs.status }}
+      should_bump: ${{ steps.finalize.outputs.should_bump }}
+      failure_reason: ${{ steps.finalize.outputs.failure_reason }}
+      skipped_reason: ${{ steps.finalize.outputs.skipped_reason }}
+      release_version: ${{ steps.collect-release-version.outputs.version }}
+      current_snapshot_version: ${{ steps.collect-snapshot-version.outputs.version }}
+      target_version: ${{ steps.compute-target.outputs.target }}
+    steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: folio-org
+          repositories: ${{ inputs.app_name }}
+
+      - name: Preflight - Verify Branches Exist
+        id: preflight
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP: ${{ inputs.app_name }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          set -eo pipefail
+
+          if ! gh api "repos/folio-org/$APP/branches/$RELEASE_BRANCH" --silent 2>/dev/null; then
+            echo "::error::Release branch '$RELEASE_BRANCH' not found on folio-org/$APP"
+            echo "failure_reason=release_branch_missing" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if ! gh api "repos/folio-org/$APP/branches/$TARGET_BRANCH" --silent 2>/dev/null; then
+            echo "::error::Target branch '$TARGET_BRANCH' not found on folio-org/$APP"
+            echo "failure_reason=snapshot_branch_missing" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "::notice::Both '$RELEASE_BRANCH' and '$TARGET_BRANCH' exist on folio-org/$APP"
+
+      - name: Collect Release-Branch Version
+        id: collect-release-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
+        with:
+          app_name: ${{ inputs.repo }}
+          branch: ${{ inputs.release_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Validate Release Version Is Not SNAPSHOT
+        id: validate-release-version
+        if: steps.collect-release-version.outputs.is_snapshot == 'true'
+        run: |
+          set -eo pipefail
+          echo "::error::Release-branch version '${{ steps.collect-release-version.outputs.version }}' is a SNAPSHOT. Release branches must hold a clean X.Y.Z version."
+          echo "failure_reason=pom_invalid_release_version" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Compute Target Version
+        id: compute-target
+        env:
+          MAJOR: ${{ steps.collect-release-version.outputs.major }}
+          MINOR: ${{ steps.collect-release-version.outputs.minor }}
+        run: |
+          set -eo pipefail
+          target="${MAJOR}.$((MINOR + 1)).0-SNAPSHOT"
+          echo "::notice::Computed target snapshot version: $target"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "target_major=$MAJOR" >> "$GITHUB_OUTPUT"
+          echo "target_minor=$((MINOR + 1))" >> "$GITHUB_OUTPUT"
+          echo "target_patch=0" >> "$GITHUB_OUTPUT"
+
+      - name: Collect Snapshot Version
+        id: collect-snapshot-version
+        uses: folio-org/kitfox-github/.github/actions/collect-app-version@master
+        with:
+          app_name: ${{ inputs.repo }}
+          branch: ${{ inputs.target_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Idempotency Check
+        id: idempotency
+        env:
+          SNAP_MAJOR: ${{ steps.collect-snapshot-version.outputs.major }}
+          SNAP_MINOR: ${{ steps.collect-snapshot-version.outputs.minor }}
+          SNAP_PATCH: ${{ steps.collect-snapshot-version.outputs.patch }}
+          TGT_MAJOR: ${{ steps.compute-target.outputs.target_major }}
+          TGT_MINOR: ${{ steps.compute-target.outputs.target_minor }}
+          TGT_PATCH: ${{ steps.compute-target.outputs.target_patch }}
+        run: |
+          set -eo pipefail
+
+          snap_num=$(( SNAP_MAJOR * 1000000 + SNAP_MINOR * 1000 + SNAP_PATCH ))
+          tgt_num=$((  TGT_MAJOR  * 1000000 + TGT_MINOR  * 1000 + TGT_PATCH  ))
+
+          if (( snap_num >= tgt_num )); then
+            echo "::notice::Snapshot version is already at-or-above target. Skipping bump."
+            echo "should_bump=false" >> "$GITHUB_OUTPUT"
+            echo "skipped_reason=already_at_or_above_target" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Snapshot version is below target. Will bump."
+            echo "should_bump=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout Snapshot Branch
+        if: steps.idempotency.outputs.should_bump == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.target_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 1
+
+      - name: Update POM Version
+        id: update-pom
+        if: steps.idempotency.outputs.should_bump == 'true'
+        env:
+          TARGET: ${{ steps.compute-target.outputs.target }}
+        run: |
+          set -eo pipefail
+
+          if [ ! -f "pom.xml" ]; then
+            echo "::error::pom.xml not found after checkout"
+            echo "failure_reason=pom_edit_no_op" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          awk -v new="$TARGET" '
+            /<version>/ && !done {
+              if (sub(/<version>[^<]+<\/version>/, "<version>" new "</version>")) {
+                done = 1
+              }
+            }
+            { print }
+          ' pom.xml > pom.xml.new && mv pom.xml.new pom.xml
+
+          if git diff --quiet pom.xml; then
+            echo "::error::awk transform produced no change to pom.xml"
+            echo "failure_reason=pom_edit_no_op" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "::notice::pom.xml updated to <version>$TARGET</version>"
+          echo "::group::pom.xml diff"
+          git --no-pager diff pom.xml
+          echo "::endgroup::"
+
+      - name: Upload Pom Artifact
+        if: steps.idempotency.outputs.should_bump == 'true' && steps.update-pom.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.app_name }}-post-release-bump-files
+          overwrite: true
+          path: pom.xml
+          retention-days: 1
+
+      - name: Finalize Outputs
+        id: finalize
+        if: always()
+        env:
+          PREFLIGHT_FAILURE: ${{ steps.preflight.outputs.failure_reason }}
+          REL_VALIDATE_FAILURE: ${{ steps.validate-release-version.outputs.failure_reason }}
+          POM_FAILURE: ${{ steps.update-pom.outputs.failure_reason }}
+          SHOULD_BUMP: ${{ steps.idempotency.outputs.should_bump }}
+          SKIPPED_REASON: ${{ steps.idempotency.outputs.skipped_reason }}
+          PREFLIGHT_RESULT: ${{ steps.preflight.outcome }}
+          REL_COLLECT_RESULT: ${{ steps.collect-release-version.outcome }}
+          REL_VALIDATE_RESULT: ${{ steps.validate-release-version.outcome }}
+          SNAP_COLLECT_RESULT: ${{ steps.collect-snapshot-version.outcome }}
+          POM_RESULT: ${{ steps.update-pom.outcome }}
+        run: |
+          set -eo pipefail
+
+          failure_reason=""
+          if [ "$PREFLIGHT_RESULT" = "failure" ]; then
+            failure_reason="${PREFLIGHT_FAILURE:-preflight_failed}"
+          elif [ "$REL_COLLECT_RESULT" = "failure" ]; then
+            failure_reason="pom_release_read_failed"
+          elif [ "$REL_VALIDATE_RESULT" = "failure" ]; then
+            failure_reason="${REL_VALIDATE_FAILURE:-pom_invalid_release_version}"
+          elif [ "$SNAP_COLLECT_RESULT" = "failure" ]; then
+            failure_reason="pom_snapshot_read_failed"
+          elif [ "$POM_RESULT" = "failure" ]; then
+            failure_reason="${POM_FAILURE:-pom_edit_no_op}"
+          fi
+
+          if [ -n "$failure_reason" ]; then
+            status="failed"
+            should_bump="false"
+          elif [ "$SHOULD_BUMP" = "false" ]; then
+            status="skipped"
+            should_bump="false"
+          else
+            status="prepared"
+            should_bump="true"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "should_bump=$should_bump" >> "$GITHUB_OUTPUT"
+          echo "failure_reason=$failure_reason" >> "$GITHUB_OUTPUT"
+          echo "skipped_reason=$SKIPPED_REASON" >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Final status: $status (should_bump=$should_bump, failure_reason='$failure_reason', skipped_reason='$SKIPPED_REASON')"
+
+  commit-bump:
+    name: Commit Bump to Snapshot
+    needs: prepare-bump
+    if: needs.prepare-bump.outputs.should_bump == 'true'
+    uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@master
+    with:
+      repo: ${{ inputs.repo }}
+      branch: ${{ inputs.target_branch }}
+      artifact_name: ${{ inputs.app_name }}-post-release-bump-files
+      use_github_app: true
+      commit_message: |
+        Bump snapshot version to ${{ needs.prepare-bump.outputs.target_version }} post-${{ inputs.release_branch }}
+
+        Auto-generated by post-release-bump orchestrator.
+        Release branch: ${{ inputs.release_branch }}
+        Source version on ${{ inputs.release_branch }}: ${{ needs.prepare-bump.outputs.release_version }}
+        Previous snapshot version: ${{ needs.prepare-bump.outputs.current_snapshot_version }}
+        New snapshot version: ${{ needs.prepare-bump.outputs.target_version }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  upload_results:
+    name: Upload Results
+    runs-on: ubuntu-latest
+    needs: [prepare-bump, commit-bump]
+    if: always()
+    steps:
+      - name: Prepare Result Artifact
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          PREPARE_RESULT: ${{ needs.prepare-bump.result }}
+          COMMIT_RESULT: ${{ needs.commit-bump.result }}
+          PREPARE_STATUS: ${{ needs.prepare-bump.outputs.status }}
+          PREPARE_FAILURE_REASON: ${{ needs.prepare-bump.outputs.failure_reason }}
+          SKIPPED_REASON: ${{ needs.prepare-bump.outputs.skipped_reason }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          RELEASE_VERSION: ${{ needs.prepare-bump.outputs.release_version }}
+          PREV_SNAPSHOT_VERSION: ${{ needs.prepare-bump.outputs.current_snapshot_version }}
+          TARGET_VERSION: ${{ needs.prepare-bump.outputs.target_version }}
+          COMMIT_SHA: ${{ needs.commit-bump.outputs.commit_sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -eo pipefail
+
+          mkdir -p /tmp/results
+
+          if [ "$PREPARE_RESULT" != "success" ]; then
+            status="failed"
+            failure_reason="${PREPARE_FAILURE_REASON:-prepare_job_${PREPARE_RESULT}}"
+            skipped_reason=""
+          elif [ "$PREPARE_STATUS" = "skipped" ]; then
+            status="skipped"
+            failure_reason=""
+            skipped_reason="$SKIPPED_REASON"
+          elif [ "$PREPARE_STATUS" = "failed" ]; then
+            status="failed"
+            failure_reason="$PREPARE_FAILURE_REASON"
+            skipped_reason=""
+          else
+            if [ "$DRY_RUN" = "true" ]; then
+              status="success"
+              failure_reason=""
+              skipped_reason=""
+            elif [ "$COMMIT_RESULT" = "success" ]; then
+              status="success"
+              failure_reason=""
+              skipped_reason=""
+            else
+              status="failed"
+              failure_reason="commit_failed"
+              skipped_reason=""
+            fi
+          fi
+
+          jq -n \
+            --arg application "$APP_NAME" \
+            --arg status "$status" \
+            --arg release_branch "$RELEASE_BRANCH" \
+            --arg release_branch_version "$RELEASE_VERSION" \
+            --arg previous_snapshot_version "$PREV_SNAPSHOT_VERSION" \
+            --arg new_snapshot_version "$TARGET_VERSION" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg failure_reason "$failure_reason" \
+            --arg skipped_reason "$skipped_reason" \
+            --argjson dry_run "${DRY_RUN:-false}" \
+            '{
+              application: $application,
+              status: $status,
+              release_branch: $release_branch,
+              release_branch_version: $release_branch_version,
+              previous_snapshot_version: $previous_snapshot_version,
+              new_snapshot_version: $new_snapshot_version,
+              commit_sha: $commit_sha,
+              failure_reason: $failure_reason,
+              skipped_reason: $skipped_reason,
+              dry_run: $dry_run
+            }' > "/tmp/results/$APP_NAME.json"
+
+          echo "::notice::Result for $APP_NAME:"
+          cat "/tmp/results/$APP_NAME.json"
+
+      - name: Upload Application Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: result-${{ inputs.app_name }}
+          overwrite: true
+          path: /tmp/results/${{ inputs.app_name }}.json
+          retention-days: 1
