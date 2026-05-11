@@ -1,12 +1,13 @@
 # Collect Application Version
 
-A GitHub Action for collecting and parsing Maven application versions from FOLIO repositories. This action extracts version information from `pom.xml` files and breaks it down into semantic version components, with special handling for SNAPSHOT versions.
+A GitHub Action for collecting and parsing Maven application versions from FOLIO repositories. This action extracts the project version directly from `pom.xml` and breaks it down into semantic version components, with special handling for SNAPSHOT versions.
 
 ## Features
 
-- **Maven version extraction**: Reads version from `pom.xml` using Maven
+- **Direct pom.xml parsing**: Reads the project `<version>` element via `awk` — no Maven invocation, no Maven Central dependency
 - **Semantic version parsing**: Breaks down versions into major, minor, patch components
 - **SNAPSHOT support**: Properly handles SNAPSHOT versions with build numbers
+- **Parent-aware**: Skips any `<version>` nested in a `<parent>` block so the project version is selected, not the parent's
 - **Cross-repository support**: Can collect versions from any FOLIO application repository
 - **Validation**: Ensures version follows expected semantic versioning patterns
 
@@ -90,9 +91,8 @@ jobs:
 | Input           | Description                                                                              | Required | Default                          |
 |-----------------|------------------------------------------------------------------------------------------|----------|----------------------------------|
 | `app_name`      | Full repository path (e.g., `folio-org/app-platform`)                                    | ✅       | \-                               |
-| `branch`        | Branch name to collect version from                                                      | ✅       | \-                               |
-| `token`         | GitHub token with repository read permissions                                            | ❌       | `${{ github.token }}` if not set |
-| `skip_checkout` | Skip the internal `actions/checkout` when the caller already has the repo in workspace   | ❌       | `'false'`                        |
+| `branch`        | Branch (or any git ref) to read `pom.xml` from                                           | ✅       | \-                               |
+| `token`         | GitHub token with read access to the target repository                                   | ❌       | `${{ github.token }}` if not set |
 
 ## Outputs
 
@@ -104,19 +104,18 @@ jobs:
 | `patch`                   | Patch version number                                                                   | `3`                 |
 | `is_snapshot`             | Whether this is a SNAPSHOT version                                                     | `true` or `false`   |
 | `build_number`            | Build number (for SNAPSHOT versions)                                                   | `45`                |
-| `is_infrastructure_error` | `true` only when `mvn` itself failed (treat as transient); `false` on success or app-level failures | `true` or `false`   |
-| `error_category`          | `NONE` \| `INFRASTRUCTURE` \| `POM_NOT_FOUND` \| `INVALID_VERSION_FORMAT`              | `NONE`              |
-| `failure_reason`          | Standard failure message when the read failed (empty on success)                       | `Failed to read application version via mvn` |
+| `is_infrastructure_error` | Reserved for backwards compatibility; always emits `false` after [RANCHER-2977](https://folio-org.atlassian.net/browse/RANCHER-2977) (no `mvn` invocation remains) | `false`             |
+| `error_category`          | `NONE` \| `POM_NOT_FOUND` \| `INVALID_VERSION_FORMAT`                                  | `NONE`              |
+| `failure_reason`          | Standard failure message when the read failed (empty on success)                       | `Could not extract project <version> from pom.xml` |
 
-The action always exits 1 on any failure, but classifies the cause so callers can route notifications differently:
+The action always exits 1 on any failure, classifying the cause:
 
 | Failure                                     | Exit | `is_infrastructure_error` | `error_category`         |
 |---------------------------------------------|------|---------------------------|--------------------------|
-| `pom.xml` not found in workspace            | 1    | `false`                   | `POM_NOT_FOUND`          |
-| `mvn` exit non-zero (likely transient)      | 1    | `true`                    | `INFRASTRUCTURE`         |
-| Version doesn't match `X.Y.Z[-SNAPSHOT[.N]]`| 1    | `false`                   | `INVALID_VERSION_FORMAT` |
+| `pom.xml` not found on `<branch>` (or `gh api` request failed) | 1 | `false` | `POM_NOT_FOUND`          |
+| Version doesn't match `X.Y.Z[-SNAPSHOT[.N]]`                   | 1 | `false` | `INVALID_VERSION_FORMAT` |
 
-Callers that suppress noisy team-channel notifications on transient failures (see `application-update-flow.yml`) should gate on `is_infrastructure_error == 'true'` only — the two app-level categories should still surface to the team because they indicate real configuration/setup bugs.
+`is_infrastructure_error` and the `INFRASTRUCTURE` category remain in the output schema for backwards compatibility with callers wired to suppress team-channel notifications on transient mvn flakes (see [RANCHER-2962](https://folio-org.atlassian.net/browse/RANCHER-2962)). Since the implementation no longer invokes `mvn`, that failure class is structurally absent and the flag is always `false`.
 
 ## Version Format Support
 
@@ -132,8 +131,8 @@ This action supports Maven versions following these patterns:
 
 ## How It Works
 
-1. **Repository Checkout**: Checks out the specified application repository and branch
-2. **Maven Version Extraction**: Uses Maven to extract the version from `pom.xml`
+1. **POM Fetch**: Reads `pom.xml` from `repos/<app_name>/contents/pom.xml?ref=<branch>` via the GitHub Contents API (`gh api`) — no repository checkout, no Maven invocation
+2. **POM Parse**: `awk` finds the first `<version>` element outside any `<parent>` block (the project's own version)
 3. **Version Validation**: Validates the version follows semantic versioning patterns
 4. **Component Parsing**: Breaks down the version into individual components
 5. **Output Generation**: Provides all components as action outputs
@@ -142,19 +141,16 @@ This action supports Maven versions following these patterns:
 
 ### Repository Structure
 The target repository must:
-- Be a Maven project with a `pom.xml` file in the root
-- Have the version defined in the `<version>` element
+- Have a `pom.xml` file in the root
+- Have the project version defined in the top-level `<version>` element (not inside a `<parent>` block)
 - Follow semantic versioning conventions
-
-### Maven
-This action uses Maven (`mvn`) which is pre-installed on GitHub runners.
 
 ### Permissions
 The calling workflow needs appropriate permissions:
 
 ```yaml
 permissions:
-  contents: read     # To checkout repositories
+  contents: read     # To read pom.xml via the GitHub Contents API
 ```
 
 ## Error Handling
@@ -163,7 +159,7 @@ The action provides clear error messages for common issues:
 
 - **Missing pom.xml**: If the repository doesn't contain a `pom.xml` file
 - **Invalid version format**: If the version doesn't follow semantic versioning
-- **Maven execution failure**: If Maven cannot extract the version
+- **Could not extract project `<version>`**: If `pom.xml` exists but no top-level `<version>` element is found outside `<parent>` (rare; usually means a malformed pom)
 
 ## Use Cases
 
@@ -311,10 +307,9 @@ Implement proper error handling for version collection failures:
 - For private repositories, ensure the token has appropriate permissions
 - Check repository visibility and access settings
 
-**Maven execution failure**
-- The repository may not be a valid Maven project
-- Dependencies might be missing or misconfigured
-- Check the Maven project structure and configuration
+**Could not extract project `<version>`**
+- The first `<version>` element outside any `<parent>` block is treated as the project version. If your pom has neither, the action fails with `INVALID_VERSION_FORMAT`.
+- Inspect the pom: there must be a top-level `<version>X.Y.Z[-SNAPSHOT[.N]]</version>` element.
 
 ## Integration with FOLIO Workflows
 
