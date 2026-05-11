@@ -98,13 +98,6 @@ jobs:
       NEW_BRANCH: ${{ inputs.new_release_branch }}
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ inputs.repo }}
-          fetch-depth: 0
-
       - name: Verify Branches
         id: verify-branches
         env:
@@ -112,19 +105,19 @@ jobs:
         run: |
           set -eo pipefail
 
-          if git ls-remote --exit-code --heads origin "$NEW_BRANCH" >/dev/null 2>&1; then
+          if gh api "repos/${{ inputs.repo }}/branches/$NEW_BRANCH" --silent 2>/dev/null; then
             echo "error=New release branch '$NEW_BRANCH' already exists" >> "$GITHUB_OUTPUT"
             echo "::error::New release branch '$NEW_BRANCH' already exists"
             exit 1
           fi
 
-          if git ls-remote --exit-code --heads origin "$PREV_BRANCH" >/dev/null 2>&1; then
+          if gh api "repos/${{ inputs.repo }}/branches/$PREV_BRANCH" --silent 2>/dev/null; then
             echo "::notice::Using previous release branch: $PREV_BRANCH"
             echo "source_branch=$PREV_BRANCH" >> "$GITHUB_OUTPUT"
             echo "has_previous_branch=true" >> "$GITHUB_OUTPUT"
 
           elif [[ "${{ inputs.use_snapshot_fallback }}" == "true" ]] \
-              && git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
+              && gh api "repos/${{ inputs.repo }}/branches/snapshot" --silent 2>/dev/null; then
 
             echo "::warning::Previous release branch not found, using snapshot branch as fallback"
             echo "source_branch=snapshot" >> "$GITHUB_OUTPUT"
@@ -145,11 +138,19 @@ jobs:
           echo "::notice::Default branch is: $default_branch"
           echo "default_branch=$default_branch" >> "$GITHUB_OUTPUT"
 
-          if ! git ls-remote --exit-code --heads origin "snapshot" >/dev/null 2>&1; then
+          if ! gh api "repos/${{ inputs.repo }}/branches/snapshot" --silent 2>/dev/null; then
             echo "error=Missing branch. The snapshot branch does not exist" >> "$GITHUB_OUTPUT"
             echo "::error::Missing branch. The snapshot branch does not exist"
             exit 1
           fi
+
+      - name: Checkout Source Branch
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ inputs.repo }}
+          ref: ${{ steps.verify-branches.outputs.source_branch }}
+          fetch-depth: 0
 
       - name: Collect Previous Version
         id: collect-previous-version
