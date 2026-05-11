@@ -10,10 +10,6 @@ inputs:
   token:
     description: 'GitHub token with organization read permissions'
     required: false
-  skip_checkout:
-    description: 'Skip checkout when caller already has the repo in the workspace'
-    required: false
-    default: 'false'
 
 outputs:
   version:
@@ -35,10 +31,10 @@ outputs:
     description: 'Build number'
     value: ${{ steps.collect-version.outputs.build_number }}
   is_infrastructure_error:
-    description: 'true only when mvn itself failed (treat as transient)'
+    description: 'Reserved for backwards compatibility; always emits `false` (no mvn invocation after RANCHER-2977)'
     value: ${{ steps.collect-version.outputs.is_infrastructure_error }}
   error_category:
-    description: 'NONE | INFRASTRUCTURE (mvn failure) | POM_NOT_FOUND | INVALID_VERSION_FORMAT'
+    description: 'NONE | POM_NOT_FOUND | INVALID_VERSION_FORMAT'
     value: ${{ steps.collect-version.outputs.error_category }}
   failure_reason:
     description: 'Standard failure message if the read failed'
@@ -47,31 +43,15 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Checkout branch
-      if: inputs.skip_checkout != 'true'
-      uses: actions/checkout@v4
-      with:
-        token: ${{ inputs.token || github.token }}
-        repository: ${{ inputs.app_name }}
-        ref: ${{ inputs.branch }}
-        fetch-depth: 0
-
     - name: Collect Application Version
       id: collect-version
       shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token || github.token }}
+        APP_NAME: ${{ inputs.app_name }}
+        BRANCH: ${{ inputs.branch }}
       run: |
         set -eo pipefail
-
-        fail_infra() {
-          local msg="$1"
-          echo "::error::$msg (classified as INFRASTRUCTURE)"
-          {
-            echo "is_infrastructure_error=true"
-            echo "error_category=INFRASTRUCTURE"
-            echo "failure_reason=$msg"
-          } >> "$GITHUB_OUTPUT"
-          exit 1
-        }
 
         fail_app() {
           local category="$1"
@@ -85,14 +65,24 @@ runs:
           exit 1
         }
 
-        test -f pom.xml || fail_app "POM_NOT_FOUND" "pom.xml not found in repository"
+        if ! pom_b64=$(gh api "repos/${APP_NAME}/contents/pom.xml?ref=${BRANCH}" --jq '.content' 2>/dev/null); then
+          fail_app "POM_NOT_FOUND" "Failed to fetch pom.xml from ${APP_NAME}@${BRANCH}"
+        fi
 
-        if ! current_version=$(mvn -B -ntp -q \
-                    -Dexec.executable=echo \
-                    -Dexec.args='${project.version}' \
-                    --non-recursive exec:exec \
-                    -f pom.xml); then
-          fail_infra "Failed to read application version via mvn"
+        current_version=$(printf '%s' "$pom_b64" | base64 -d | awk '
+          /<parent>/    { in_parent=1 }
+          /<\/parent>/  { in_parent=0; next }
+          in_parent     { next }
+          /<version>/ {
+            if (match($0, /<version>[^<]+<\/version>/)) {
+              print substr($0, RSTART+9, RLENGTH-19)
+              exit
+            }
+          }
+        ')
+
+        if [ -z "$current_version" ]; then
+          fail_app "INVALID_VERSION_FORMAT" "Could not extract project <version> from pom.xml"
         fi
 
         echo "::notice::Current version from pom.xml: $current_version"
