@@ -19,8 +19,11 @@ outputs:
     description: 'Whether the PR exists and is accessible'
     value: ${{ steps.pr-info.outputs.pr_exists }}
   current_head_sha:
-    description: 'Current HEAD SHA of the pull request'
+    description: 'Current HEAD SHA of the pull request (pr.head.sha)'
     value: ${{ steps.pr-info.outputs.current_head_sha }}
+  base_sha:
+    description: 'Base branch SHA the pull request diverged from (pr.base.sha)'
+    value: ${{ steps.pr-info.outputs.base_sha }}
   head_ref:
     description: 'Head branch reference of the pull request'
     value: ${{ steps.pr-info.outputs.head_ref }}
@@ -77,10 +80,12 @@ runs:
             console.log(`  Base: ${pr.base.ref}`);
             console.log(`  Head: ${pr.head.ref}`);
             console.log(`  Current SHA: ${pr.head.sha}`);
+            console.log(`  Base SHA: ${pr.base.sha}`);
             console.log(`  Labels: ${labels.join(', ') || 'none'}`);
 
             core.setOutput('pr_exists', 'true');
             core.setOutput('current_head_sha', pr.head.sha);
+            core.setOutput('base_sha', pr.base.sha);
             core.setOutput('head_ref', pr.head.ref);
             core.setOutput('base_ref', pr.base.ref);
             core.setOutput('labels', JSON.stringify(labels));

@@ -14,15 +14,15 @@ The action identifies added, removed, and updated modules between the two states
 
 ## Inputs
 
-| Name                | Description                                           | Required | Default                          |
-|---------------------|-------------------------------------------------------|----------|----------------------------------|
-| `repo`              | Repository name in org/repo format                    | **Yes**  | -                                |
-| `base-source-type`  | Type of base source: "artifact" or "branch"           | **Yes**  | -                                |
-| `base-source`       | Base source: artifact name or branch name             | **Yes**  | -                                |
-| `head-source-type`  | Type of head source: "artifact" or "branch"           | **Yes**  | -                                |
-| `head-source`       | Head source: artifact name or branch name             | **Yes**  | -                                |
-| `state-file`        | Name of the state file (application descriptor)       | No       | `application-descriptor.json`    |
-| `github-token`      | GitHub token for API access                           | **Yes**  | -                                |
+| Name                | Description                                                         | Required | Default                |
+|---------------------|---------------------------------------------------------------------|----------|------------------------|
+| `repo`              | Repository name in org/repo format                                  | **Yes**  | -                      |
+| `base-source-type`  | Type of base source: `artifact` or `branch`                         | **Yes**  | -                      |
+| `base-source`       | Base source: artifact name (for `artifact`), or any git ref — branch, tag, or commit SHA — passed to the Contents API as `ref=…` (for `branch`) | **Yes**  | -                      |
+| `head-source-type`  | Type of head source: `artifact` or `branch`                         | **Yes**  | -                      |
+| `head-source`       | Head source: artifact name, or any git ref (branch/tag/SHA) — see `base-source`                                                                | **Yes**  | -                      |
+| `state-file`        | Name of the state file                                              | No       | `application.lock.json`|
+| `github-token`      | GitHub token for API access                                         | **Yes**  | -                      |
 
 ## Outputs
 
@@ -173,13 +173,12 @@ The action expects JSON files with the following structure:
 
 ## Error Handling
 
-The action will fail if:
-- State file is not found in the specified branch
-- State file is not found in the specified artifact
-- JSON parsing fails for state files
-- Git operations fail (for branch comparisons)
+The action fails loudly (non-zero exit + `::error::` annotation) if:
+- The Contents API returns any HTTP 4xx/5xx for the state file (e.g. the ref does not exist, the state file does not exist at that ref, or the token lacks permission). The action uses `curl -fsS` so HTTP errors propagate immediately — the JSON error body is never written to disk and never silently parsed as an "empty state".
+- The state file is not found in the specified artifact.
+- JSON parsing fails for either state file.
 
-All errors are reported using GitHub Actions error annotations.
+All errors are reported using GitHub Actions error annotations and stop the workflow at the step boundary.
 
 ## Example Workflow
 

@@ -16,16 +16,17 @@ This action retrieves comprehensive information about a GitHub pull request usin
 
 ## Outputs
 
-| Output             | Description                                          |
-|--------------------|------------------------------------------------------|
-| `pr_exists`        | Whether the PR exists and is accessible (true/false) |
-| `current_head_sha` | Current HEAD SHA of the pull request                 |
-| `head_ref`         | Head branch reference of the pull request            |
-| `base_ref`         | Base branch reference of the pull request            |
-| `labels`           | JSON array of label names                            |
-| `state`            | State of the pull request (open, closed)             |
-| `skip_reason`      | Reason for skipping if PR does not exist             |
-| `body`             | Body/description of the pull request                 |
+| Output             | Description                                                          |
+|--------------------|----------------------------------------------------------------------|
+| `pr_exists`        | Whether the PR exists and is accessible (true/false)                 |
+| `current_head_sha` | Current HEAD SHA of the pull request (`pr.head.sha`)                 |
+| `base_sha`         | Base branch SHA the pull request diverged from (`pr.base.sha`)       |
+| `head_ref`         | Head branch reference of the pull request                            |
+| `base_ref`         | Base branch reference of the pull request                            |
+| `labels`           | JSON array of label names                                            |
+| `state`            | State of the pull request (open, closed)                             |
+| `skip_reason`      | Reason for skipping if PR does not exist                             |
+| `body`             | Body/description of the pull request                                 |
 
 ## Usage
 
@@ -87,6 +88,7 @@ This action retrieves comprehensive information about a GitHub pull request usin
     echo "Head Branch: ${{ steps.pr-info.outputs.head_ref }}"
     echo "Base Branch: ${{ steps.pr-info.outputs.base_ref }}"
     echo "Current SHA: ${{ steps.pr-info.outputs.current_head_sha }}"
+    echo "Base SHA:    ${{ steps.pr-info.outputs.base_sha }}"
     echo "State: ${{ steps.pr-info.outputs.state }}"
     echo "Labels: ${{ steps.pr-info.outputs.labels }}"
 ```
@@ -133,6 +135,7 @@ When the action succeeds, the outputs will look like:
 ```yaml
 pr_exists: 'true'
 current_head_sha: 'abc123def456...'
+base_sha: '0fedcba987654...'
 head_ref: 'feature/new-feature'
 base_ref: 'main'
 labels: '["bug", "priority-high", "release"]'
@@ -146,6 +149,7 @@ When the action fails:
 ```yaml
 pr_exists: 'false'
 current_head_sha: ''
+base_sha: ''
 head_ref: ''
 base_ref: ''
 labels: ''
