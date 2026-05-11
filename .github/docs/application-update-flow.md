@@ -80,7 +80,7 @@ Determines the source branch and checks for existing PRs:
 Uses the `generate-application-descriptor` action with `generation_mode: update`:
 
 **Process**:
-- Reads current pom version via the `collect-app-version` action (`skip_checkout: true`); failures are classified as `INFRASTRUCTURE` (transient mvn) or `INVALID_VERSION_FORMAT` / `POM_NOT_FOUND` (application-level)
+- Reads current pom version via the `collect-app-version` action (reads `pom.xml` directly via the GitHub Contents API; no `mvn` invocation); failures are classified as `INVALID_VERSION_FORMAT` or `POM_NOT_FOUND`
 - Increments patch version and runs `mvn versions:set` (PR-mode runs only); `mvn` failures here are classified as `INFRASTRUCTURE`
 - Resolves version constraints from `application.template.json` (^2.0.0 → 2.3.1)
 - Full module synchronization (add/remove/upgrade/downgrade)

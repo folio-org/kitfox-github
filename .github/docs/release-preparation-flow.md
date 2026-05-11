@@ -75,7 +75,7 @@ All commits use the reusable **`commit-and-push-changes.yml`** workflow for cons
    - Reads current version from source branch via the [`collect-app-version`](../actions/collect-app-version/README.md) action
    - Optionally reads default-branch version (snapshot fallback case) via the same action
    - Calculates new release version (typically major version increment, or minor bump for snapshot fallback)
-   - If the action fails (mvn error, missing pom, unparseable version), the actual `failure_reason` from the action propagates through the job's `failure_reason` output instead of the generic `"Template update or branch verification failed"` fallback
+   - If the action fails (missing pom, unparseable version), the actual `failure_reason` from the action propagates through the job's `failure_reason` output instead of the generic `"Template update or branch verification failed"` fallback
 
 3. **Template Update**
    - Updates `application.template.json`:
@@ -548,7 +548,7 @@ new_patch=0
 - **[Release Preparation (Public Wrapper)](release-preparation.md)**: Public wrapper with notifications
 - **[Distributed Orchestration](distributed-orchestration.md)**: Cross-repository coordination
 - **[Commit and Push Changes](commit-and-push-changes.md)**: Reusable commit workflow
-- **[Collect Application Version Action](../actions/collect-app-version/README.md)**: Reads version from pom.xml; classifies failures as `INFRASTRUCTURE` / `POM_NOT_FOUND` / `INVALID_VERSION_FORMAT`
+- **[Collect Application Version Action](../actions/collect-app-version/README.md)**: Reads version from pom.xml via the GitHub Contents API; classifies failures as `POM_NOT_FOUND` / `INVALID_VERSION_FORMAT`
 - **[Security Implementation](security-implementation.md)**: Authorization patterns
 - **[FOLIO Release Process](https://folio-org.atlassian.net/wiki/spaces/FOLIJET/pages/886178625/Release+preparation)**: Official documentation
 
