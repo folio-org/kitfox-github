@@ -1,0 +1,383 @@
+name: Dependency Refresh (Flow)
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: 'Application name (e.g., app-acquisitions)'
+        required: true
+        type: string
+      repo:
+        description: 'Application repository (org/repo)'
+        required: true
+        type: string
+      target_branch:
+        description: 'Branch whose application.template.json should be refreshed. Default: snapshot.'
+        required: false
+        type: string
+        default: 'snapshot'
+      dry_run:
+        description: 'Perform dry run without committing'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-refresh:
+    name: Prepare Refresh
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.finalize.outputs.status }}
+      has_changes: ${{ steps.finalize.outputs.has_changes }}
+      refreshed_count: ${{ steps.finalize.outputs.refreshed_count }}
+      refreshed_constraints: ${{ steps.finalize.outputs.refreshed_constraints }}
+      refresh_summary: ${{ steps.finalize.outputs.refresh_summary }}
+      failure_reason: ${{ steps.finalize.outputs.failure_reason }}
+      skipped_reason: ${{ steps.finalize.outputs.skipped_reason }}
+    steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.EUREKA_CI_APP_ID }}
+          private-key: ${{ secrets.EUREKA_CI_APP_KEY }}
+          owner: folio-org
+          repositories: ${{ inputs.app_name }}
+
+      - name: Preflight - Verify Branch and Template Exist
+        id: preflight
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP: ${{ inputs.app_name }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          set -eo pipefail
+
+          if ! gh api "repos/folio-org/$APP/branches/$TARGET_BRANCH" --silent 2>/dev/null; then
+            echo "::error::Target branch '$TARGET_BRANCH' not found on folio-org/$APP"
+            echo "failure_reason=target_branch_missing" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if ! gh api "repos/folio-org/$APP/contents/application.template.json?ref=$TARGET_BRANCH" --silent 2>/dev/null; then
+            echo "::error::application.template.json not found on folio-org/$APP@$TARGET_BRANCH"
+            echo "failure_reason=template_missing" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "::notice::Branch and template confirmed on folio-org/$APP@$TARGET_BRANCH"
+
+      - name: Fetch Template
+        id: fetch-template
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP: ${{ inputs.app_name }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          set -eo pipefail
+
+          mkdir -p /tmp/work
+          if ! gh api "repos/folio-org/$APP/contents/application.template.json?ref=$TARGET_BRANCH" --jq '.content' 2>/dev/null | base64 -d > /tmp/work/application.template.json; then
+            echo "::error::Failed to fetch application.template.json from $APP@$TARGET_BRANCH"
+            echo "failure_reason=template_parse_failed" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if ! jq -e '.dependencies' /tmp/work/application.template.json >/dev/null 2>&1; then
+            echo "::error::application.template.json on $APP@$TARGET_BRANCH is not valid JSON or lacks .dependencies"
+            echo "failure_reason=template_parse_failed" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          dep_count=$(jq '.dependencies | length' /tmp/work/application.template.json)
+          echo "::notice::Template parsed; $dep_count dependency entries"
+          cp /tmp/work/application.template.json /tmp/work/application.template.json.orig
+
+      - name: Detect Stale Constraints
+        id: detect-stale
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          set -eo pipefail
+
+          refreshed='[]'
+          summary=''
+
+          while IFS=$'\t' read -r dep_name dep_constraint; do
+            [ -z "$dep_name" ] && continue
+
+            if [[ ! "$dep_name" =~ ^app- ]]; then
+              echo "::notice::Skipping non-app dependency: $dep_name"
+              continue
+            fi
+
+            if [[ ! "$dep_constraint" =~ ^\^([0-9]+)\.([0-9]+)\.([0-9]+)(-SNAPSHOT(\.[0-9]+)?)?$ ]]; then
+              echo "::warning::$dep_name: unrecognized constraint format '$dep_constraint' — leaving untouched"
+              continue
+            fi
+            constraint_major="${BASH_REMATCH[1]}"
+
+            if ! dep_pom=$(gh api "repos/folio-org/$dep_name/contents/pom.xml?ref=$TARGET_BRANCH" --jq '.content' 2>/dev/null); then
+              echo "::warning::$dep_name: could not fetch pom.xml from $TARGET_BRANCH — leaving constraint untouched"
+              continue
+            fi
+
+            dep_version=$(printf '%s' "$dep_pom" | base64 -d | awk '
+              /<parent>/    { in_parent=1 }
+              /<\/parent>/  { in_parent=0; next }
+              in_parent     { next }
+              /<version>/   { if (match($0, /<version>[^<]+<\/version>/)) { print substr($0, RSTART+9, RLENGTH-19); exit } }
+            ')
+
+            if [[ ! "$dep_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-SNAPSHOT(\.[0-9]+)?)?$ ]]; then
+              echo "::warning::$dep_name: pom version '$dep_version' is not parseable SemVer — leaving constraint untouched"
+              continue
+            fi
+            dep_current_major="${BASH_REMATCH[1]}"
+            dep_current_minor="${BASH_REMATCH[2]}"
+
+            if [ "$constraint_major" = "$dep_current_major" ]; then
+              continue
+            fi
+
+            new_constraint="^${dep_current_major}.${dep_current_minor}.0-SNAPSHOT"
+            echo "::notice::$dep_name: STALE — $dep_constraint → $new_constraint"
+
+            entry=$(jq -nc --arg dep "$dep_name" --arg old "$dep_constraint" --arg new "$new_constraint" \
+              '{dep: $dep, old: $old, new: $new}')
+            refreshed=$(jq -c --argjson e "$entry" '. + [$e]' <<<"$refreshed")
+            summary="${summary}${dep_name}: ${dep_constraint} → ${new_constraint}"$'\n'
+
+          done < <(jq -r '.dependencies[] | "\(.name)\t\(.version)"' /tmp/work/application.template.json)
+
+          refreshed_count=$(jq 'length' <<<"$refreshed")
+          echo "::notice::Detected $refreshed_count stale dependency constraint(s)"
+
+          echo "refreshed_count=$refreshed_count" >> "$GITHUB_OUTPUT"
+          {
+            echo "refreshed<<EOF"
+            printf '%s' "$refreshed"
+            echo
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "summary<<EOF"
+            printf '%s' "$summary"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Rewrite Template
+        id: rewrite
+        if: steps.detect-stale.outputs.refreshed_count != '0'
+        env:
+          REFRESHED: ${{ steps.detect-stale.outputs.refreshed }}
+        run: |
+          set -eo pipefail
+
+          jq --argjson updates "$REFRESHED" '
+            .dependencies |= map(
+              . as $dep
+              | ($updates[] | select(.dep == $dep.name)) as $u
+              | if $u then .version = $u.new else . end
+            )
+          ' /tmp/work/application.template.json.orig > /tmp/work/application.template.json
+
+          if diff -q /tmp/work/application.template.json.orig /tmp/work/application.template.json >/dev/null 2>&1; then
+            echo "::error::jq rewrite produced no diff despite stale entries — defensive failure"
+            echo "failure_reason=template_edit_no_op" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "::group::Template diff"
+          diff -u /tmp/work/application.template.json.orig /tmp/work/application.template.json || true
+          echo "::endgroup::"
+
+      - name: Stage Artifact
+        if: steps.detect-stale.outputs.refreshed_count != '0' && steps.rewrite.outcome == 'success'
+        run: |
+          set -eo pipefail
+          mkdir -p /tmp/artifact
+          cp /tmp/work/application.template.json /tmp/artifact/application.template.json
+
+      - name: Upload Template Artifact
+        if: steps.detect-stale.outputs.refreshed_count != '0' && steps.rewrite.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.app_name }}-dependency-refresh-files
+          overwrite: true
+          path: /tmp/artifact/
+          retention-days: 1
+
+      - name: Finalize Outputs
+        id: finalize
+        if: always()
+        env:
+          PREFLIGHT_FAILURE: ${{ steps.preflight.outputs.failure_reason }}
+          FETCH_FAILURE: ${{ steps.fetch-template.outputs.failure_reason }}
+          REWRITE_FAILURE: ${{ steps.rewrite.outputs.failure_reason }}
+          PREFLIGHT_RESULT: ${{ steps.preflight.outcome }}
+          FETCH_RESULT: ${{ steps.fetch-template.outcome }}
+          DETECT_RESULT: ${{ steps.detect-stale.outcome }}
+          REWRITE_RESULT: ${{ steps.rewrite.outcome }}
+          REFRESHED_COUNT: ${{ steps.detect-stale.outputs.refreshed_count }}
+          REFRESHED: ${{ steps.detect-stale.outputs.refreshed }}
+          SUMMARY: ${{ steps.detect-stale.outputs.summary }}
+        run: |
+          set -eo pipefail
+
+          failure_reason=""
+          if [ "$PREFLIGHT_RESULT" = "failure" ]; then
+            failure_reason="${PREFLIGHT_FAILURE:-preflight_failed}"
+          elif [ "$FETCH_RESULT" = "failure" ]; then
+            failure_reason="${FETCH_FAILURE:-template_parse_failed}"
+          elif [ "$DETECT_RESULT" = "failure" ]; then
+            failure_reason="dep_version_read_failed"
+          elif [ "$REWRITE_RESULT" = "failure" ]; then
+            failure_reason="${REWRITE_FAILURE:-template_edit_no_op}"
+          fi
+
+          if [ -n "$failure_reason" ]; then
+            status="failed"
+            has_changes="false"
+            skipped_reason=""
+          elif [ "${REFRESHED_COUNT:-0}" = "0" ]; then
+            status="skipped"
+            has_changes="false"
+            skipped_reason="no_stale_deps"
+          else
+            status="prepared"
+            has_changes="true"
+            skipped_reason=""
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "has_changes=$has_changes" >> "$GITHUB_OUTPUT"
+          echo "refreshed_count=${REFRESHED_COUNT:-0}" >> "$GITHUB_OUTPUT"
+          {
+            echo "refreshed_constraints<<EOF"
+            printf '%s' "${REFRESHED:-[]}"
+            echo
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "refresh_summary<<EOF"
+            printf '%s' "$SUMMARY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "failure_reason=$failure_reason" >> "$GITHUB_OUTPUT"
+          echo "skipped_reason=$skipped_reason" >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Final status: $status (has_changes=$has_changes, refreshed_count=${REFRESHED_COUNT:-0}, failure_reason='$failure_reason', skipped_reason='$skipped_reason')"
+
+  commit-refresh:
+    name: Commit Refreshed Template
+    needs: prepare-refresh
+    if: needs.prepare-refresh.outputs.has_changes == 'true'
+    uses: folio-org/kitfox-github/.github/workflows/commit-and-push-changes.yml@master
+    with:
+      repo: ${{ inputs.repo }}
+      branch: ${{ inputs.target_branch }}
+      artifact_name: ${{ inputs.app_name }}-dependency-refresh-files
+      use_github_app: true
+      commit_message: |
+        Refresh template dependency constraints on ${{ inputs.target_branch }}
+
+        Auto-generated by post-release-bump orchestrator (dependency-refresh phase).
+        Refreshed entries:
+        ${{ needs.prepare-refresh.outputs.refresh_summary }}
+
+        Refs: RANCHER-2983
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
+
+  upload_results:
+    name: Upload Results
+    runs-on: ubuntu-latest
+    needs: [prepare-refresh, commit-refresh]
+    if: always()
+    steps:
+      - name: Prepare Result Artifact
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          PREPARE_RESULT: ${{ needs.prepare-refresh.result }}
+          COMMIT_RESULT: ${{ needs.commit-refresh.result }}
+          PREPARE_STATUS: ${{ needs.prepare-refresh.outputs.status }}
+          HAS_CHANGES: ${{ needs.prepare-refresh.outputs.has_changes }}
+          PREPARE_FAILURE_REASON: ${{ needs.prepare-refresh.outputs.failure_reason }}
+          SKIPPED_REASON: ${{ needs.prepare-refresh.outputs.skipped_reason }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          REFRESHED_COUNT: ${{ needs.prepare-refresh.outputs.refreshed_count }}
+          REFRESHED: ${{ needs.prepare-refresh.outputs.refreshed_constraints }}
+          COMMIT_SHA: ${{ needs.commit-refresh.outputs.commit_sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -eo pipefail
+
+          mkdir -p /tmp/results
+
+          if [ "$PREPARE_RESULT" != "success" ]; then
+            status="failed"
+            failure_reason="${PREPARE_FAILURE_REASON:-prepare_job_${PREPARE_RESULT}}"
+            skipped_reason=""
+          elif [ "$PREPARE_STATUS" = "skipped" ]; then
+            status="skipped"
+            failure_reason=""
+            skipped_reason="$SKIPPED_REASON"
+          elif [ "$PREPARE_STATUS" = "failed" ]; then
+            status="failed"
+            failure_reason="$PREPARE_FAILURE_REASON"
+            skipped_reason=""
+          else
+            if [ "$DRY_RUN" = "true" ]; then
+              status="success"
+              failure_reason=""
+              skipped_reason=""
+            elif [ "$COMMIT_RESULT" = "success" ]; then
+              status="success"
+              failure_reason=""
+              skipped_reason=""
+            else
+              status="failed"
+              failure_reason="commit_failed"
+              skipped_reason=""
+            fi
+          fi
+
+          jq -n \
+            --arg application "$APP_NAME" \
+            --arg phase "deprefresh" \
+            --arg status "$status" \
+            --arg target_branch "$TARGET_BRANCH" \
+            --arg refreshed_count "${REFRESHED_COUNT:-0}" \
+            --argjson refreshed_constraints "${REFRESHED:-[]}" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg failure_reason "$failure_reason" \
+            --arg skipped_reason "$skipped_reason" \
+            --argjson dry_run "${DRY_RUN:-false}" \
+            '{
+              application: $application,
+              phase: $phase,
+              status: $status,
+              target_branch: $target_branch,
+              refreshed_count: ($refreshed_count | tonumber),
+              refreshed_constraints: $refreshed_constraints,
+              commit_sha: $commit_sha,
+              failure_reason: $failure_reason,
+              skipped_reason: $skipped_reason,
+              dry_run: $dry_run
+            }' > "/tmp/results/$APP_NAME-deprefresh.json"
+
+          echo "::notice::Result for $APP_NAME (deprefresh):"
+          cat "/tmp/results/$APP_NAME-deprefresh.json"
+
+      - name: Upload Application Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: deprefresh-${{ inputs.app_name }}
+          overwrite: true
+          path: /tmp/results/${{ inputs.app_name }}-deprefresh.json
+          retention-days: 1
