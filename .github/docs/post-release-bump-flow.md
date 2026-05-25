@@ -78,5 +78,6 @@ Uploaded with `actions/upload-artifact@v4` and name `result-<app_name>`. The orc
 ## Related Workflows
 
 - `commit-and-push-changes.yml` — reused for the commit step; see [`commit-and-push-changes.md`](commit-and-push-changes.md).
+- `dependency-refresh-flow.yml` — the dep-refresh phase that follows this flow in the orchestrator. Refreshes `application.template.json` constraints when a dependee crossed a major boundary during the bump. See [`dependency-refresh-flow.md`](dependency-refresh-flow.md).
 - `release-preparation-flow.yml` — the per-app worker for release branch creation, called by `release-preparation-orchestrator.yml`. This flow runs *after* release-preparation completes.
 - `application-update-flow.yml` — the per-app worker for routine snapshot module-version updates. Different concern: it bumps module versions in `application.template.json`, not the project version in `pom.xml`.
