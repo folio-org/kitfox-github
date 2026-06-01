@@ -312,19 +312,19 @@ jobs:
     outputs:
       team_channel: ${{ steps.get-vars.outputs.team_channel }}
     env:
-      WORKFLOW_SUCCESS: ${{ needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' && needs.cleanup-branch.outputs.deleted != 'false' }}
-      TITLE_TEXT: "${{ inputs.repo_name }} post-merge ${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' && needs.cleanup-branch.outputs.deleted != 'false') && 'completed' || 'failed' }}"
+      WORKFLOW_SUCCESS: ${{ (needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false' }}
+      TITLE_TEXT: "${{ inputs.repo_name }} post-merge ${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false') && 'completed' || 'failed' }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.repo_name }} post-merge ${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' && needs.cleanup-branch.outputs.deleted != 'false') && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.repo_name }} post-merge ${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false') && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
         }
       ATTACHMENT: |
         {
-          "color": "${{ (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success' && needs.cleanup-branch.outputs.deleted != 'false') && 'good' || 'danger' }}",
+          "color": "${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false') && 'good' || 'danger' }}",
           "fields": [
             {
               "title": "Release branch",
@@ -360,7 +360,7 @@ jobs:
               "title": "Descriptor URL",
               "value": "<{0}|View in FAR>",
               "short": false
-            }}', needs.publish.outputs.descriptor_url) || '' }}${{ (needs.publish.outputs.descriptor_exists != 'true' || needs.publish.outputs.publish_status != 'success' || needs.cleanup-branch.outputs.deleted == 'false') && format(',
+            }}', needs.publish.outputs.descriptor_url) || '' }}${{ ((needs.publish.result != 'skipped' && (needs.publish.outputs.descriptor_exists != 'true' || needs.publish.outputs.publish_status != 'success')) || needs.cleanup-branch.outputs.deleted == 'false') && format(',
             {{
               "title": "Failure Reason",
               "value": "{0}",
