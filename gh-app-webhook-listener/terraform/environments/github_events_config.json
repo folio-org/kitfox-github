@@ -152,6 +152,106 @@
           ]
         }
       ]
+    },
+    {
+      "event_type": "pull_request",
+      "actions": ["opened", "reopened", "synchronize", "ready_for_review"],
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "platform-lsp",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "{owner}",
+              "repository": "{repository}",
+              "workflow_file": "release-pr-check.yml",
+              "ref": "master",
+              "inputs": {
+                "repo_owner": "{owner}",
+                "repo_name": "{repository}",
+                "pr_number": "{pr_number}",
+                "head_sha": "{head_sha}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event_type": "check_suite",
+      "actions": ["requested", "rerequested"],
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "platform-lsp",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "{owner}",
+              "repository": "{repository}",
+              "workflow_file": "release-pr-check.yml",
+              "ref": "master",
+              "inputs": {
+                "repo_owner": "{owner}",
+                "repo_name": "{repository}",
+                "pr_number": "{pr_number}",
+                "head_sha": "{head_sha}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event_type": "check_run",
+      "actions": ["requested_action"],
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "platform-lsp",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "{owner}",
+              "repository": "{repository}",
+              "workflow_file": "release-pr-check.yml",
+              "ref": "master",
+              "inputs": {
+                "repo_owner": "{owner}",
+                "repo_name": "{repository}",
+                "pr_number": "{pr_number}",
+                "head_sha": "{head_sha}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event_type": "merge_group",
+      "actions": ["checks_requested"],
+      "repository_patterns": [
+        {
+          "owner": "folio-org",
+          "repository": "platform-lsp",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "{owner}",
+              "repository": "{repository}",
+              "workflow_file": "release-pr-check.yml",
+              "ref": "master",
+              "inputs": {
+                "repo_owner": "{owner}",
+                "repo_name": "{repository}",
+                "head_sha": "{head_sha}",
+                "base_branch": "{base_branch}"
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
