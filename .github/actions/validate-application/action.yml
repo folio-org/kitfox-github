@@ -117,15 +117,21 @@ runs:
 
           [[ "$app_name" == "$APP_NAME" ]] && continue
 
-          echo "Fetching descriptor for $app_name version $app_version..."
+          if [[ "$app_version" == \#* ]]; then
+            branch="${app_version#\#}"
+            echo "Fetching descriptor for $app_name from branch '$branch' (application.lock.json)..."
+            descriptor_url="https://raw.githubusercontent.com/folio-org/$app_name/$branch/application.lock.json"
+          else
+            echo "Fetching descriptor for $app_name version $app_version..."
+            descriptor_url="$FAR_API_URL/$app_name-$app_version?full=true"
+          fi
 
-          descriptor_url="$FAR_API_URL/$app_name-$app_version?full=true"
           if descriptor=$(curl -sf "$descriptor_url" 2>/dev/null); then
             echo "$descriptor" > "/tmp/app-descriptors/${app_name}.json"
             echo "::notice:: Fetched $app_name"
           else
-            echo "::error:: Could not fetch $app_name from FAR"
-            echo "failure_reason=Could not fetch $app_name from FAR" >> "$GITHUB_OUTPUT"
+            echo "::error:: Could not fetch $app_name ($app_version)"
+            echo "failure_reason=Could not fetch $app_name ($app_version)" >> "$GITHUB_OUTPUT"
             exit 1
           fi
         done

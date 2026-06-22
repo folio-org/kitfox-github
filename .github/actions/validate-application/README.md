@@ -59,6 +59,25 @@ Both validation steps can be individually controlled:
 
 Bypass mode is recommended for snapshot branches to avoid deadlocks during coordinated interface version changes while preserving validation visibility. When a validation step is skipped or bypassed, the `validation_passed` output treats it as passed.
 
+### Branch-Pinned Dependencies
+
+A dependency application in the platform descriptor may be pinned to a feature branch instead of a released
+version by writing its version with a leading `#`, e.g. `"version": "#RANCHER-2870"`. Such an application is
+not present in FAR, so when fetching dependency descriptors the action resolves a `#branch` entry from GitHub
+raw instead:
+
+```
+https://raw.githubusercontent.com/folio-org/<app_name>/<branch>/application.lock.json
+```
+
+where `<branch>` is the version value with the leading `#` removed. The fetched `application.lock.json` is the
+descriptor committed to that branch by the build flow, and it participates in dependency validation exactly
+like a FAR-sourced descriptor. Standard semver versions continue to be fetched from FAR unchanged.
+
+Notes:
+- The branch must already contain a committed `application.lock.json` (produced when the branch is built).
+- The fetch is unauthenticated, so the app repository and branch must be publicly readable.
+
 ## Usage
 
 ### Basic Usage with Full Validation
@@ -157,7 +176,7 @@ These artifacts should be uploaded in previous workflow steps using `actions/upl
 
 1. **Validate Inputs**: Ensures at least one descriptor source is provided
 2. **Download Artifacts**: Retrieves application and optionally platform descriptor artifacts
-3. **Fetch FAR Descriptors**: If not relying on FAR and platform descriptor is available, fetches all application descriptors from FAR for validation
+3. **Fetch Dependency Descriptors**: If not relying on FAR and a platform descriptor is available, fetches each dependency application's descriptor for validation — from FAR for standard semver versions, or from a GitHub branch for `#branch`-pinned entries (see [Branch-Pinned Dependencies](#branch-pinned-dependencies))
 4. **Module Interface Validation**: Validates module interfaces against FAR API
 5. **Dependency Validation** (conditional): Validates application dependencies if platform descriptor is available
 
