@@ -398,6 +398,8 @@ jobs:
           build_number: ${{ steps.build-number.outputs.value }}
           use_input_generator_version: true #TODO: remove sometime later
           upload_state_file: false
+          eureka_header_key: ${{ secrets.EUREKA_HEADER_KEY }}
+          eureka_header_value: ${{ secrets.EUREKA_HEADER_VALUE }}
 
       - name: Collect New Version
         id: collect-new-version
