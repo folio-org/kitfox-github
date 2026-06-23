@@ -59,6 +59,14 @@ inputs:
     description: 'When true, uses generator_version input; when false, uses version from pom.xml'
     required: false
     default: 'false'
+  eureka_header_key:
+    description: 'Name of the Eureka security header sent to okapi module registries (from org secret)'
+    required: false
+    default: ''
+  eureka_header_value:
+    description: 'Value of the Eureka security header sent to okapi module registries (from org secret)'
+    required: false
+    default: ''
 
 outputs:
   generated:
@@ -198,6 +206,8 @@ runs:
         NO_VERSION_BUMP: ${{ inputs.no_version_bump }}
         GENERATOR_VERSION: ${{ inputs.generator_version }}
         USE_INPUT_GENERATOR_VERSION: ${{ inputs.use_input_generator_version }}
+        EUREKA_HEADER_KEY: ${{ inputs.eureka_header_key }}
+        EUREKA_HEADER_VALUE: ${{ inputs.eureka_header_value }}
         SUPPRESS_LOGS: "-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn"
       run: |
         set -eo pipefail
@@ -244,11 +254,19 @@ runs:
           EXTRA_PARAMS+=" -DnoVersionBump=true"
         fi
 
+        # Eureka security header for okapi registries. Kept in a separate variable so the secret is
+        # never printed in the command notice below (only appended to the actual mvn invocation).
+        REGISTRY_HEADERS_PARAM=""
+        if [[ -n "$EUREKA_HEADER_KEY" && -n "$EUREKA_HEADER_VALUE" ]]; then
+          REGISTRY_HEADERS_PARAM="-DregistryHeaders=okapi::${EUREKA_HEADER_KEY}:${EUREKA_HEADER_VALUE}"
+          echo "::notice::Applying okapi registry security header (value masked)"
+        fi
+
         echo "::notice::Running $GENERATION_MODE mode"
         echo "::notice::Full Maven command: mvn $SUPPRESS_LOGS clean $COMMAND -U -e $EXTRA_PARAMS"
         echo "::group::Generate application descriptor"
         mvn_output=$(mktemp)
-        if ! mvn $SUPPRESS_LOGS clean $COMMAND -U -e $EXTRA_PARAMS 2>&1 | tee "$mvn_output"; then
+        if ! mvn $SUPPRESS_LOGS clean $COMMAND -U -e $EXTRA_PARAMS $REGISTRY_HEADERS_PARAM 2>&1 | tee "$mvn_output"; then
           echo "::endgroup::"
           echo "::error::Maven command failed"
           echo "generated=false" >> "$GITHUB_OUTPUT"
