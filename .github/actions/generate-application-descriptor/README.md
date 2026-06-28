@@ -59,6 +59,14 @@ A GitHub Action that generates or updates FOLIO application descriptors. This ac
 | `upload_artifact`         | No       | `true`                        | Whether to upload the generated descriptor as a GitHub artifact                             |
 | `artifact_name`           | No       | `{app_name}-descriptor`       | Name for the uploaded artifact                                                              |
 | `artifact_retention_days` | No       | `1`                           | Number of days to retain the uploaded artifact                                              |
+| `eureka_header_key`       | No       | -                             | Name of the Eureka security header sent to okapi module registries (from org secret)        |
+| `eureka_header_value`     | No       | -                             | Value of the Eureka security header sent to okapi module registries (from org secret)       |
+
+When both `eureka_header_key` and `eureka_header_value` are provided, the action appends
+`-DregistryHeaders=okapi::<key>:<value>` to the Maven invocation, so the folio-application-generator
+attaches the header to its okapi registry requests. The flag is cross-version-safe: plugin versions
+that predate the `registryHeaders` parameter silently ignore it. Requires a plugin version that
+supports `registryHeaders` (`generator_version`) for the header to take effect.
 
 ## Outputs
 
