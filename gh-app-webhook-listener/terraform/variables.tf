@@ -66,6 +66,12 @@ variable "sqs_max_receive_count" {
   default     = 3
 }
 
+variable "dlq_alarm_email" {
+  description = "Optional email address subscribed to the DLQ alarm SNS topic. Leave empty to skip the subscription."
+  type        = string
+  default     = ""
+}
+
 variable "log_retention_days" {
   description = "CloudWatch logs retention in days"
   type        = number
