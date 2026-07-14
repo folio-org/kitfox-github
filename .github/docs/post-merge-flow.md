@@ -68,11 +68,16 @@ Validates merge status and configuration before proceeding.
 
 **Validation Logic** (steps 1-5):
 - Skip if PR was closed without merging (`merged != 'true'`)
-- Skip if configuration file not found
+- Skip if configuration file not found (a genuine `404` only)
 - Skip if release scanning disabled
 - Skip if target branch not in `release_branches`
 - Skip if `need_pr=false` for the branch
 - Skip if PR head branch doesn't match configured `update_branch`
+
+> **Note**: "Configuration file not found" means a genuine `404`. A transient GitHub API failure
+> (HTTP 429/5xx, network) while reading the config is retried and, if it persists, **fails the
+> pre-check** rather than being misread as "not found" — so a release is never silently skipped on
+> a false negative. See the [get-update-config action](../actions/get-update-config/README.md#troubleshooting).
 
 **Outputs**:
 - `should_process`: Whether to proceed with post-merge operations
@@ -109,7 +114,7 @@ Publishes the merged application descriptor to FOLIO Application Registry.
 
 Deletes the merged update branch.
 
-**Condition**: Runs after publish regardless of outcome (if `should_process == 'true'`)
+**Condition**: Runs after publish regardless of publish outcome, **only when `should_process == 'true'` and the pre-check job succeeded** (`needs.pre-check.result == 'success'`). If the pre-check fails on a GitHub API error, cleanup is skipped so the update branch is **not** deleted before the release completes.
 
 **Steps**:
 1. Generate GitHub App Token
@@ -174,8 +179,14 @@ The `Branch Cleanup` field renders as `Deleted`, `Previously deleted`, `Skipped`
 ```
 
 **Color Coding** (summary messages):
-- Green: Publish succeeded and branch cleanup did not fail (any of `true`, `already_deleted`, `skipped`)
-- Red: Publish failed or branch cleanup returned `false`
+- Green: Pre-check succeeded, publish succeeded, and branch cleanup did not fail (any of `true`, `already_deleted`, `skipped`)
+- Red: Publish failed, branch cleanup returned `false`, **or the pre-check failed on a GitHub API error**
+
+**GitHub API / pre-check failure**: when the pre-check job fails (e.g. a transient GitHub API error while
+reading the update config — see the [get-update-config action](../actions/get-update-config/README.md#troubleshooting)),
+the notification is sent to the team **and** general channels as a **red** message whose *Failure Reason* reads:
+"A GitHub API error occurred during pre-check, so the release was NOT performed. Please re-trigger the workflow."
+The run is not silently skipped or mis-reported as completed, and the update branch is preserved.
 
 ### 6. Workflow Summary
 **Job**: `summarize`
