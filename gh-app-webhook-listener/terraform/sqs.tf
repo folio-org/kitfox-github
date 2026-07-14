@@ -29,10 +29,10 @@ resource "aws_sns_topic" "check_suite_dlq_alerts" {
 }
 
 resource "aws_sns_topic_subscription" "check_suite_dlq_alerts_email" {
-  count     = var.dlq_alarm_email != "" ? 1 : 0
+  for_each  = toset(var.dlq_alarm_emails)
   topic_arn = aws_sns_topic.check_suite_dlq_alerts.arn
   protocol  = "email"
-  endpoint  = var.dlq_alarm_email
+  endpoint  = each.value
 }
 
 resource "aws_cloudwatch_metric_alarm" "check_suite_dlq_not_empty" {
