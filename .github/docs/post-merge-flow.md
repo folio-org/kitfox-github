@@ -195,8 +195,8 @@ Generates a comprehensive workflow summary in the GitHub Actions UI.
 
 **Summary Sections**:
 1. Descriptor Publish Summary - repository, PR, commit, merge status
-2. Pre-Check Status - configuration validation results
-3. Publication Status - descriptor and FAR publishing results
+2. Pre-Check Status - configuration validation results (shows **Pre-Check: Failed** with the GitHub-API-error / re-trigger guidance when `needs.pre-check.result == 'failure'`)
+3. Publication Status - descriptor and FAR publishing results (omitted when the pre-check failed)
 4. Release Status - tag, version, release URL
 5. Notification Status - Slack notification delivery status
 
