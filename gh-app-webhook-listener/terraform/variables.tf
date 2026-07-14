@@ -66,6 +66,12 @@ variable "sqs_max_receive_count" {
   default     = 3
 }
 
+variable "dlq_alarm_emails" {
+  description = "Email addresses subscribed to the DLQ alarm SNS topic. Empty list skips the subscription."
+  type        = list(string)
+  default     = []
+}
+
 variable "log_retention_days" {
   description = "CloudWatch logs retention in days"
   type        = number

@@ -8,6 +8,13 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger()
 
+# Transient GitHub failures worth retrying. The workflow_dispatch endpoint
+# intermittently returns 500 "Failed to run workflow dispatch"; without a retry
+# such a response was previously swallowed and the dispatch lost.
+RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+MAX_REQUEST_ATTEMPTS = 3
+RETRY_BASE_DELAY_SECONDS = 1.0
+
 
 class GitHubClient:
     """Client for interacting with GitHub API as a GitHub App."""
@@ -62,8 +69,23 @@ class GitHubClient:
             logger.error(f"Failed to get installation token: {e}")
             raise
 
+    @staticmethod
+    def _retry_delay(response, attempt: int) -> float:
+        """Delay before the next retry: honor Retry-After, else exponential backoff."""
+        retry_after = response.headers.get('Retry-After')
+        if retry_after:
+            try:
+                return float(retry_after)
+            except (TypeError, ValueError):
+                pass
+        return RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+
     def make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
-        """Make an authenticated request to GitHub API."""
+        """Make an authenticated request to GitHub API.
+
+        Transient failures (HTTP 429/5xx and connection/timeout errors) are retried
+        with exponential backoff. Other 4xx errors raise immediately (no retry).
+        """
         token = self._get_installation_token()
 
         headers = kwargs.pop('headers', {})
@@ -77,10 +99,38 @@ class GitHubClient:
             endpoint = f'/{endpoint}'
         url = f"{self.base_url}{endpoint}"
 
-        try:
-            response = requests.request(method, url, headers=headers, **kwargs)
-            response.raise_for_status()
-            return response.json() if response.text else {}
-        except requests.exceptions.RequestException as e:
-            logger.error(f"GitHub API request failed: {e}")
-            raise
+        for attempt in range(1, MAX_REQUEST_ATTEMPTS + 1):
+            try:
+                response = requests.request(method, url, headers=headers, **kwargs)
+
+                if (response.status_code in RETRYABLE_STATUS_CODES
+                        and attempt < MAX_REQUEST_ATTEMPTS):
+                    delay = self._retry_delay(response, attempt)
+                    logger.warning(
+                        f"GitHub API {method} {endpoint} returned {response.status_code}; "
+                        f"retry {attempt}/{MAX_REQUEST_ATTEMPTS - 1} in {delay:.1f}s"
+                    )
+                    time.sleep(delay)
+                    continue
+
+                response.raise_for_status()
+                return response.json() if response.text else {}
+
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout) as e:
+                if attempt < MAX_REQUEST_ATTEMPTS:
+                    delay = RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+                    logger.warning(
+                        f"GitHub API {method} {endpoint} connection error ({e}); "
+                        f"retry {attempt}/{MAX_REQUEST_ATTEMPTS - 1} in {delay:.1f}s"
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error(f"GitHub API request failed: {e}")
+                raise
+            except requests.exceptions.RequestException as e:
+                logger.error(f"GitHub API request failed: {e}")
+                raise
+
+        # Unreachable: the final attempt always returns or raises above.
+        raise RuntimeError("make_request exhausted retries without returning")

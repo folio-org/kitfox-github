@@ -51,6 +51,13 @@ webhook_handler → validate signature → queue to SQS → return 200 OK
 check_processor → create check run → trigger workflow → monitor status
 ```
 
+**Error handling & retries**: GitHub API calls in `check_processor` retry transient failures
+(HTTP 429/5xx and connection/timeout errors) with exponential backoff. If a `workflow_dispatch`
+still fails after retries, the error is **not** swallowed — the record raises, so the SQS message
+is returned to the queue and retried up to `sqs_max_receive_count` times before landing in the
+dead-letter queue (`<app_name>-check-suite-dlq`). This prevents a transient GitHub error from
+silently dropping a dispatch.
+
 ### 4. Status Updates
 The triggered workflow updates the check run status as it progresses.
 
@@ -110,6 +117,17 @@ Note: Terraform will automatically package the Lambda functions during deploymen
 |-----------------------------------|-----------------------------------------------|--------------------------------------------|
 | `github_events_config_file`       | Path to events configuration JSON             | `./environments/github_events_config.json` |
 | `github_events_config_s3_enabled` | Upload config to S3 (vs bundling with Lambda) | `true`                                     |
+
+#### Reliability & DLQ Alerting
+| Variable                 | Description                                                              | Default |
+|--------------------------|--------------------------------------------------------------------------|---------|
+| `sqs_max_receive_count`  | Times a message is retried before moving to the dead-letter queue        | `3`     |
+| `sqs_visibility_timeout` | Seconds a message is hidden between retries                              | `300`   |
+| `dlq_alarm_emails`       | Email addresses subscribed to the DLQ alarm SNS topic (empty list = none) | `[]`    |
+
+A CloudWatch alarm (`<app_name>-check-suite-dlq-not-empty`) fires when any message lands in the
+dead-letter queue and notifies the `<app_name>-check-suite-dlq-alerts` SNS topic. Set
+`dlq_alarm_emails` to also receive the alert by email (each address must confirm the SNS subscription).
 
 #### Route 53 DNS Configuration (Optional)
 | Variable              | Description                          | Example           | Default  |
@@ -247,14 +265,15 @@ The Lambda functions are separated for optimal performance:
    - Responsibilities: GitHub API calls, workflow triggering, check run management
 
 3. **common**: Shared utilities used by both functions
-   - `github_client.py`: GitHub API client with JWT authentication
-   - `workflow_trigger.py`: Workflow dispatch logic and event mapping
+   - `github_client.py`: GitHub API client with JWT authentication and transient-error retry
+   - `workflow_trigger.py`: Workflow dispatch logic and event mapping (raises on failure so a failed dispatch is retried/dead-lettered, not swallowed)
 
 ## Monitoring
 
 - **CloudWatch Logs**: All Lambda executions are logged
 - **SQS Metrics**: Monitor queue depth and processing rate
 - **API Gateway Metrics**: Track webhook delivery success
+- **DLQ Alarm**: `<app_name>-check-suite-dlq-not-empty` fires (via the `<app_name>-check-suite-dlq-alerts` SNS topic) when a message lands in the dead-letter queue — a webhook that failed processing or a dispatch that failed every retry. Subscribe endpoints with `dlq_alarm_emails`.
 
 ## Security
 
