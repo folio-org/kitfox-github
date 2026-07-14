@@ -349,13 +349,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if not config:
         return {"statusCode": 500, "body": json.dumps({"error": "Config not found"})}
 
-    fail_on_error = str(os.environ.get("FAIL_ON_ERROR", "false")).lower() == "true"
-
     github_client = GitHubClient()
     workflow_trigger = WorkflowTrigger(github_client)
 
     processed = 0
     errors = 0
+    failed_records = 0
 
     for record in event.get("Records", []):
         try:
@@ -381,27 +380,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
 
             for wf in workflows:
-                try:
-                    rendered = _substitute(wf, vars_)
-                    workflow_trigger.trigger_workflow(
-                        owner=rendered["owner"],
-                        repo=rendered["repository"],
-                        workflow_file=rendered["workflow_file"],
-                        ref=rendered.get("ref", "main"),
-                        inputs=rendered.get("inputs", {}),
-                    )
-                except Exception:
-                    errors += 1
-                    logger.exception("Workflow trigger error")
+                rendered = _substitute(wf, vars_)
+                workflow_trigger.trigger_workflow(
+                    owner=rendered["owner"],
+                    repo=rendered["repository"],
+                    workflow_file=rendered["workflow_file"],
+                    ref=rendered.get("ref", "main"),
+                    inputs=rendered.get("inputs", {}),
+                )
 
             processed += 1
 
         except Exception:
             errors += 1
+            failed_records += 1
             logger.exception("Error processing record")
 
-    if errors and fail_on_error:
-        raise RuntimeError(f"Processing completed with {errors} errors (FAIL_ON_ERROR=true)")
+    if failed_records:
+        raise RuntimeError(
+            f"Processing failed for {failed_records} record(s); failing invocation for SQS retry"
+        )
 
     return {
         "statusCode": 200,
