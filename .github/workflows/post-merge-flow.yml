@@ -466,6 +466,7 @@ jobs:
       - name: Generate Workflow Summary
         env:
           SHOULD_PROCESS: ${{ needs.pre-check.outputs.should_process }}
+          PRECHECK_RESULT: ${{ needs.pre-check.result }}
           SKIP_REASON: ${{ needs.pre-check.outputs.skip_reason }}
           BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
           HEAD_BRANCH: ${{ needs.pre-check.outputs.head_branch }}
@@ -491,7 +492,10 @@ jobs:
 
             echo "### Pre-Check Status"
             echo ""
-            if [[ "$SHOULD_PROCESS" == "true" ]]; then
+            if [[ "$PRECHECK_RESULT" == "failure" ]]; then
+              echo "**Pre-Check:** Failed"
+              echo "- **Error:** A GitHub API error occurred during pre-check. The release was NOT performed. Please re-trigger the workflow."
+            elif [[ "$SHOULD_PROCESS" == "true" ]]; then
               echo "**Pre-Check:** Passed"
               echo "- **Base Branch:** $BASE_BRANCH"
               echo "- **Head Branch:** $HEAD_BRANCH"
@@ -501,7 +505,7 @@ jobs:
             fi
             echo ""
 
-            if [[ "$SHOULD_PROCESS" == "true" ]]; then
+            if [[ "$SHOULD_PROCESS" == "true" && "$PRECHECK_RESULT" == "success" ]]; then
               echo "### Publication Status"
               echo ""
               if [[ "$DESCRIPTOR_EXISTS" == "true" ]]; then
