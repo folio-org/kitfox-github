@@ -123,11 +123,11 @@ Note: Terraform will automatically package the Lambda functions during deploymen
 |--------------------------|--------------------------------------------------------------------------|---------|
 | `sqs_max_receive_count`  | Times a message is retried before moving to the dead-letter queue        | `3`     |
 | `sqs_visibility_timeout` | Seconds a message is hidden between retries                              | `300`   |
-| `dlq_alarm_email`        | Optional email subscribed to the DLQ alarm SNS topic (empty = no email)  | `""`    |
+| `dlq_alarm_emails`       | Email addresses subscribed to the DLQ alarm SNS topic (empty list = none) | `[]`    |
 
 A CloudWatch alarm (`<app_name>-check-suite-dlq-not-empty`) fires when any message lands in the
 dead-letter queue and notifies the `<app_name>-check-suite-dlq-alerts` SNS topic. Set
-`dlq_alarm_email` to also receive the alert by email.
+`dlq_alarm_emails` to also receive the alert by email (each address must confirm the SNS subscription).
 
 #### Route 53 DNS Configuration (Optional)
 | Variable              | Description                          | Example           | Default  |
@@ -273,7 +273,7 @@ The Lambda functions are separated for optimal performance:
 - **CloudWatch Logs**: All Lambda executions are logged
 - **SQS Metrics**: Monitor queue depth and processing rate
 - **API Gateway Metrics**: Track webhook delivery success
-- **DLQ Alarm**: `<app_name>-check-suite-dlq-not-empty` fires (via the `<app_name>-check-suite-dlq-alerts` SNS topic) when a message lands in the dead-letter queue — a webhook that failed processing or a dispatch that failed every retry. Subscribe an endpoint with `dlq_alarm_email`.
+- **DLQ Alarm**: `<app_name>-check-suite-dlq-not-empty` fires (via the `<app_name>-check-suite-dlq-alerts` SNS topic) when a message lands in the dead-letter queue — a webhook that failed processing or a dispatch that failed every retry. Subscribe endpoints with `dlq_alarm_emails`.
 
 ## Security
 
