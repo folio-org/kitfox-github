@@ -22,6 +22,38 @@ resource "aws_sqs_queue" "check_suite_dlq" {
   tags = var.tags
 }
 
+# DLQ alerting
+resource "aws_sns_topic" "check_suite_dlq_alerts" {
+  name = "${var.app_name}-check-suite-dlq-alerts"
+  tags = var.tags
+}
+
+resource "aws_sns_topic_subscription" "check_suite_dlq_alerts_email" {
+  count     = var.dlq_alarm_email != "" ? 1 : 0
+  topic_arn = aws_sns_topic.check_suite_dlq_alerts.arn
+  protocol  = "email"
+  endpoint  = var.dlq_alarm_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "check_suite_dlq_not_empty" {
+  alarm_name          = "${var.app_name}-check-suite-dlq-not-empty"
+  alarm_description   = "Messages present in ${aws_sqs_queue.check_suite_dlq.name} (failed webhook processing / workflow dispatch)"
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  dimensions = {
+    QueueName = aws_sqs_queue.check_suite_dlq.name
+  }
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 1
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.check_suite_dlq_alerts.arn]
+  ok_actions          = [aws_sns_topic.check_suite_dlq_alerts.arn]
+  tags                = var.tags
+}
+
 # SQS Queue Policy
 resource "aws_sqs_queue_policy" "check_suite_policy" {
   queue_url = aws_sqs_queue.check_suite.id
