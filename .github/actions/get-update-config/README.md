@@ -9,6 +9,7 @@ A GitHub Action that reads and parses update configuration from an `update-confi
 - **Flexible Configuration**: Supports custom config file paths and branch references
 - **Structured Outputs**: Provides JSON arrays and maps for easy consumption by other workflow steps
 - **Default Handling**: Gracefully handles missing configuration files with sensible defaults
+- **Resilient API Calls**: Retries transient GitHub API failures (HTTP 429/5xx, network) with backoff. A genuine `404` is treated as "not found"; a transient failure that persists fails the step instead of silently assuming the resource is absent
 - **Cross-Repository Support**: Can read configuration from any accessible repository
 
 ## Usage
@@ -275,17 +276,19 @@ jobs:
 
 ### Configuration File Discovery
 
-1. **Attempts to fetch** the configuration file from the specified repository and branch
-2. **If file exists**: Downloads and parses the YAML content
-3. **If file missing**: Uses default values and sets `config_exists=false`
-4. **Validates YAML**: Ensures proper structure and data types
+1. **Attempts to fetch** the configuration file from the specified repository and branch, retrying transient GitHub API failures (HTTP 429/5xx, network errors) with backoff
+2. **If file exists (HTTP 200)**: Downloads and parses the YAML content
+3. **If file is genuinely missing (HTTP 404)**: Uses default values and sets `config_exists=false`
+4. **If the API keeps failing (non-404) after retries**: Fails the step with an `::error::` so the run can be retried, instead of silently assuming the file is absent
+5. **Validates YAML**: Ensures proper structure and data types
 
 ### Branch Existence Validation
 
 1. **Reads configured branches** from the `release_branches` array
-2. **Validates each branch** by checking if it exists in the repository via GitHub API
-3. **Filters results** to include only existing branches in outputs
-4. **Logs warnings** for non-existent branches without failing the action
+2. **Validates each branch** by checking if it exists in the repository via GitHub API, retrying transient failures with backoff
+3. **Filters results** to include only existing branches (HTTP 200) in outputs
+4. **Logs warnings** for genuinely non-existent branches (HTTP 404) without failing the action
+5. **Fails the step** if a branch check keeps failing (non-404) after retries, instead of silently dropping the branch
 
 ### Output Generation
 
@@ -334,6 +337,22 @@ The GitHub token must have the following permissions:
 - Check that the branch name is correct
 - Ensure the GitHub token has repository read permissions
 - Verify the repository name format is correct (`org/repo`)
+
+> **Note**: This warning is emitted only for a genuine `404` (the file truly does not exist).
+> A transient GitHub API failure no longer produces this warning — see *Transient GitHub API Failure* below.
+
+#### Transient GitHub API Failure (Step Failed)
+```
+::error::gh api repos/ORG/REPO/contents/.github/update-config.yml?ref=BRANCH failed after 3 attempts (non-404): ...
+```
+The action **fails** (red run) rather than silently treating a config or branch check as "not found"
+when the GitHub API returns a transient error (HTTP 429/5xx or a network error) that persists after
+retries. This prevents a release from being silently skipped on a false negative.
+
+**Solutions**:
+- Re-run the job — transient GitHub API errors usually clear on retry
+- Check the [GitHub status page](https://www.githubstatus.com/) for an ongoing incident
+- Inspect the `::error::` detail for the HTTP status returned by the API
 
 #### Invalid YAML Format
 ```

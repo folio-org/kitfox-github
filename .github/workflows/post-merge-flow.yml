@@ -243,7 +243,7 @@ jobs:
   cleanup-branch:
     name: Cleanup Update Branch
     needs: [pre-check, publish]
-    if: always() && !cancelled() && needs.pre-check.outputs.should_process == 'true'
+    if: always() && !cancelled() && needs.pre-check.outputs.should_process == 'true' && needs.pre-check.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       deleted: ${{ steps.delete-branch.outputs.deleted }}
@@ -307,24 +307,24 @@ jobs:
   notify:
     name: Send Notifications
     needs: [pre-check, publish, cleanup-branch, release]
-    if: always() && !cancelled() && needs.pre-check.outputs.should_process == 'true'
+    if: always() && !cancelled() && (needs.pre-check.outputs.should_process == 'true' || needs.pre-check.result == 'failure')
     runs-on: ubuntu-latest
     outputs:
       team_channel: ${{ steps.get-vars.outputs.team_channel }}
     env:
-      WORKFLOW_SUCCESS: ${{ (needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false' }}
-      TITLE_TEXT: "${{ inputs.repo_name }} post-merge ${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false') && 'completed' || 'failed' }}"
+      WORKFLOW_SUCCESS: ${{ (needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false' && needs.pre-check.result == 'success' }}
+      TITLE_TEXT: "${{ inputs.repo_name }} post-merge ${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false' && needs.pre-check.result == 'success') && 'completed' || 'failed' }}"
       TITLE_BLOCK: |
         {
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*${{ inputs.repo_name }} post-merge ${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false') && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
+            "text": "*${{ inputs.repo_name }} post-merge ${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false' && needs.pre-check.result == 'success') && 'completed' || 'failed' }} <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|#${{ github.run_number }}>*"
           }
         }
       ATTACHMENT: |
         {
-          "color": "${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false') && 'good' || 'danger' }}",
+          "color": "${{ ((needs.publish.result == 'skipped' || (needs.publish.outputs.descriptor_exists == 'true' && needs.publish.outputs.publish_status == 'success')) && needs.cleanup-branch.outputs.deleted != 'false' && needs.pre-check.result == 'success') && 'good' || 'danger' }}",
           "fields": [
             {
               "title": "Release branch",
@@ -365,7 +365,12 @@ jobs:
               "title": "Failure Reason",
               "value": "{0}",
               "short": false
-            }}', needs.publish.outputs.failure_reason || needs.cleanup-branch.outputs.failure_reason || 'Operation failed') || '' }}
+            }}', needs.publish.outputs.failure_reason || needs.cleanup-branch.outputs.failure_reason || 'Operation failed') || '' }}${{ needs.pre-check.result == 'failure' && format(',
+            {{
+              "title": "Failure Reason",
+              "value": "{0}",
+              "short": false
+            }}', 'A GitHub API error occurred during pre-check, so the release was NOT performed. Please re-trigger the workflow. See run logs.') || '' }}
           ],
           "footer": "Eureka CI/CD"
         }
@@ -461,6 +466,7 @@ jobs:
       - name: Generate Workflow Summary
         env:
           SHOULD_PROCESS: ${{ needs.pre-check.outputs.should_process }}
+          PRECHECK_RESULT: ${{ needs.pre-check.result }}
           SKIP_REASON: ${{ needs.pre-check.outputs.skip_reason }}
           BASE_BRANCH: ${{ needs.pre-check.outputs.base_branch }}
           HEAD_BRANCH: ${{ needs.pre-check.outputs.head_branch }}
@@ -486,7 +492,10 @@ jobs:
 
             echo "### Pre-Check Status"
             echo ""
-            if [[ "$SHOULD_PROCESS" == "true" ]]; then
+            if [[ "$PRECHECK_RESULT" == "failure" ]]; then
+              echo "**Pre-Check:** Failed"
+              echo "- **Error:** A GitHub API error occurred during pre-check. The release was NOT performed. Please re-trigger the workflow."
+            elif [[ "$SHOULD_PROCESS" == "true" ]]; then
               echo "**Pre-Check:** Passed"
               echo "- **Base Branch:** $BASE_BRANCH"
               echo "- **Head Branch:** $HEAD_BRANCH"
@@ -496,7 +505,7 @@ jobs:
             fi
             echo ""
 
-            if [[ "$SHOULD_PROCESS" == "true" ]]; then
+            if [[ "$SHOULD_PROCESS" == "true" && "$PRECHECK_RESULT" == "success" ]]; then
               echo "### Publication Status"
               echo ""
               if [[ "$DESCRIPTOR_EXISTS" == "true" ]]; then
