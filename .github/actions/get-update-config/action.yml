@@ -54,18 +54,25 @@ runs:
         CONFIG_FILE: ${{ inputs.config_file }}
       run: |
         set -eo pipefail
-        
+        source "$GITHUB_ACTION_PATH/gh_api_retry.sh"
+
         echo "::notice::Checking for configuration file: $CONFIG_FILE in $REPO on branch $BRANCH"
-        
-        if gh api "repos/$REPO/contents/$CONFIG_FILE?ref=$BRANCH" >/dev/null 2>&1; then
+
+        set +e
+        CONFIG_JSON=$(gh_api_retry "repos/$REPO/contents/$CONFIG_FILE?ref=$BRANCH")
+        rc=$?
+        set -e
+
+        if [[ $rc -eq 0 ]]; then
           echo "::notice::Configuration file exists"
           echo "exists=true" >> "$GITHUB_OUTPUT"
-          
-          gh api "repos/$REPO/contents/$CONFIG_FILE?ref=$BRANCH" \
-            --jq '.content' | base64 -d > /tmp/update-config.yml
-        else
+          printf '%s' "$CONFIG_JSON" | jq -r '.content' | base64 -d > /tmp/update-config.yml
+        elif [[ $rc -eq 44 ]]; then
           echo "::warning::Configuration file not found: $CONFIG_FILE on branch $BRANCH"
           echo "exists=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "::error::Could not determine state of $CONFIG_FILE on branch $BRANCH (transient GitHub API failure). Failing the step so the run can be retried instead of silently skipping the release."
+          exit 1
         fi
 
     - name: Parse Configuration
@@ -79,7 +86,8 @@ runs:
         set -eo pipefail
         
         get_yq() { yq eval "$1" "$CONFIG" 2>/dev/null | tr -d '\r'; }
-        
+        source "$GITHUB_ACTION_PATH/gh_api_retry.sh"
+
         RULESET_DEFAULTS='{
           "enabled": false,
           "pattern": "{0}-eureka-ci",
@@ -176,7 +184,12 @@ runs:
 
             echo "::notice::Checking branch: $branch"
 
-            if gh api "repos/${{ inputs.repo }}/branches/$branch" >/dev/null 2>&1; then
+            set +e
+            gh_api_retry "repos/${{ inputs.repo }}/branches/$branch" >/dev/null
+            brc=$?
+            set -e
+
+            if [[ $brc -eq 0 ]]; then
               echo "::notice::Branch exists and is enabled: $branch"
 
               BRANCH_CONFIG=$(echo "$BRANCH_CONFIG" | jq -c \
@@ -204,8 +217,11 @@ runs:
                   release: $release,
                   ruleset: $ruleset
                 }]')
-            else
+            elif [[ $brc -eq 44 ]]; then
               echo "::warning::Branch not found: $branch"
+            else
+              echo "::error::Could not determine state of branch $branch (transient GitHub API failure). Failing the step so the run can be retried instead of silently skipping it."
+              exit 1
             fi
           done
         fi
