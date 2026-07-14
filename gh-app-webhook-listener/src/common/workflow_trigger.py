@@ -31,7 +31,12 @@ class WorkflowTrigger:
             inputs: Workflow input parameters
 
         Returns:
-            True if successful, False otherwise
+            True if successful.
+
+        Raises:
+            Exception: Re-raises on failure so the caller can react (e.g. let the
+                SQS message fail and be retried / dead-lettered) instead of the
+                dispatch being silently dropped.
         """
         try:
             # Remove leading slash if present
@@ -68,16 +73,16 @@ class WorkflowTrigger:
             return True
 
         except Exception as e:
-            # Try to get more details from the response
+            # Log rich error detail, then re-raise so the failure is not swallowed.
             if hasattr(e, 'response') and e.response is not None:
                 try:
                     error_details = e.response.json()
                     logger.error(f"Error triggering workflow {workflow_file}: {e.response.status_code} - {error_details}")
-                except:
+                except Exception:
                     logger.error(f"Error triggering workflow {workflow_file}: {e.response.status_code} - {e.response.text}")
             else:
                 logger.error(f"Error triggering workflow {workflow_file}: {e}", exc_info=True)
-            return False
+            raise
 
     def get_workflow_runs(self, owner: str, repo: str, workflow_id: str = None,
                          status: str = None, limit: int = 10) -> Optional[Dict[str, Any]]:
