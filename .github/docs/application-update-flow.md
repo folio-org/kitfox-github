@@ -57,6 +57,15 @@ This workflow implements the core update flow for FOLIO applications. It coordin
 | `pull-requests`   | write  | PR creation and management           |
 | `issues`          | write  | Issue and PR interaction             |
 
+### Secrets
+
+Passed via `secrets: inherit` from the caller; all are optional.
+
+| Secret                                     | Purpose                                                                 |
+|--------------------------------------------|-------------------------------------------------------------------------|
+| `EUREKA_HEADER_KEY` / `EUREKA_HEADER_VALUE` | Security header attached to okapi module-registry requests              |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | AWS credentials for reaching **S3 fallback module registries**. Exported to the `update-application` job as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`; consumed only when a pom configures an `s3` fallback registry (feature builds). No-op for snapshot/release flows. See [Feature Build](https://github.com/folio-org/folio-app-template/blob/master/.github/docs/feature-build.md). |
+
 ## 🔄 Workflow Execution Flow
 
 ### 1. Prepare Context
@@ -85,6 +94,11 @@ Uses the `generate-application-descriptor` action with `generation_mode: update`
 - Resolves version constraints from `application.template.json` (^2.0.0 → 2.3.1)
 - Full module synchronization (add/remove/upgrade/downgrade)
 - Validates Docker images and NPM packages exist
+- Resolves modules missing from the primary registries via **fallback registries** when the pom
+  configures them (e.g. an `s3` bucket for custom feature-branch modules). The job exports
+  `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (from the `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`
+  secrets) so the generator's S3 client can read the bucket; this is inert unless an `s3` fallback
+  registry is configured. See [Feature Build](https://github.com/folio-org/folio-app-template/blob/master/.github/docs/feature-build.md).
 - Updates `application.lock.json` with resolved versions
 - Generates `update-result.json` with detailed change tracking
 - Creates state files for downstream processing
@@ -485,6 +499,6 @@ Solution: Check repository permissions and GitHub API status
 
 ---
 
-**Last Updated**: May 2026
-**Workflow Version**: 3.1 (Reuse `collect-app-version` action + Infrastructure Error Classification for Version Bump)
+**Last Updated**: July 2026
+**Workflow Version**: 3.2 (S3 fallback-registry credentials for feature builds)
 **Compatibility**: All FOLIO application repositories
