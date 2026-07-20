@@ -331,7 +331,11 @@ runs:
           echo "::notice::Generation not successful (success=$SUCCESS)"
           echo "generated=false" >> "$GITHUB_OUTPUT"
           if [[ -n "$ERROR_MESSAGE" ]]; then
-            echo "failure_reason=$ERROR_MESSAGE" >> "$GITHUB_OUTPUT"
+            {
+              echo "failure_reason<<EOF"
+              echo "$ERROR_MESSAGE"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
           fi
           exit 0
         fi
