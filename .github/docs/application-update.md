@@ -32,6 +32,7 @@ All branch-specific configuration (pre-release mode, build offsets, PR requireme
 | `skip_interface_validation` | Skip module interface integrity validation         | No       | boolean | `false`             |
 | `skip_dependency_validation`| Dependency validation mode: `false` / `true` / `bypass` | No | string | `false`         |
 | `publish`                 | Whether to publish descriptor to FAR                 | No       | boolean | `true`              |
+| `build_number`            | Explicit build-number/suffix override (e.g. a commit hash); when set, overrides the computed offset+run-number (forwarded to the flow) | No | string | `''` |
 | `is_scheduled`            | Whether this is a scheduled run                      | No       | boolean | `false`             |
 
 ### Outputs
