@@ -81,6 +81,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_number:
+        description: 'Explicit build-number/suffix override (e.g. a commit hash). When set, overrides the computed offset+run-number'
+        required: false
+        type: string
+        default: ''
 
   workflow_call:
     inputs:
@@ -156,6 +161,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_number:
+        description: 'Explicit build-number/suffix override (e.g. a commit hash). When set, overrides the computed offset+run-number'
+        required: false
+        type: string
+        default: ''
     outputs:
       update_result:
         description: 'Result of the update (success/failure/skipped)'
@@ -232,6 +242,7 @@ jobs:
       skip_interface_validation: ${{ inputs.skip_interface_validation }}
       skip_dependency_validation: ${{ inputs.skip_dependency_validation }}
       publish: ${{ inputs.publish }}
+      build_number: ${{ inputs.build_number }}
     secrets: inherit
 
   notify:
