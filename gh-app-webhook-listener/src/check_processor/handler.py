@@ -359,6 +359,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     for record in event.get("Records", []):
         try:
             ev = normalize_event(json.loads(record.get("body", "{}")))
+
+            if ev.event_type in ("check_suite", "check_run") and not ev.pr_number:
+                logger.info(
+                    "Skipping %s/%s for %s/%s: no associated pull request (empty pr_number); nothing to dispatch",
+                    ev.event_type, ev.action, ev.repo.owner, ev.repo.name,
+                )
+                processed += 1
+                continue
+
             workflows = find_matching_workflows(ev, config)
 
             if not workflows:
