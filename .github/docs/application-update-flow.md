@@ -30,6 +30,7 @@ This workflow implements the core update flow for FOLIO applications. It coordin
 | `skip_interface_validation` | Skip module interface integrity validation         | No       | boolean | `false`             |
 | `skip_dependency_validation`| Dependency validation mode: `false` / `true` / `bypass` | No | string | `false`         |
 | `publish`                 | Whether to publish descriptor to FAR                 | No       | boolean | `true`              |
+| `build_number`            | Explicit build-number/suffix override (e.g. a commit hash); when set, overrides the computed offset+run-number | No | string | `''` |
 
 ### Outputs
 
@@ -233,6 +234,8 @@ NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
 ```
 
 > The increment is performed by `mvn versions:set` after reading current `major`/`minor`/`patch` from the [`collect-app-version`](../actions/collect-app-version/README.md) action's outputs.
+
+**Build-number override**: when the `build_number` input is set (non-empty), the "Calculate Build Number" step uses it verbatim as the suffix instead of computing `DESCRIPTOR_BUILD_OFFSET + RUN_NUMBER`. [Feature builds](https://github.com/folio-org/folio-app-template/blob/master/.github/docs/feature-build.md) pass the feature branch's short commit hash, producing `${MAJOR}.${MINOR}.${PATCH}-SNAPSHOT.<shortSha>` so a feature app is distinguishable from a snapshot app in FAR.
 
 ## 🛡️ Validation and Quality Assurance
 

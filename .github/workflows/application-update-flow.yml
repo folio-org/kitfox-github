@@ -79,6 +79,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_number:
+        description: 'Explicit build-number/suffix override (e.g. a commit hash). When set, overrides the computed offset+run-number'
+        required: false
+        type: string
+        default: ''
     outputs:
       updated:
         description: 'Whether the application was updated'
@@ -326,8 +331,11 @@ jobs:
         env:
           OFFSET: ${{ inputs.descriptor_build_offset }}
           RUN_NUMBER: ${{ inputs.workflow_run_number }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
-          if [[ -n "$OFFSET" ]]; then
+          if [[ -n "$BUILD_NUMBER" ]]; then
+            echo "value=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$OFFSET" ]]; then
             echo "value=$((OFFSET + RUN_NUMBER))" >> "$GITHUB_OUTPUT"
           else
             echo "value=$RUN_NUMBER" >> "$GITHUB_OUTPUT"
