@@ -61,7 +61,7 @@ Validates the configuration and determines which validation path to use.
 **Validation Logic**:
 - Skip if configuration file not found
 - Skip if release scanning disabled
-- Skip if target branch not in `release_branches`
+- Skip if target branch not listed under `branches`
 - Skip if `need_pr=false` for the branch
 
 **Outputs**:
@@ -147,12 +147,14 @@ actions: [checks_requested]
 The target repository must have `.github/update-config.yml`:
 
 ```yaml
-release_scan:
+update_config:
   enabled: true
-  release_branches:
-    - name: R1-2025
+  update_branch_format: version-update/{0}
+
+branches:
+  - R1-2025:
+      enabled: true
       need_pr: true
-      update_branch: version-update/R1-2025
 ```
 
 ## Error Handling

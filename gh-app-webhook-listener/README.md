@@ -29,7 +29,7 @@ GitHub Event → Webhook → AWS Lambda → Trigger Workflow → GitHub Actions
   - Actions: Read & Write
   - Pull Requests: Read
   - Contents: Read
-- **Events**: Configurable (e.g., `check_suite`, `pull_request`, etc.)
+- **Events**: the App must be subscribed to every event the mapping file uses. The shipped configuration uses `pull_request`, `push`, `check_suite`, `check_run` and `merge_group`. An unsubscribed event never reaches the listener, so its mappings silently never fire.
 
 ### 3. Workflow Orchestration
 The app triggers workflows in your specified repository to handle all business logic and update check run status.
@@ -199,6 +199,68 @@ Configure event-to-workflow mappings in your events configuration file (e.g., `t
   ]
 }
 ```
+
+The sample above is illustrative. The deployed file carries more mappings than shown, across `pull_request`,
+`push`, `check_suite`, `check_run` and `merge_group`, for both `app-*` and `platform-lsp`.
+
+#### repository_patterns fields
+
+| Field | Description |
+|-------|-------------|
+| `owner` | fnmatch pattern against the repository owner |
+| `repository` | fnmatch pattern against the repository name — a **single string**, not a list, so each repository family needs its own entry in the array |
+| `branches` | `"*"`, a single pattern, a list of patterns, or `{"base": [...], "head": [...]}`. Matched against the base branch for `pull_request`, the pushed ref for `push` |
+| `file_patterns` | `push` only: dispatch only when a changed path matches. Omit to match any push |
+| `workflows` | Workflows to dispatch. Every entry is dispatched inside a single try block, so a rejected dispatch fails the whole record — keep only workflows that accept the inputs given |
+
+Input values support these placeholders: `{owner}`, `{repository}`, `{head_sha}`, `{head_branch}`,
+`{base_branch}`, `{base_sha}`, `{pr_number}`, `{merged}`, `{is_merge_group}`, `{event_id}`,
+`{check_suite_id}`. Every key passed must be a declared `workflow_dispatch` input on the target workflow at
+the configured `ref`; an undeclared key makes GitHub reject the dispatch with `422 Unexpected inputs
+provided`, and the message ends up in the DLQ after three retries.
+
+#### push mappings
+
+`push` is the event that drives declarative branch-ruleset provisioning:
+
+```json
+{
+  "event_type": "push",
+  "repository_patterns": [
+    {
+      "owner": "folio-org",
+      "repository": "app-*",
+      "branches": "master",
+      "file_patterns": [".github/update-config.yml"],
+      "workflows": [
+        {
+          "owner": "folio-org",
+          "repository": "kitfox-github",
+          "workflow_file": "branch-ruleset-automation.yml",
+          "ref": "master",
+          "inputs": {
+            "repo_owner": "{owner}",
+            "repo_name": "{repository}",
+            "head_sha": "{head_sha}"
+          }
+        }
+      ]
+    },
+    { "owner": "folio-org", "repository": "platform-lsp", "...": "same shape" }
+  ]
+}
+```
+
+`file_patterns` is matched against the union of `added`, `modified` and `removed` across the push's
+`commits`. A push carrying an empty `commits` array, such as a force-push or a branch creation, matches
+nothing and does not dispatch.
+
+### Keeping the two config files in sync
+
+`terraform/environments/github_events_config.json` is the deployed file; `config/github_events_config.example.json`
+is its committed example. They are not generated from one another — edit both. The listener reads the
+deployed file from S3 on every invocation with no caching, so `terraform apply` is enough to roll out a
+mapping change; no Lambda redeploy is required.
 
 ## Development
 

@@ -126,6 +126,18 @@ The workflows follow a layered architecture:
 
 ### Core Utility Workflows
 
+#### Branch Ruleset Automation
+**File**: [`branch-ruleset-automation.yml`](workflows/branch-ruleset-automation.yml) → [`branch-ruleset-automation-flow.yml`](workflows/branch-ruleset-automation-flow.yml)
+**Purpose**: Provision GitHub branch rulesets declaratively from a repository's `update-config.yml`
+**Documentation**: [Branch Ruleset Automation](docs/branch-ruleset-automation.md), [Update Configuration Schema](docs/update-config.md)
+**Trigger**: `workflow_dispatch`, dispatched by the GitHub App webhook on a `push` to `master` touching `.github/update-config.yml`
+
+**Key Features**:
+- Serves every `folio-org/app-*` repository and `folio-org/platform-lsp`
+- Matrix execution: one flow job per configured branch
+- Emits `required_status_checks` and `merge_queue` rules; no ruleset is ever created by hand
+- `ruleset.enabled` controls enforcement — `false` disables an existing ruleset, and skips when none exists
+
 #### Commit and Push Changes
 **File**: [`commit-and-push-changes.yml`](workflows/commit-and-push-changes.yml)
 **Purpose**: Generic Git operations for committing and pushing changes
@@ -175,10 +187,11 @@ The workflows follow a layered architecture:
 - Comprehensive error handling
 
 #### Release PR Check
-**File**: [`release-pr-check.yml`](workflows/release-pr-check.yml)
-**Purpose**: Automated validation of release pull requests
-**Documentation**: [Release PR Check Guide](docs/release-pr-check.md)
+**File**: [`release-pr-check.yml`](https://github.com/folio-org/platform-lsp/blob/master/.github/workflows/release-pr-check.yml) — lives in `folio-org/platform-lsp`, not in this repository
+**Purpose**: Automated validation of platform release pull requests
+**Documentation**: [Release PR Check Guide](https://github.com/folio-org/platform-lsp/blob/master/.github/docs/release-pr-check.md)
 **Trigger**: `workflow_dispatch` (called from GitHub App webhook)
+**Check context**: `eureka-ci/release-platform-validation`, published as the Eureka CI App
 
 **Key Features**:
 - PR validation and commit verification
@@ -338,7 +351,9 @@ Workflows implement comprehensive error handling:
 
 #### Core Utilities
 - **[Commit and Push Changes](docs/commit-and-push-changes.md)**: Git operations management
-- **[Release PR Check](docs/release-pr-check.md)**: Automated PR validation with GitHub Checks integration
+- **[Branch Ruleset Automation](docs/branch-ruleset-automation.md)**: Declarative branch ruleset provisioning
+- **[Update Configuration Schema](docs/update-config.md)**: `update-config.yml` reference, including rulesets
+- **[Merge Queue Check](docs/merge-queue-check.md)**: Validation of merge groups
 - **[Validate Application Action](actions/validate-application/README.md)**: Application descriptor validation
 - **[Publish Application Descriptor](actions/publish-app-descriptor/README.md)**: Publish descriptors to FAR
 - **[Unpublish Application Descriptor](actions/unpublish-app-descriptor/README.md)**: Remove descriptors from FAR
@@ -353,5 +368,5 @@ Workflows implement comprehensive error handling:
 ---
 
 **Infrastructure Team**: Kitfox DevOps
-**Last Updated**: March 2026
+**Last Updated**: September 2026
 **Purpose**: Workflow Implementation and Usage Guide

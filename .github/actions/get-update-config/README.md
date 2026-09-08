@@ -83,9 +83,18 @@ The `branch_config` output provides a JSON array of objects, each containing:
     "ruleset": {
       "enabled": false,
       "pattern": "{0}-eureka-ci",
-      "required_checks": [{"context": "eureka-ci / validate-application"}],
-      "merge_queue": {"enabled": false, "...": "..."},
-      "bypass_actors": [{"actor_type": "Integration", "bypass_mode": "always"}]
+      "required_checks": [{"context": "eureka-ci / validate-application", "integration_id": null}],
+      "merge_queue": {
+        "enabled": true,
+        "check_response_timeout_minutes": 300,
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 1,
+        "max_entries_to_merge": 1,
+        "merge_method": "SQUASH",
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 5
+      },
+      "bypass_actors": [{"actor_id": null, "actor_type": "Integration", "bypass_mode": "always"}]
     }
   },
   {
@@ -98,13 +107,31 @@ The `branch_config` output provides a JSON array of objects, each containing:
     "ruleset": {
       "enabled": true,
       "pattern": "{0}-eureka-ci",
-      "required_checks": [{"context": "eureka-ci / validate-application"}],
-      "merge_queue": {"enabled": true, "...": "..."},
-      "bypass_actors": [{"actor_type": "Integration", "bypass_mode": "always"}]
+      "required_checks": [{"context": "eureka-ci / validate-application", "integration_id": null}],
+      "merge_queue": {
+        "enabled": true,
+        "check_response_timeout_minutes": 60,
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 5,
+        "max_entries_to_merge": 5,
+        "merge_method": "SQUASH",
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 5
+      },
+      "bypass_actors": [{"actor_id": null, "actor_type": "Integration", "bypass_mode": "always"}]
     }
   }
 ]
 ```
+
+The `ruleset` object is always fully resolved: every key is present even when the config file sets none of
+them. `integration_id` and `actor_id` stay `null` here and are resolved downstream by
+`branch-ruleset-management` from its `integration_id` input.
+
+The `snapshot` entry above illustrates the two independent switches. `ruleset.enabled: false` means no
+ruleset is applied to the branch, while the `merge_queue` block is fully resolved regardless — it carries
+per-branch overrides (`check_response_timeout_minutes`, `max_entries_to_build`, `max_entries_to_merge`)
+merged over the global block, ready for the day the branch is switched on.
 
 ## Configuration File Format
 
@@ -162,7 +189,7 @@ branches:
 - **`pr_reviewers`**: Array of GitHub usernames or teams to assign as PR reviewers
 - **`labels`**: Array of labels to apply to generated PRs
 - **`update_branch_format`**: Template for update branch names (use `{0}` as placeholder for branch name)
-- **`ruleset`**: Global branch ruleset configuration (opt-in, `enabled: false` by default). See [update-config.md](../../docs/update-config.md) for full schema
+- **`ruleset`**: Global branch ruleset configuration. Rulesets are opt-in: the built-in default is `enabled: false`, so a repository with no `ruleset` section gets none. A global block may set `enabled: true` and a branch may still override it back to `false`. See [update-config.md](../../docs/update-config.md) for full schema
 
 #### `branches` Section
 
@@ -178,9 +205,18 @@ branches:
     - `"false"`: Release-only modules (e.g., `1.2.3`)
   - **`descriptor_build_offset`**: Offset for application artifact version (default: `""`)
   - **`rely_on_FAR`**: Whether to rely on FAR for validation dependencies (default: `false`)
-  - **`ruleset`**: Per-branch ruleset overrides (merged with global `update_config.ruleset`)
+  - **`skip_interface_validation`**: Skip module interface integrity validation (default: `false`)
+  - **`skip_dependency_validation`**: Dependency validation mode: `false` / `true` / `bypass` (default: `false`)
+  - **`publish`**: Publish the descriptor to FAR after validation (default: `true`)
+  - **`release`**: Create a GitHub release after the PR merges (default: `true`)
+  - **`name`** / **`description`**: Human-readable branch metadata (platform repositories)
+  - **`ruleset`**: Per-branch ruleset overrides. Resolution is three layers deep-merged in order —
+    built-in defaults, then `update_config.ruleset`, then this block. Objects merge key by key; **arrays
+    (`required_checks`, `bypass_actors`) are replaced wholesale**, so a branch-level list discards the
+    inherited one
 - Only existing and enabled branches will be included in outputs
-- Disabled or non-existent branches are logged as warnings
+- Disabled or non-existent branches are logged as warnings. A disabled branch is skipped before its ruleset
+  is resolved, so any existing ruleset is left untouched rather than disabled
 
 ## Examples
 
@@ -284,7 +320,7 @@ jobs:
 
 ### Branch Existence Validation
 
-1. **Reads configured branches** from the `release_branches` array
+1. **Reads configured branches** from the `branches` array
 2. **Validates each branch** by checking if it exists in the repository via GitHub API, retrying transient failures with backoff
 3. **Filters results** to include only existing branches (HTTP 200) in outputs
 4. **Logs warnings** for genuinely non-existent branches (HTTP 404) without failing the action
@@ -380,7 +416,7 @@ Error parsing configuration file
 ```
 **Solutions**:
 - Verify that the configured branches actually exist
-- Check the `release_branches` array in your configuration
+- Check the `branches` array in your configuration
 - Ensure branches are pushed to the remote repository
 - Review the GitHub API response for authentication issues
 

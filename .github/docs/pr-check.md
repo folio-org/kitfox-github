@@ -63,7 +63,7 @@ Validates the PR configuration and determines if validation should proceed, and 
 **Validation Logic**:
 - Skip if configuration file not found
 - Skip if release scanning disabled
-- Skip if target branch not in `release_branches`
+- Skip if target branch not listed under `branches`
 - Skip if `need_pr=false` for the branch
 
 **Outputs**:
@@ -152,14 +152,16 @@ Prevents deletion of critical application files:
 Respects repository-level configuration in `.github/update-config.yml`:
 
 ```yaml
-release_scan:
+update_config:
   enabled: true
-  release_branches:
-    - name: R1-2025
-      need_pr: true
-      update_branch: version-update/R1-2025
-  pr_labels:
+  update_branch_format: version-update/{0}
+  labels:
     - release-update
+
+branches:
+  - R1-2025:
+      enabled: true
+      need_pr: true
 ```
 
 ### Interactive Re-run Capability
@@ -199,17 +201,19 @@ actions: [requested_action]
 `.github/update-config.yml` in target repository:
 
 ```yaml
-release_scan:
+update_config:
   enabled: true
-  release_branches:
-    - name: R1-2025
-      need_pr: true
-      update_branch: version-update/R1-2025
-    - name: R2-2025
-      need_pr: true
-      update_branch: version-update/R2-2025
-  pr_labels:
+  update_branch_format: version-update/{0}
+  labels:
     - release-update
+
+branches:
+  - R1-2025:
+      enabled: true
+      need_pr: true
+  - R2-2025:
+      enabled: true
+      need_pr: true
 ```
 
 ## Error Handling
@@ -249,7 +253,7 @@ release_scan:
 **Pre-Check Skips Validation**:
 1. Check if update-config.yml exists
 2. Verify `enabled: true` in configuration
-3. Confirm target branch in `release_branches`
+3. Confirm target branch is listed under `branches`
 4. Verify `need_pr: true` for the branch
 
 **Re-run Button Doesn't Work**:

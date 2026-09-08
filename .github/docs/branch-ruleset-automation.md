@@ -6,7 +6,11 @@
 
 ## Overview
 
-This workflow automatically configures GitHub branch rulesets for release branches based on the repository's update configuration. It uses a **two-workflow architecture**: an orchestrator builds a matrix from config and dispatches a per-branch flow that handles the update, notifications, and summary.
+This workflow automatically configures GitHub branch rulesets from a repository's update configuration. It uses a **two-workflow architecture**: an orchestrator builds a matrix from config and dispatches a per-branch flow that handles the update, notifications, and summary.
+
+It serves every `folio-org/app-*` repository and `folio-org/platform-lsp`. It is repository-agnostic: everything specific to a repository comes from that repository's `update-config.yml`.
+
+It runs over every enabled branch, not only release branches — a branch may appear in the matrix in order to have its ruleset *disabled*.
 
 Features:
 1. **Configurable ruleset parameters** via `update-config.yml`
@@ -120,14 +124,18 @@ branches:
       enabled: true
       need_pr: false
       ruleset:
-        enabled: true  # Override: create ruleset for non-PR branch
-        merge_queue:
-          enabled: false  # Override: no merge queue for snapshot
+        enabled: false  # direct-commit branch: no ruleset
 ```
+
+A `need_pr: false` branch takes direct commits, and the `merge_queue` rule rejects direct pushes. Enabling a
+ruleset on such a branch stops its update cadence unless the pushing identity is a bypass actor — and a
+workflow pushing with the default `GITHUB_TOKEN` is not, since `bypass_actors` resolves to the Eureka CI App.
+Keep `ruleset.enabled` and `need_pr` in step, and flip both in the same commit.
 
 ### Per-Branch Overrides
 
-Each branch can override any global ruleset setting:
+Each branch can override any global ruleset setting. Objects merge key by key; **arrays are replaced
+wholesale**, so a branch-level `required_checks` or `bypass_actors` discards the inherited list entirely:
 
 ```yaml
 branches:
@@ -136,11 +144,15 @@ branches:
       need_pr: true
       ruleset:
         required_checks:
-          - context: "eureka-ci / validate-application"
-          - context: "eureka-ci / release-validation"  # Additional check
+          - context: "eureka-ci / validate-application"  # restated: the array replaces, not appends
+          - context: "eureka-ci / release-validation"
         merge_queue:
-          check_response_timeout_minutes: 120  # Longer timeout
+          check_response_timeout_minutes: 120  # other merge_queue keys inherited
 ```
+
+A branch that needs the same checks as everyone else should omit `required_checks` entirely and inherit it.
+A required check is a context name, not a workflow: the same name can be published by one workflow on
+`pull_request` and another on `merge_group`.
 
 ## Enforcement Behavior
 
@@ -161,17 +173,55 @@ The `ruleset.enabled` setting maps to ruleset enforcement:
 gh workflow run branch-ruleset-automation.yml \
   -f repo_owner=folio-org \
   -f repo_name=app-acquisitions
+
+gh workflow run branch-ruleset-automation.yml \
+  -f repo_owner=folio-org \
+  -f repo_name=platform-lsp
 ```
 
 ### Triggered by GitHub App Webhook
 
-This workflow can be triggered when update-config.yml changes:
+The GitHub App webhook listener dispatches this workflow on a `push` that touches `update-config.yml`. The
+mapping lives in `gh-app-webhook-listener/terraform/environments/github_events_config.json`, with one
+`repository_patterns` entry per repository family:
 
-```yaml
-event_type: push
-files_changed:
-  - .github/update-config.yml
+```json
+{
+  "event_type": "push",
+  "repository_patterns": [
+    {
+      "owner": "folio-org",
+      "repository": "app-*",
+      "branches": "master",
+      "file_patterns": [".github/update-config.yml"],
+      "workflows": [
+        {
+          "owner": "folio-org",
+          "repository": "kitfox-github",
+          "workflow_file": "branch-ruleset-automation.yml",
+          "ref": "master",
+          "inputs": {
+            "repo_owner": "{owner}",
+            "repo_name": "{repository}",
+            "head_sha": "{head_sha}"
+          }
+        }
+      ]
+    },
+    { "owner": "folio-org", "repository": "platform-lsp", "...": "same shape" }
+  ]
+}
 ```
+
+Both `folio-org/app-*` and `folio-org/platform-lsp` are wired. The `repository` field is a single fnmatch
+pattern, not a list, so each family needs its own entry.
+
+Two constraints are easy to miss:
+
+- `branches: "master"` — a push touching `update-config.yml` on any other branch does not dispatch.
+- `file_patterns` is matched against the union of `added`, `modified` and `removed` across the push's
+  `commits`. A push that carries an empty `commits` array, such as a force-push or a branch creation, matches
+  nothing and does not dispatch.
 
 ## Troubleshooting
 
@@ -180,8 +230,15 @@ files_changed:
 **No Rulesets Created**:
 1. Verify update-config.yml exists
 2. Check `enabled: true` in config
-3. For non-PR branches, verify `ruleset.enabled: true` is set
+3. Verify `ruleset.enabled: true` for the branch, globally or per branch
 4. Confirm branches actually exist in repository
+5. A branch whose own `enabled` is not `true` is skipped before the ruleset is resolved, so its existing
+   ruleset is left untouched rather than disabled
+
+**Required Check Never Satisfied** (PR stuck on "Expected — waiting for status to be reported"):
+The `required_checks` context must match the published check run by name **and** by publishing app.
+`integration_id` resolves to `EUREKA_CI_APP_ID`, so a check run created with the default `GITHUB_TOKEN` is
+published by the GitHub Actions app and will not satisfy the rule. Publish it with an Eureka CI App token.
 
 **Ruleset Update Failed**:
 1. Check GitHub App has admin permissions
@@ -213,6 +270,6 @@ gh api repos/folio-org/app-acquisitions/contents/.github/update-config.yml \
 
 ---
 
-**Last Updated**: February 2026
-**Workflow Version**: 2.0
+**Last Updated**: September 2026
+**Workflow Version**: 2.1
 **Compatibility**: Requires repository admin permissions and EUREKA_CI_APP_ID variable

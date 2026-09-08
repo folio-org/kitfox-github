@@ -7,6 +7,14 @@
 
 The `update-config.yml` file controls how the Eureka CI/CD system handles module version updates for a repository. It specifies which branches to scan, how to create PRs, and how to configure branch protection rulesets.
 
+The schema applies to every `folio-org/app-*` repository and to `folio-org/platform-lsp`. Both are wired to
+`branch-ruleset-automation.yml` through the `push` event mapping in the GitHub App webhook listener.
+
+One value is repository-specific: the required check context. Application repositories publish
+`eureka-ci / validate-application` (the default), while platform-lsp publishes
+`eureka-ci/release-platform-validation` and overrides `required_checks` globally. Note the differing spacing
+around the slash in the two conventions — the ruleset matches on the exact string.
+
 ## Complete Schema
 
 ```yaml
@@ -48,6 +56,8 @@ branches:
       skip_dependency_validation: string
       publish: boolean
       release: boolean
+      name: string
+      description: string
       ruleset: object  # Per-branch ruleset overrides
 ```
 
@@ -62,6 +72,8 @@ branches:
 | `skip_dependency_validation`| string  | No     | `false` | Dependency validation mode: `false` / `true` / `bypass` |
 | `publish`                 | boolean | No       | `true`  | Whether to publish descriptor to FAR after validation |
 | `release`                 | boolean | No       | `true`  | Whether to create GitHub release after PR merge (tags, release notes) |
+| `name`                    | string  | No       | `""`    | Human-readable branch name (platform repositories) |
+| `description`             | string  | No       | `""`    | Human-readable branch description (platform repositories) |
 | `ruleset`                 | object  | No       | -       | Branch-specific ruleset configuration overrides  |
 
 ## Ruleset Configuration
@@ -78,6 +90,7 @@ ruleset:
   pattern: "{0}-eureka-ci"
   required_checks:
     - context: "eureka-ci / validate-application"
+      integration_id: null                      # resolved to EUREKA_CI_APP_ID
   merge_queue:
     enabled: true
     check_response_timeout_minutes: 60
@@ -88,9 +101,13 @@ ruleset:
     min_entries_to_merge: 1
     min_entries_to_merge_wait_minutes: 5
   bypass_actors:
-    - actor_type: "Integration"
+    - actor_id: null                            # resolved to EUREKA_CI_APP_ID
+      actor_type: "Integration"
       bypass_mode: "always"
 ```
+
+The `integration_id` and `actor_id` nulls are part of the defaults, not omissions. `branch-ruleset-management`
+resolves each one to the `integration_id` input, which the flow supplies from `vars.EUREKA_CI_APP_ID`.
 
 ### Ruleset Schema
 
@@ -154,6 +171,24 @@ branches:
       # Inherits global ruleset (enabled: true)
 ```
 
+### A merge queue is incompatible with `need_pr: false`
+
+The `merge_queue` rule requires every change to reach the branch through the queue, so it rejects the direct
+push that a `need_pr: false` branch depends on. Unless the pushing identity is listed in `bypass_actors`, an
+active ruleset carrying a merge queue silently breaks the update cadence for that branch.
+
+Note that `bypass_actors` resolves to the Eureka CI App. A workflow that pushes with the default
+`GITHUB_TOKEN` acts as the GitHub Actions app instead, which is *not* the bypass actor.
+
+The two safe shapes are:
+
+- `need_pr: false` with `ruleset.enabled: false` — direct-commit branch, no ruleset.
+- `need_pr: true` with `ruleset.enabled: true` — PR-based branch, ruleset and optional queue.
+
+Flipping a branch from one to the other means changing both keys in the same commit. `need_pr: true` without
+a ruleset leaves the update PR with nothing to merge it; a ruleset without `need_pr: true` blocks the direct
+commit.
+
 ## Example Configurations
 
 ### Minimal Configuration
@@ -216,10 +251,10 @@ branches:
       pre_release: "false"
       ruleset:
         required_checks:
-          - context: "eureka-ci / validate-application"
+          - context: "eureka-ci / validate-application"   # restated: the array replaces, not appends
           - context: "eureka-ci / release-validation"
         merge_queue:
-          check_response_timeout_minutes: 120
+          check_response_timeout_minutes: 120             # other merge_queue keys inherited
 ```
 
 ### Custom Status Checks Per Branch
@@ -237,7 +272,7 @@ branches:
       need_pr: true
       ruleset:
         required_checks:
-          - context: "eureka-ci / validate-application"
+          - context: "eureka-ci / validate-application"   # restated: the array replaces, not appends
           - context: "build / compile"
           - context: "test / unit-tests"
 ```
@@ -256,7 +291,54 @@ branches:
 
 ## Configuration Inheritance
 
-Global `update_config.ruleset` settings are merged with per-branch `ruleset` overrides. Per-branch values take precedence over global values.
+The ruleset applied to a branch is resolved in three layers, each deep-merged over the previous one:
+
+```
+RULESET_DEFAULTS  ->  update_config.ruleset  ->  branches[].ruleset
+```
+
+**Objects merge key by key; arrays are replaced wholesale.** This distinction matters and is easy to get wrong:
+
+- `merge_queue` is an object, so a branch may override a few keys and inherit the rest. A branch that sets only
+  `check_response_timeout_minutes` keeps the global `merge_method`, `grouping_strategy` and everything else.
+- `required_checks` and `bypass_actors` are arrays, so any branch-level list **discards** the inherited one
+  entirely. To add one check to the global set, restate every check you want to keep.
+
+Because each layer merges over the one before it, a global block only needs the keys that differ from the
+defaults, and a branch block only the keys that differ from the global block.
+
+### Partial merge_queue override
+
+```yaml
+update_config:
+  ruleset:
+    enabled: true
+    merge_queue:
+      enabled: false                            # release branches: checks only, no queue
+      merge_method: "SQUASH"
+      grouping_strategy: "ALLGREEN"
+      check_response_timeout_minutes: 60
+      max_entries_to_build: 5
+      max_entries_to_merge: 5
+      min_entries_to_merge: 1
+      min_entries_to_merge_wait_minutes: 5
+
+branches:
+  - snapshot:
+      enabled: true
+      ruleset:
+        merge_queue:
+          enabled: true                         # re-enable the queue for this branch only
+          check_response_timeout_minutes: 300   # long-running deployment gate
+          max_entries_to_build: 1               # strictly serial
+          max_entries_to_merge: 1
+```
+
+`snapshot` resolves to a merge queue with `merge_method: SQUASH`, `grouping_strategy: ALLGREEN` and
+`min_entries_to_merge_wait_minutes: 5` inherited from the global block, and the four overridden values applied
+on top. It does not restate `required_checks`, so it inherits the global list unchanged — which is the point:
+a required check is a context name, and the same name may be published by different workflows on different
+events (`pull_request` and `merge_group`).
 
 ## Related Documentation
 
@@ -265,5 +347,5 @@ Global `update_config.ruleset` settings are merged with per-branch `ruleset` ove
 
 ---
 
-**Last Updated**: March 2026
-**Schema Version**: 3.0
+**Last Updated**: September 2026
+**Schema Version**: 3.1
