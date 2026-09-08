@@ -27,8 +27,12 @@ Creates or updates GitHub branch rulesets. Accepts individual configuration para
       [{"actor_id": null, "actor_type": "Integration", "bypass_mode": "always"}]
     enforcement: active
     integration_id: ${{ vars.EUREKA_CI_APP_ID }}
-    github_token: ${{ secrets.GITHUB_TOKEN }}
+    github_token: ${{ steps.app-token.outputs.token }}
 ```
+
+`github_token` must be a GitHub App installation token with repository **Administration: write** — mint it
+with `actions/create-github-app-token@v3`. The default `GITHUB_TOKEN` cannot administer rulesets, and cannot
+reach another repository at all.
 
 ## Inputs
 

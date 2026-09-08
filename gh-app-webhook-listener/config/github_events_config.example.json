@@ -151,6 +151,25 @@
               }
             }
           ]
+        },
+        {
+          "owner": "folio-org",
+          "repository": "platform-lsp",
+          "branches": "master",
+          "file_patterns": [".github/update-config.yml"],
+          "workflows": [
+            {
+              "owner": "folio-org",
+              "repository": "kitfox-github",
+              "workflow_file": "branch-ruleset-automation.yml",
+              "ref": "master",
+              "inputs": {
+                "repo_owner": "{owner}",
+                "repo_name": "{repository}",
+                "head_sha": "{head_sha}"
+              }
+            }
+          ]
         }
       ]
     }
