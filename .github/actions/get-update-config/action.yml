@@ -158,6 +158,7 @@ runs:
             need_pr=$(echo "$branch_config" | jq -r '.need_pr // false' | tr 'A-Z' 'a-z')
             pre_release=$(echo "$branch_config" | jq -r '.pre_release // ""' | tr -d '\r')
             descriptor_build_offset=$(echo "$branch_config" | jq -r '.descriptor_build_offset // ""' | tr -d '\r')
+            yarn_lock_update=$(echo "$branch_config" | jq -r '.yarn_lock_update // "always"' | tr -d '\r')
             rely_on_FAR=$(echo "$branch_config" | jq -r '.rely_on_FAR // false' | tr 'A-Z' 'a-z')
             skip_interface_validation=$(echo "$branch_config" | jq -r '.skip_interface_validation // false' | tr 'A-Z' 'a-z')
             skip_dependency_validation=$(echo "$branch_config" | jq -r '.skip_dependency_validation // false' | tr 'A-Z' 'a-z')
@@ -198,6 +199,7 @@ runs:
                 --arg pre_release "$pre_release" \
                 --arg update_branch "$update_branch" \
                 --arg descriptor_build_offset "$descriptor_build_offset" \
+                --arg yarn_lock_update "$yarn_lock_update" \
                 --argjson rely_on_FAR "$([ "$rely_on_FAR" = "true" ] && echo true || echo false)" \
                 --argjson skip_interface_validation "$([ "$skip_interface_validation" = "true" ] && echo true || echo false)" \
                 --arg skip_dependency_validation "$skip_dependency_validation" \
@@ -210,6 +212,7 @@ runs:
                   need_pr: $need_pr,
                   pre_release: $pre_release,
                   descriptor_build_offset: $descriptor_build_offset,
+                  yarn_lock_update: $yarn_lock_update,
                   rely_on_FAR: $rely_on_FAR,
                   skip_interface_validation: $skip_interface_validation,
                   skip_dependency_validation: $skip_dependency_validation,
