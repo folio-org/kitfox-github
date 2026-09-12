@@ -79,6 +79,7 @@ The `branch_config` output provides a JSON array of objects, each containing:
     "need_pr": false,
     "pre_release": "only",
     "descriptor_build_offset": "100100000000000",
+    "yarn_lock_update": "always",
     "rely_on_FAR": false,
     "ruleset": {
       "enabled": false,
@@ -103,6 +104,7 @@ The `branch_config` output provides a JSON array of objects, each containing:
     "need_pr": true,
     "pre_release": "false",
     "descriptor_build_offset": "",
+    "yarn_lock_update": "on_package_change",
     "rely_on_FAR": false,
     "ruleset": {
       "enabled": true,
@@ -166,6 +168,7 @@ branches:
       need_pr: false
       pre_release: "only"
       descriptor_build_offset: "100100000000000"
+      yarn_lock_update: "always"
       rely_on_FAR: false
       ruleset:
         enabled: false
@@ -174,6 +177,7 @@ branches:
       need_pr: true
       pre_release: "false"
       descriptor_build_offset: ""
+      yarn_lock_update: "on_package_change"
       rely_on_FAR: false
   - R2-2025:
       enabled: false
@@ -204,6 +208,10 @@ branches:
     - `"true"`: Both release and snapshot modules
     - `"false"`: Release-only modules (e.g., `1.2.3`)
   - **`descriptor_build_offset`**: Offset for application artifact version (default: `""`)
+  - **`yarn_lock_update`**: `yarn.lock` policy for platform repositories (default: `"always"`)
+    - `"always"`: delete the lock before `yarn install` so every range constraint re-resolves to the newest published module
+    - `"on_package_change"`: keep the lock; `yarn install` moves only the entries whose `package.json` pins changed
+    - `"never"`: leave `yarn.lock` untouched
   - **`rely_on_FAR`**: Whether to rely on FAR for validation dependencies (default: `false`)
   - **`skip_interface_validation`**: Skip module interface integrity validation (default: `false`)
   - **`skip_dependency_validation`**: Dependency validation mode: `false` / `true` / `bypass` (default: `false`)

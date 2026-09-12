@@ -51,6 +51,7 @@ branches:
       need_pr: boolean
       pre_release: string
       descriptor_build_offset: string
+      yarn_lock_update: string
       rely_on_FAR: boolean
       skip_interface_validation: boolean
       skip_dependency_validation: string
@@ -67,6 +68,7 @@ branches:
 | `need_pr`                 | boolean | Yes      | -       | Create PR for updates (vs direct push)           |
 | `pre_release`             | string  | No       | `""`    | Filter: `"only"`, `"true"`, `"false"`            |
 | `descriptor_build_offset` | string  | No       | `""`    | Build number offset for descriptors              |
+| `yarn_lock_update`        | string  | No       | `"always"` | Platform `yarn.lock` policy: `"always"` (delete before `yarn install`, ranges re-resolve), `"on_package_change"` (keep; follows `package.json` pins), `"never"` |
 | `rely_on_FAR`             | boolean | No       | `false` | Use FOLIO Application Registry for validation    |
 | `skip_interface_validation` | boolean | No     | `false` | Skip module interface integrity validation       |
 | `skip_dependency_validation`| string  | No     | `false` | Dependency validation mode: `false` / `true` / `bypass` |
@@ -239,12 +241,14 @@ branches:
       need_pr: false
       pre_release: "only"
       descriptor_build_offset: "100200000000000"
+      yarn_lock_update: "always"
       ruleset:
         enabled: false
   - R1-2025:
       enabled: true
       need_pr: true
       pre_release: "false"
+      yarn_lock_update: "on_package_change"
   - R2-2025:
       enabled: true
       need_pr: true
