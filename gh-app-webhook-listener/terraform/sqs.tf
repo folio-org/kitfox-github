@@ -2,9 +2,9 @@
 resource "aws_sqs_queue" "check_suite" {
   name                       = "${var.app_name}-check-suite-queue"
   visibility_timeout_seconds = var.sqs_visibility_timeout
-  message_retention_seconds  = 86400 # 1 day
-  max_message_size          = 262144 # 256 KB
-  receive_wait_time_seconds = 10     # Long polling
+  message_retention_seconds  = 86400  # 1 day
+  max_message_size           = 262144 # 256 KB
+  receive_wait_time_seconds  = 10     # Long polling
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.check_suite_dlq.arn
@@ -36,10 +36,10 @@ resource "aws_sns_topic_subscription" "check_suite_dlq_alerts_email" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "check_suite_dlq_not_empty" {
-  alarm_name          = "${var.app_name}-check-suite-dlq-not-empty"
-  alarm_description   = "Messages present in ${aws_sqs_queue.check_suite_dlq.name} (failed webhook processing / workflow dispatch)"
-  namespace           = "AWS/SQS"
-  metric_name         = "ApproximateNumberOfMessagesVisible"
+  alarm_name        = "${var.app_name}-check-suite-dlq-not-empty"
+  alarm_description = "Messages present in ${aws_sqs_queue.check_suite_dlq.name} (failed webhook processing / workflow dispatch)"
+  namespace         = "AWS/SQS"
+  metric_name       = "ApproximateNumberOfMessagesVisible"
   dimensions = {
     QueueName = aws_sqs_queue.check_suite_dlq.name
   }
