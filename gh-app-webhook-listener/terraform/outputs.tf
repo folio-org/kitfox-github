@@ -34,14 +34,14 @@ output "app_name" {
 }
 
 output "webhook_secret_arn" {
-  description = "The ARN of the webhook secret in Secrets Manager"
-  value       = aws_secretsmanager_secret.webhook_secret.arn
+  description = "The ARN of the webhook secret in Secrets Manager (null when credentials_store = \"ssm\")"
+  value       = try(aws_secretsmanager_secret.webhook_secret[0].arn, null)
   sensitive   = true
 }
 
 output "github_private_key_arn" {
-  description = "The ARN of the GitHub private key in Secrets Manager"
-  value       = aws_secretsmanager_secret.github_private_key.arn
+  description = "The ARN of the GitHub private key in Secrets Manager (null when credentials_store = \"ssm\")"
+  value       = try(aws_secretsmanager_secret.github_private_key[0].arn, null)
   sensitive   = true
 }
 
