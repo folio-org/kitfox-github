@@ -21,7 +21,7 @@ GitHub Event → Webhook → AWS Lambda → Trigger Workflow → GitHub Actions
   - `check_processor`: Processes events and triggers workflows
 - **SQS**: Async message queue for reliable processing
 - **S3**: Configuration storage (optional for event mappings)
-- **Secrets Manager**: GitHub App credentials
+- **Secrets Manager or SSM Parameter Store**: GitHub App credentials (see [Credentials store](#credentials-store))
 
 ### 2. GitHub App Configuration
 - **Permissions Required**:
@@ -66,7 +66,7 @@ The triggered workflow updates the check run status as it progresses.
 ### Prerequisites
 - AWS Account with appropriate permissions
 - GitHub App created and configured
-- Terraform installed (>= 1.0)
+- Terraform installed (>= 1.11)
 - Python 3.11+ for local development
 
 ### Quick Start
@@ -107,8 +107,8 @@ Note: Terraform will automatically package the Lambda functions during deploymen
 | Variable                  | Description                    | Example                 |
 |---------------------------|--------------------------------|-------------------------|
 | `app_name`                | Your application instance name | `my-app`, `eureka-ci`   |
-| `github_app_id`           | GitHub App ID                  | `123456`                |
-| `github_installation_id`  | GitHub App Installation ID     | `567890`                |
+| `github_app_id`           | GitHub App ID (or `github_app_id_ssm_parameter`) | `123456` |
+| `github_installation_id`  | GitHub App Installation ID (or `github_installation_id_ssm_parameter`) | `567890` |
 | `github_private_key_path` | Path to GitHub App private key | `~/.ssh/github-app.pem` |
 | `github_webhook_secret`   | Webhook secret (pass via CLI)  | `your-secret-here`      |
 
@@ -140,6 +140,67 @@ When Route 53 is enabled, it will create a CNAME record in your existing hosted 
 - Zone: `ci.folio.org`
 - Record: `eureka-ci`
 - Result: `eureka-ci.ci.folio.org` → Your API Gateway endpoint
+
+#### Credentials store
+| Variable                               | Description                                                                 | Default          |
+|----------------------------------------|-----------------------------------------------------------------------------|------------------|
+| `credentials_store`                    | `secretsmanager` or `ssm`                                                   | `secretsmanager` |
+| `github_private_key_ssm_parameter`     | SecureString parameter with the App private key (PEM); empty = `/<app_name>/github-app-private-key` | `""` |
+| `github_webhook_secret_ssm_parameter`  | SecureString parameter with the App webhook secret; empty = `/<app_name>/webhook-secret` | `""` |
+| `github_app_id_ssm_parameter`          | Parameter with the App ID; used instead of `github_app_id` when set         | `""`             |
+| `github_installation_id_ssm_parameter` | Parameter with the installation ID; used instead of `github_installation_id` when set | `""`   |
+| `ssm_kms_key_arn`                      | KMS key of the SecureString parameters; empty means `alias/aws/ssm`         | `""`             |
+
+- **`secretsmanager`** (default): the stack creates the `<app_name>-webhook-secret` and `<app_name>-github-private-key`
+  secrets and writes their values from `github_webhook_secret` (or a generated one) and `github_private_key` /
+  `github_private_key_path`.
+- **`ssm`**: the stack creates no secrets. The private key (PEM) and the webhook secret (equal to the one configured
+  in the GitHub App) live in two SecureString parameters, which the Lambdas read at runtime
+  (`GITHUB_PRIVATE_KEY_SSM_PARAMETER`, `WEBHOOK_SECRET_SSM_PARAMETER`). For each of them:
+
+  | Value passed (`github_webhook_secret`, `github_private_key` / `github_private_key_path`) | Parameter exists | Result |
+  |-----|-----|------------------------------------------------------|
+  | yes | no  | the stack creates the parameter                      |
+  | yes | yes | the stack overwrites its value and manages it from then on |
+  | no  | yes | the existing parameter is used as is                 |
+  | no  | no  | `terraform plan` fails                               |
+
+  A passed value is written through a write-only attribute (`value_wo`) and never reaches the Terraform state; only a
+  short hash of it is kept to detect changes. A parameter written by the stack has `prevent_destroy`: before
+  `terraform destroy`, or before you stop passing its value, run
+  `terraform state rm 'aws_ssm_parameter.webhook_secret[0]'` (or `github_private_key[0]`). The parameter then stays
+  in Parameter Store.
+
+  Writing a parameter needs `ssm:PutParameter`, `ssm:AddTagsToResource` and, for a customer managed key,
+  `kms:Encrypt` for the identity that runs Terraform. Checking an existing one needs `ssm:GetParameter`.
+
+  The App ID and installation ID are not secrets: when `*_ssm_parameter` is set for them, Terraform resolves the value
+  at plan time.
+
+#### Existing IAM roles
+| Variable                          | Description                                                               | Default |
+|-----------------------------------|---------------------------------------------------------------------------|---------|
+| `lambda_execution_role_arn`       | Existing role for both Lambda functions; the stack creates no Lambda role | `""`    |
+| `api_gateway_cloudwatch_role_arn` | Existing role for API Gateway CloudWatch logging                          | `""`    |
+| `manage_api_gateway_account`      | Whether the stack manages the account-level API Gateway CloudWatch setting | `true` |
+
+Use these where IAM roles may only be created outside this stack. An existing Lambda execution role must trust
+`lambda.amazonaws.com` and allow:
+- `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`;
+- `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on the
+  `<app_name>-check-suite-queue` queue;
+- `s3:GetObject`, `s3:ListBucket` on the `<app_name>-config-<account_id>` bucket and its objects;
+- reading the credentials:
+  - `secretsmanager:GetSecretValue` on the two secrets, or
+  - `ssm:GetParameter` on the two parameters and `kms:Decrypt` on their KMS key (for `alias/aws/ssm`, condition
+    `kms:ViaService = ssm.<region>.amazonaws.com`).
+
+An existing API Gateway role must trust `apigateway.amazonaws.com` and have the
+`AmazonAPIGatewayPushToCloudWatchLogs` managed policy.
+
+The API Gateway CloudWatch role (`aws_api_gateway_account`) is a single setting shared by every REST API in the
+account and region. If it is already managed elsewhere, set `manage_api_gateway_account = false`: the stack then
+neither changes that setting nor creates the API Gateway role.
 
 ### GitHub Events Configuration
 
@@ -291,6 +352,7 @@ gh-app-webhook-listener/
 │   │   ├── handler.py     # Main handler function
 │   │   └── requirements.txt
 │   └── common/           # Shared utilities
+│       ├── credentials.py        # Credential read from SSM or Secrets Manager
 │       ├── github_client.py      # GitHub API client
 │       └── workflow_trigger.py   # Workflow triggering logic
 ├── terraform/            # Infrastructure as code
@@ -298,6 +360,7 @@ gh-app-webhook-listener/
 │   │   ├── example.tfvars
 │   │   ├── eureka-ci.tfvars
 │   │   └── github_events_config.json
+│   ├── locals.tf        # Credentials store and IAM role selection
 │   ├── lambda.tf        # Shared Lambda resources
 │   ├── lambda_webhook_handler.tf  # Webhook handler config
 │   ├── lambda_check_processor.tf  # Check processor config
@@ -305,6 +368,7 @@ gh-app-webhook-listener/
 │   ├── sqs.tf           # SQS queue configuration
 │   ├── s3.tf            # S3 bucket for config storage
 │   ├── secrets.tf       # Secrets Manager configuration
+│   ├── ssm_parameters.tf # SSM Parameter Store credentials
 │   ├── route53.tf       # Route 53 DNS configuration
 │   └── *.tf             # Other Terraform resources
 ├── config/              # Application configuration templates
@@ -327,6 +391,7 @@ The Lambda functions are separated for optimal performance:
    - Responsibilities: GitHub API calls, workflow triggering, check run management
 
 3. **common**: Shared utilities used by both functions
+   - `credentials.py`: reads the App private key from SSM Parameter Store or Secrets Manager
    - `github_client.py`: GitHub API client with JWT authentication and transient-error retry
    - `workflow_trigger.py`: Workflow dispatch logic and event mapping (raises on failure so a failed dispatch is retried/dead-lettered, not swallowed)
 
@@ -340,7 +405,7 @@ The Lambda functions are separated for optimal performance:
 ## Security
 
 - Webhook signatures are validated using HMAC-SHA256
-- GitHub App private key stored in AWS Secrets Manager
+- GitHub App private key stored in AWS Secrets Manager or an SSM SecureString parameter
 - All sensitive data encrypted at rest and in transit
 - IAM roles follow least privilege principle
 
