@@ -49,11 +49,11 @@ resource "null_resource" "check_processor_copy" {
 
 # Copy configuration file if not using S3
 resource "null_resource" "check_processor_config_copy" {
-  count = var.github_events_config_s3_enabled ? 0 : 1
+  count      = var.github_events_config_s3_enabled ? 0 : 1
   depends_on = [null_resource.check_processor_copy]
 
   triggers = {
-    src_hash = null_resource.check_processor_prep.triggers.src_hash
+    src_hash    = null_resource.check_processor_prep.triggers.src_hash
     config_hash = filesha256(var.github_events_config_file)
   }
 
@@ -141,30 +141,43 @@ resource "null_resource" "check_processor_zip" {
 
 # Lambda function for check processor
 resource "aws_lambda_function" "check_processor" {
-  filename          = "${local.build_root}/check_processor.zip"
-  function_name     = "${var.app_name}-check-processor"
-  role              = aws_iam_role.lambda_execution_role.arn
-  handler           = "check_processor.handler.handler"
-  source_code_hash  = null_resource.check_processor_zip.triggers.src_hash
-  runtime           = local.lambda_runtime
-  architectures     = [local.lambda_arch]
-  timeout           = var.lambda_timeout
-  memory_size       = var.lambda_memory
+  filename         = "${local.build_root}/check_processor.zip"
+  function_name    = "${var.app_name}-check-processor"
+  role             = local.lambda_role_arn
+  handler          = "check_processor.handler.handler"
+  source_code_hash = null_resource.check_processor_zip.triggers.src_hash
+  runtime          = local.lambda_runtime
+  architectures    = [local.lambda_arch]
+  timeout          = var.lambda_timeout
+  memory_size      = var.lambda_memory
 
   environment {
-    variables = {
-      GITHUB_APP_ID           = var.github_app_id
-      GITHUB_INSTALLATION_ID  = var.github_installation_id
-      GITHUB_PRIVATE_KEY_ARN  = aws_secretsmanager_secret.github_private_key.arn
-      CONFIG_BUCKET_NAME      = var.github_events_config_s3_enabled ? aws_s3_bucket.app_config.id : ""
-      CONFIG_FILE_KEY         = var.github_events_config_s3_enabled ? "github_events_config.json" : ""
-      LOCAL_CONFIG_PATH       = var.github_events_config_s3_enabled ? "" : "/var/task/config/github_events_config.json"
-      ENVIRONMENT             = terraform.workspace
-      LOG_LEVEL               = "INFO"
-    }
+    variables = merge({
+      GITHUB_APP_ID          = local.github_app_id
+      GITHUB_INSTALLATION_ID = local.github_installation_id
+      CONFIG_BUCKET_NAME     = var.github_events_config_s3_enabled ? aws_s3_bucket.app_config.id : ""
+      CONFIG_FILE_KEY        = var.github_events_config_s3_enabled ? "github_events_config.json" : ""
+      LOCAL_CONFIG_PATH      = var.github_events_config_s3_enabled ? "" : "/var/task/config/github_events_config.json"
+      ENVIRONMENT            = terraform.workspace
+      LOG_LEVEL              = "INFO"
+    }, local.credential_env_processor)
   }
 
-  depends_on = [null_resource.check_processor_zip]
+  depends_on = [
+    null_resource.check_processor_zip,
+    aws_ssm_parameter.github_private_key
+  ]
+
+  lifecycle {
+    precondition {
+      condition     = var.github_app_id != "" || var.github_app_id_ssm_parameter != ""
+      error_message = "Set github_app_id or github_app_id_ssm_parameter."
+    }
+    precondition {
+      condition     = var.github_installation_id != "" || var.github_installation_id_ssm_parameter != ""
+      error_message = "Set github_installation_id or github_installation_id_ssm_parameter."
+    }
+  }
 
   tags = var.tags
 }
