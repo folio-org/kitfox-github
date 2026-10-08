@@ -45,7 +45,7 @@ resource "aws_s3_bucket_policy" "app_config_policy" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = aws_iam_role.lambda_execution_role.arn
+          AWS = local.lambda_role_arn
         }
         Action = [
           "s3:GetObject",
