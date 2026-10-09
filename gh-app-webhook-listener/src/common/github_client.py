@@ -3,8 +3,8 @@ import time
 import logging
 import requests
 import jwt
-import boto3
 from typing import Dict, Any, Optional
+from .credentials import read_credential
 
 logger = logging.getLogger()
 
@@ -26,13 +26,9 @@ class GitHubClient:
         self.base_url = "https://api.github.com"
 
     def _get_private_key(self) -> str:
-        """Retrieve GitHub App private key from Secrets Manager."""
+        """Retrieve GitHub App private key from SSM Parameter Store or Secrets Manager."""
         try:
-            secrets_manager = boto3.client('secretsmanager')
-            response = secrets_manager.get_secret_value(
-                SecretId=os.environ['GITHUB_PRIVATE_KEY_ARN']
-            )
-            return response['SecretString']
+            return read_credential('GITHUB_PRIVATE_KEY_ARN', 'GITHUB_PRIVATE_KEY_SSM_PARAMETER')
         except Exception as e:
             logger.error(f"Failed to retrieve GitHub App private key: {e}")
             raise

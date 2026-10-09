@@ -92,27 +92,28 @@ resource "null_resource" "webhook_handler_zip" {
 resource "aws_lambda_function" "webhook_handler" {
   filename         = "${local.build_root}/webhook_handler.zip"
   function_name    = "${var.app_name}-webhook-handler"
-  role            = aws_iam_role.lambda_execution_role.arn
-  handler         = "webhook_handler.handler.handler"
+  role             = local.lambda_role_arn
+  handler          = "webhook_handler.handler.handler"
   source_code_hash = null_resource.webhook_handler_zip.triggers.src_hash
-  runtime         = "python3.11"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory
+  runtime          = "python3.11"
+  timeout          = var.lambda_timeout
+  memory_size      = var.lambda_memory
 
   environment {
-    variables = {
-      GITHUB_APP_ID         = var.github_app_id
-      WEBHOOK_SECRET_ARN    = aws_secretsmanager_secret.webhook_secret.arn
-      GITHUB_PRIVATE_KEY_ARN = aws_secretsmanager_secret.github_private_key.arn
-      SQS_QUEUE_URL        = aws_sqs_queue.check_suite.url
+    variables = merge({
+      GITHUB_APP_ID         = local.github_app_id
+      SQS_QUEUE_URL         = aws_sqs_queue.check_suite.url
       CHECK_SUITE_QUEUE_URL = aws_sqs_queue.check_suite.url
-      CONFIG_BUCKET_NAME   = aws_s3_bucket.app_config.id
-      ENVIRONMENT          = terraform.workspace
-      LOG_LEVEL           = "INFO"
-    }
+      CONFIG_BUCKET_NAME    = aws_s3_bucket.app_config.id
+      ENVIRONMENT           = terraform.workspace
+      LOG_LEVEL             = "INFO"
+    }, local.credential_env_webhook)
   }
 
-  depends_on = [null_resource.webhook_handler_zip]
+  depends_on = [
+    null_resource.webhook_handler_zip,
+    aws_ssm_parameter.webhook_secret
+  ]
 
   tags = var.tags
 }

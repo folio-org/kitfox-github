@@ -9,6 +9,8 @@ locals {
 
 # IAM role for Lambda functions
 resource "aws_iam_role" "lambda_execution_role" {
+  count = local.create_lambda_role ? 1 : 0
+
   name = "${var.app_name}-lambda-role"
 
   assume_role_policy = jsonencode({
@@ -29,12 +31,14 @@ resource "aws_iam_role" "lambda_execution_role" {
 
 # IAM policy for Lambda functions
 resource "aws_iam_role_policy" "lambda_policy" {
+  count = local.create_lambda_role ? 1 : 0
+
   name = "${var.app_name}-lambda-policy"
-  role = aws_iam_role.lambda_execution_role.id
+  role = aws_iam_role.lambda_execution_role[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = [for statement in [
       {
         Effect = "Allow"
         Action = [
@@ -54,16 +58,36 @@ resource "aws_iam_role_policy" "lambda_policy" {
         ]
         Resource = aws_sqs_queue.check_suite.arn
       },
-      {
+      local.use_secrets_manager ? {
         Effect = "Allow"
         Action = [
           "secretsmanager:GetSecretValue"
         ]
         Resource = [
-          aws_secretsmanager_secret.webhook_secret.arn,
-          aws_secretsmanager_secret.github_private_key.arn
+          one(aws_secretsmanager_secret.webhook_secret[*].arn),
+          one(aws_secretsmanager_secret.github_private_key[*].arn)
         ]
+      } : null,
+      local.use_secrets_manager ? null : {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = local.credential_ssm_parameter_arns
       },
+      !local.use_secrets_manager && var.ssm_kms_key_arn != "" ? {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = var.ssm_kms_key_arn
+      } : null,
+      !local.use_secrets_manager && var.ssm_kms_key_arn == "" ? {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "ssm.${var.aws_region}.amazonaws.com"
+          }
+        }
+      } : null,
       {
         Effect = "Allow"
         Action = [
@@ -75,7 +99,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "${aws_s3_bucket.app_config.arn}/*"
         ]
       }
-    ]
+    ] : statement if statement != null]
   })
 }
 

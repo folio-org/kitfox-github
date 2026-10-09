@@ -32,8 +32,8 @@ resource "aws_api_gateway_integration" "webhook_lambda" {
   http_method = aws_api_gateway_method.webhook_post.http_method
 
   integration_http_method = "POST"
-  type                   = "AWS_PROXY"
-  uri                    = aws_lambda_function.webhook_handler.invoke_arn
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.webhook_handler.invoke_arn
 }
 
 # API Gateway Method Response
@@ -93,11 +93,15 @@ resource "aws_api_gateway_stage" "app" {
 
 # API Gateway CloudWatch Logs
 resource "aws_api_gateway_account" "app" {
-  cloudwatch_role_arn = aws_iam_role.api_gateway_cloudwatch.arn
+  count = var.manage_api_gateway_account ? 1 : 0
+
+  cloudwatch_role_arn = local.apigw_cw_role_arn
 }
 
 # IAM role for API Gateway CloudWatch logging
 resource "aws_iam_role" "api_gateway_cloudwatch" {
+  count = local.create_apigw_cw_role && var.manage_api_gateway_account ? 1 : 0
+
   name = "${var.app_name}-api-gateway-cloudwatch-role"
 
   assume_role_policy = jsonencode({
@@ -118,6 +122,8 @@ resource "aws_iam_role" "api_gateway_cloudwatch" {
 
 # IAM policy attachment for API Gateway CloudWatch logging
 resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch" {
-  role       = aws_iam_role.api_gateway_cloudwatch.name
+  count = local.create_apigw_cw_role && var.manage_api_gateway_account ? 1 : 0
+
+  role       = aws_iam_role.api_gateway_cloudwatch[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
 }

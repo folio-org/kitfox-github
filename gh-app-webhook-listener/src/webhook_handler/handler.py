@@ -60,8 +60,12 @@ def generate_signature(payload: str, secret: str) -> str:
 
 
 def get_webhook_secret() -> str:
-    """Retrieve webhook secret from AWS Secrets Manager."""
+    """Retrieve webhook secret from SSM Parameter Store or AWS Secrets Manager."""
     try:
+        parameter = os.environ.get('WEBHOOK_SECRET_SSM_PARAMETER')
+        if parameter:
+            response = boto3.client('ssm').get_parameter(Name=parameter, WithDecryption=True)
+            return response['Parameter']['Value']
         secrets_manager = boto3.client('secretsmanager')
         response = secrets_manager.get_secret_value(SecretId=os.environ['WEBHOOK_SECRET_ARN'])
         return response['SecretString']
