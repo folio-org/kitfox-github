@@ -135,6 +135,7 @@ dead-letter queue and notifies the `<app_name>-check-suite-dlq-alerts` SNS topic
 | `enable_route53`      | Enable Route 53 DNS record creation  | `true` or `false` | `false`  |
 | `route53_zone_name`   | Existing Route 53 hosted zone domain | `ci.folio.org`    | `""`     |
 | `route53_record_name` | DNS record name to create            | `eureka-ci`       | `""`     |
+| `acm_certificate_arn` | Existing ACM certificate for the custom domain; empty = look up `*.<zone>` | `arn:aws:acm:…` | `""` |
 
 When Route 53 is enabled, it will create a CNAME record in your existing hosted zone. For example:
 - Zone: `ci.folio.org`

@@ -16,6 +16,7 @@ lambda_memory  = 256
 enable_route53      = false         # Change to true to create a Route 53 DNS record
 route53_zone_name   = "example.com" # Your existing hosted zone domain
 route53_record_name = "webhooks"    # Will create webhooks.example.com
+# acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/..."  # default: look up *.<route53_zone_name>
 
 # Credentials in SSM Parameter Store instead of Secrets Manager (optional).
 # With a value (github_private_key_path above, github_webhook_secret) the stack writes the parameter;

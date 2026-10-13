@@ -168,6 +168,12 @@ variable "route53_record_name" {
   default     = ""
 }
 
+variable "acm_certificate_arn" {
+  description = "Optional ARN of an existing ACM certificate for the custom domain; used instead of looking up the ISSUED *.<route53_zone_name> certificate when set."
+  type        = string
+  default     = ""
+}
+
 # GitHub Events Configuration
 variable "github_events_config_file" {
   description = "Full path to the GitHub events configuration JSON file"

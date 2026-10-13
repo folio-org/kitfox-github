@@ -6,7 +6,7 @@ data "aws_route53_zone" "selected" {
 
 # Data source to find existing ACM certificate for the domain
 data "aws_acm_certificate" "existing" {
-  count  = var.enable_route53 ? 1 : 0
+  count  = var.enable_route53 && var.acm_certificate_arn == "" ? 1 : 0
   domain = "*.${var.route53_zone_name}"
 
   statuses = ["ISSUED"]
@@ -17,7 +17,7 @@ resource "aws_api_gateway_domain_name" "webhook_domain" {
   count = var.enable_route53 ? 1 : 0
 
   domain_name              = "${var.route53_record_name}.${var.route53_zone_name}"
-  regional_certificate_arn = data.aws_acm_certificate.existing[0].arn
+  regional_certificate_arn = var.acm_certificate_arn != "" ? var.acm_certificate_arn : data.aws_acm_certificate.existing[0].arn
 
   endpoint_configuration {
     types = ["REGIONAL"]
