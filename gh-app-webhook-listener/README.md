@@ -29,7 +29,7 @@ GitHub Event → Webhook → AWS Lambda → Trigger Workflow → GitHub Actions
   - Actions: Read & Write
   - Pull Requests: Read
   - Contents: Read
-- **Events**: the App must be subscribed to every event the mapping file uses. The shipped configuration uses `pull_request`, `push`, `check_suite`, `check_run` and `merge_group`. An unsubscribed event never reaches the listener, so its mappings silently never fire.
+- **Events**: the App must be subscribed to every event the mapping file uses. The shipped configuration uses `pull_request`, `push`, `check_suite`, `check_run` and `merge_group`; `workflow_run` mappings need the Workflow run event. An unsubscribed event never reaches the listener, so its mappings silently never fire.
 
 ### 3. Workflow Orchestration
 The app triggers workflows in your specified repository to handle all business logic and update check run status.
@@ -268,15 +268,18 @@ The sample above is illustrative. The deployed file carries more mappings than s
 
 | Field | Description |
 |-------|-------------|
-| `owner` | fnmatch pattern against the repository owner |
-| `repository` | fnmatch pattern against the repository name — a **single string**, not a list, so each repository family needs its own entry in the array |
+| `owner` | fnmatch pattern, or list of patterns, against the repository owner |
+| `repository` | fnmatch pattern, or list of patterns, against the repository name |
 | `branches` | `"*"`, a single pattern, a list of patterns, or `{"base": [...], "head": [...]}`. Matched against the base branch for `pull_request`, the pushed ref for `push` |
 | `file_patterns` | `push` only: dispatch only when a changed path matches. Omit to match any push |
+| `conclusions` | `workflow_run` only: run conclusions to dispatch on (`success`, `failure`, ...). Omit to match any |
+| `workflow_paths` | `workflow_run` only: fnmatch patterns against the run's workflow file. Omit to match any |
 | `workflows` | Workflows to dispatch. Every entry is dispatched inside a single try block, so a rejected dispatch fails the whole record — keep only workflows that accept the inputs given |
 
 Input values support these placeholders: `{owner}`, `{repository}`, `{head_sha}`, `{head_branch}`,
 `{base_branch}`, `{base_sha}`, `{pr_number}`, `{merged}`, `{is_merge_group}`, `{event_id}`,
-`{check_suite_id}`. Every key passed must be a declared `workflow_dispatch` input on the target workflow at
+`{check_suite_id}`, and for `workflow_run` events `{run_id}`, `{conclusion}`, `{workflow_path}` and `{run_event}`.
+Every key passed must be a declared `workflow_dispatch` input on the target workflow at
 the configured `ref`; an undeclared key makes GitHub reject the dispatch with `422 Unexpected inputs
 provided`, and the message ends up in the DLQ after three retries.
 
@@ -316,19 +319,45 @@ provided`, and the message ends up in the DLQ after three retries.
 `commits`. A push carrying an empty `commits` array, such as a force-push or a branch creation, matches
 nothing and does not dispatch.
 
+#### workflow_run mappings
+
+`branches` is matched against the run's head branch.
+
+```json
+{
+  "event_type": "workflow_run",
+  "actions": ["completed"],
+  "repository_patterns": [
+    {
+      "owner": "folio-org",
+      "repository": ["mod-*", "edge-*"],
+      "branches": "*",
+      "conclusions": ["success"],
+      "workflow_paths": [".github/workflows/build.yml"],
+      "workflows": [
+        {
+          "owner": "folio-org",
+          "repository": "kitfox-github",
+          "workflow_file": "after-module-build.yml",
+          "ref": "master",
+          "inputs": {
+            "source_repository": "{repository}",
+            "run_id": "{run_id}",
+            "head_sha": "{head_sha}"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
 ### Keeping the two config files in sync
 
 `terraform/environments/github_events_config.json` is the deployed file; `config/github_events_config.example.json`
 is its committed example. They are not generated from one another — edit both. The listener reads the
 deployed file from S3 on every invocation with no caching, so `terraform apply` is enough to roll out a
 mapping change; no Lambda redeploy is required.
-
-## Development
-
-### Local Testing
-```bash
-python tests/test_local.py
-```
 
 ### Lambda Packaging
 
