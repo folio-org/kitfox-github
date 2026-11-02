@@ -48,6 +48,11 @@ class NormalizedEvent:
     event_id: str = ""
     check_suite_id: str = ""
 
+    run_id: str = ""
+    conclusion: str = ""
+    workflow_path: str = ""
+    run_event: str = ""
+
     changed_files: Optional[List[str]] = None
 
 
@@ -80,6 +85,11 @@ def _match(value: str, pattern: str) -> bool:
 
 def _any_match(value: str, patterns: Iterable[str]) -> bool:
     return any(_match(value, p) for p in patterns)
+
+def _match_pattern(value: str, pattern: Any) -> bool:
+    if isinstance(pattern, list):
+        return _any_match(value, pattern)
+    return _match(value, pattern)
 
 def _substitute(value: Any, variables: Dict[str, str]) -> Any:
     if isinstance(value, str):
@@ -215,12 +225,38 @@ def _normalize_check(
     )
 
 
+def _normalize_workflow_run(
+        event_type: str,
+        action: str,
+        delivery_id: str,
+        repo: RepoInfo,
+        payload: Dict[str, Any],
+) -> NormalizedEvent:
+    run = payload.get("workflow_run", {}) or {}
+    run_id = str(run.get("id", "") or "")
+
+    return NormalizedEvent(
+        event_type=event_type,
+        action=action,
+        delivery_id=delivery_id,
+        repo=repo,
+        head_branch=run.get("head_branch", "") or "",
+        head_sha=run.get("head_sha", "") or "",
+        event_id=run_id,
+        run_id=run_id,
+        conclusion=run.get("conclusion", "") or "",
+        workflow_path=run.get("path", "") or "",
+        run_event=run.get("event", "") or "",
+    )
+
+
 _EVENT_NORMALIZERS: Dict[str, Callable[[str, str, str, RepoInfo, Dict[str, Any]], NormalizedEvent]] = {
     "push": _normalize_push,
     "merge_group": _normalize_merge_group,
     "pull_request": _normalize_pull_request,
     "check_suite": _normalize_check,
     "check_run": _normalize_check,
+    "workflow_run": _normalize_workflow_run,
 }
 
 
@@ -318,9 +354,9 @@ def find_matching_workflows(ev: NormalizedEvent, config: Dict[str, Any]) -> List
             continue
 
         for repo_pattern in mapping.get("repository_patterns", []):
-            if not _match(ev.repo.owner, repo_pattern.get("owner", "*")):
+            if not _match_pattern(ev.repo.owner, repo_pattern.get("owner", "*")):
                 continue
-            if not _match(ev.repo.name, repo_pattern.get("repository", "*")):
+            if not _match_pattern(ev.repo.name, repo_pattern.get("repository", "*")):
                 continue
 
             if not branch_matches_for_mapping(ev, repo_pattern.get("branches", "*")):
@@ -329,6 +365,14 @@ def find_matching_workflows(ev: NormalizedEvent, config: Dict[str, Any]) -> List
             if ev.event_type == "push" and ev.changed_files is not None:
                 if not matches_file_patterns(ev.changed_files, repo_pattern.get("file_patterns", [])):
                     continue
+
+            conclusions = repo_pattern.get("conclusions")
+            if conclusions and ev.conclusion not in conclusions:
+                continue
+
+            workflow_paths = repo_pattern.get("workflow_paths")
+            if workflow_paths and not _any_match(ev.workflow_path, workflow_paths):
+                continue
 
             workflows.extend(repo_pattern.get("workflows", []))
 
@@ -386,6 +430,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "is_merge_group": ev.is_merge_group,
                 "event_id": ev.event_id,
                 "check_suite_id": ev.check_suite_id,
+                "run_id": ev.run_id,
+                "conclusion": ev.conclusion,
+                "workflow_path": ev.workflow_path,
+                "run_event": ev.run_event,
             }
 
             for wf in workflows:
