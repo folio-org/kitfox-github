@@ -37,6 +37,9 @@ outputs:
   branch_config:
     description: 'JSON array of branch descriptors'
     value: ${{ steps.parse.outputs.branch_config }}
+  ruleset:
+    description: 'JSON object of the global ruleset config (defaults merged with update_config.ruleset)'
+    value: ${{ steps.parse.outputs.ruleset }}
   config_exists:
     description: 'Whether configuration file exists'
     value: ${{ steps.check.outputs.exists }}
@@ -114,6 +117,7 @@ runs:
             echo "reviewers="
             echo "labels="
             echo "branch_config=[]"
+            echo "ruleset=$(echo "$RULESET_DEFAULTS" | jq -c .)"
           } >> "$GITHUB_OUTPUT"
           exit 0
         fi
@@ -239,6 +243,7 @@ runs:
           echo "reviewers=$PR_REVIEWERS"
           echo "labels=$PR_LABELS"
           echo "branch_config=$(echo "$BRANCH_CONFIG" | jq -c .)"
+          echo "ruleset=$(echo "$RULESET_CONFIG" | jq -c .)"
         } >> "$GITHUB_OUTPUT"
 
         echo "::notice::Configuration parsed:"
