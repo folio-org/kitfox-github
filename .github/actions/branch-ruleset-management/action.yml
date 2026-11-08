@@ -89,18 +89,6 @@ runs:
           console.log(`Ruleset name: ${rulesetName}`);
           console.log(`Default integration ID: ${defaultIntegrationId}`);
 
-          try {
-            await github.rest.repos.getBranch({ owner, repo, branch });
-          } catch (error) {
-            if (error.status === 404) {
-              console.log(`Branch ${branch} does not exist`);
-              core.setOutput('outcome', 'skipped');
-              core.setOutput('message', `Branch ${branch} does not exist`);
-              return;
-            }
-            throw error;
-          }
-
           const resolvedChecks = requiredChecks.map(check => ({
             ...check,
             integration_id: check.integration_id ?? defaultIntegrationId
@@ -182,6 +170,18 @@ runs:
               core.setFailed(`Failed to disable ruleset: ${error.message}`);
             }
             return;
+          }
+
+          try {
+            await github.rest.repos.getBranch({ owner, repo, branch });
+          } catch (error) {
+            if (error.status === 404) {
+              console.log(`Branch ${branch} does not exist`);
+              core.setOutput('outcome', 'skipped');
+              core.setOutput('message', `Branch ${branch} does not exist`);
+              return;
+            }
+            throw error;
           }
 
           const fullRulesetConfig = {
