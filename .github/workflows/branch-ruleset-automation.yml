@@ -30,6 +30,7 @@ jobs:
     outputs:
       matrix: ${{ steps.build-matrix.outputs.matrix }}
       has_branches: ${{ steps.build-matrix.outputs.has_branches }}
+      disabled_count: ${{ steps.build-matrix.outputs.disabled_count }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -51,6 +52,10 @@ jobs:
         id: build-matrix
         env:
           BRANCH_CONFIG: ${{ steps.get-config.outputs.branch_config }}
+          RULESET_GLOBAL: ${{ steps.get-config.outputs.ruleset }}
+          ENABLED_BRANCHES: ${{ steps.get-config.outputs.enabled_branches }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ inputs.repo_owner }}/${{ inputs.repo_name }}
         run: |
           set -eo pipefail
 
@@ -75,6 +80,47 @@ jobs:
             MATRIX_ENTRIES=$(echo "$MATRIX_ENTRIES" | jq -c --argjson entry "$entry" '. += [$entry]')
             echo "::notice::Prepared matrix entry for branch: $branch (enforcement: $enforcement)"
           done < <(echo "$BRANCH_CONFIG" | jq -c '.[]')
+
+          DISABLED_COUNT=0
+          PATTERN=$(echo "$RULESET_GLOBAL" | jq -r '.pattern // ""')
+          if [[ "$PATTERN" != *"{0}"* ]]; then
+            echo "::warning::Ruleset pattern '$PATTERN' has no {0} placeholder; rulesets of dropped branches are not checked"
+          elif [[ -z "$ENABLED_BRANCHES" ]]; then
+            echo "::warning::No enabled branch list from the configuration; rulesets of dropped branches are not checked"
+          else
+            if ! RULESETS=$(gh api --paginate "repos/$REPO/rulesets?includes_parents=false&per_page=100" | jq -s -c 'add // []'); then
+              echo "::error::Could not list rulesets of $REPO. Failing so the run can be retried."
+              exit 1
+            fi
+
+            STALE=$(jq -n -c \
+              --arg pattern "$PATTERN" \
+              --argjson rulesets "$RULESETS" \
+              --argjson enabled_branches "$ENABLED_BRANCHES" '
+                ($pattern | index("{0}")) as $i
+                | $pattern[:$i] as $prefix
+                | $pattern[$i + 3:] as $suffix
+                | [$rulesets[]
+                    | select(.target == "branch" and .enforcement != "disabled")
+                    | select(.name | length > ($prefix | length) + ($suffix | length))
+                    | select(.name | startswith($prefix) and endswith($suffix))
+                    | {name, branch: .name[($prefix | length):(.name | length) - ($suffix | length)]}
+                    | select(.branch | IN($enabled_branches[]) | not)]
+              ')
+
+            while IFS= read -r stale; do
+              name=$(echo "$stale" | jq -r '.name')
+              branch=$(echo "$stale" | jq -r '.branch')
+              entry=$(jq -n \
+                --arg branch "$branch" \
+                --argjson ruleset "$RULESET_GLOBAL" \
+                '{branch: $branch, enforcement: "disabled", ruleset: $ruleset}')
+              MATRIX_ENTRIES=$(echo "$MATRIX_ENTRIES" | jq -c --argjson entry "$entry" '. += [$entry]')
+              ((++DISABLED_COUNT))
+              echo "::notice::Ruleset $name: branch $branch is not an enabled entry of the configuration, disabling"
+            done < <(echo "$STALE" | jq -c '.[]')
+          fi
+          echo "disabled_count=$DISABLED_COUNT" >> "$GITHUB_OUTPUT"
 
           BRANCH_COUNT=$(echo "$MATRIX_ENTRIES" | jq 'length')
           echo "::notice::Matrix contains $BRANCH_COUNT branches"
@@ -120,6 +166,7 @@ jobs:
           MATRIX_RESULT: ${{ needs.update-rulesets.result }}
           PREPARE_RESULT: ${{ needs.prepare.result }}
           HAS_BRANCHES: ${{ needs.prepare.outputs.has_branches }}
+          DISABLED_COUNT: ${{ needs.prepare.outputs.disabled_count }}
         run: |
           {
             echo "### Branch Ruleset Automation Summary"
@@ -140,7 +187,11 @@ jobs:
                   echo "**Status:** $MATRIX_RESULT"
                 fi
               else
-                echo "**Status:** No branches required ruleset updates"
+                echo "**Status:** No rulesets required updates"
+              fi
+              if [[ "${DISABLED_COUNT:-0}" -gt 0 ]]; then
+                echo ""
+                echo "**Rulesets of dropped branches to disable:** $DISABLED_COUNT"
               fi
             else
               echo "**Status:** Preparation failed - $PREPARE_RESULT"
