@@ -67,6 +67,7 @@ A GitHub Action that reads and parses update configuration from an `update-confi
 | `branch_config` | JSON array of branch configuration objects with all branch-specific settings                     |
 | `config_exists` | Whether the configuration file exists in the repository (`true`/`false`)                          |
 | `ruleset`       | JSON object of the global ruleset config: built-in defaults deep-merged with `update_config.ruleset` |
+| `enabled_branches` | JSON array of branch names with `enabled: true`, whether or not they exist in the repository; `[]` when `update_config.enabled` is not `true` |
 
 ### `branch_config` Structure
 
@@ -225,7 +226,7 @@ branches:
     inherited one
 - Only existing and enabled branches will be included in outputs
 - Disabled or non-existent branches are logged as warnings and left out of `branch_config`.
-  `branch-ruleset-automation.yml` disables the ruleset of a branch that is not in `branch_config` when the
+  `branch-ruleset-automation.yml` disables the ruleset of a branch that is not in `enabled_branches` when the
   ruleset name matches the global `ruleset.pattern`
 
 ## Examples
@@ -354,6 +355,7 @@ When no configuration file exists or values are missing:
 - `pr_labels`: `""` (empty string)
 - `branch_config`: `[]` (empty array)
 - `ruleset`: the built-in ruleset defaults
+- `enabled_branches`: `[]` (empty array)
 
 ## Requirements
 

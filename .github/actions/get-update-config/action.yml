@@ -40,6 +40,9 @@ outputs:
   ruleset:
     description: 'JSON object of the global ruleset config (defaults merged with update_config.ruleset)'
     value: ${{ steps.parse.outputs.ruleset }}
+  enabled_branches:
+    description: 'JSON array of branches with enabled: true in the config, whether or not they exist in the repository'
+    value: ${{ steps.parse.outputs.enabled_branches }}
   config_exists:
     description: 'Whether configuration file exists'
     value: ${{ steps.check.outputs.exists }}
@@ -118,6 +121,7 @@ runs:
             echo "labels="
             echo "branch_config=[]"
             echo "ruleset=$(echo "$RULESET_DEFAULTS" | jq -c .)"
+            echo "enabled_branches=[]"
           } >> "$GITHUB_OUTPUT"
           exit 0
         fi
@@ -153,6 +157,7 @@ runs:
           echo "$BRANCH_OBJECTS" | jq -r 'map(keys[0]) | unique[]'
         )
         BRANCH_CONFIG="[]"
+        ENABLED_BRANCHES="[]"
 
         if [[ "$ENABLED" == "true" && -n "$FORMAT" && ${#BRANCHES[@]} -gt 0 ]]; then
           for branch in "${BRANCHES[@]}"; do
@@ -187,6 +192,7 @@ runs:
               continue
             fi
 
+            ENABLED_BRANCHES=$(echo "$ENABLED_BRANCHES" | jq -c --arg branch "$branch" '. += [$branch]')
             echo "::notice::Checking branch: $branch"
 
             set +e
@@ -244,6 +250,7 @@ runs:
           echo "labels=$PR_LABELS"
           echo "branch_config=$(echo "$BRANCH_CONFIG" | jq -c .)"
           echo "ruleset=$(echo "$RULESET_CONFIG" | jq -c .)"
+          echo "enabled_branches=$ENABLED_BRANCHES"
         } >> "$GITHUB_OUTPUT"
 
         echo "::notice::Configuration parsed:"
