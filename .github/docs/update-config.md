@@ -153,6 +153,8 @@ resolves each one to the `integration_id` input, which the flow supplies from `v
 
 Rulesets are **opt-in** — no rulesets are created unless explicitly enabled. Setting `ruleset.enabled: false` will disable any existing ruleset (set enforcement to `disabled`). If no ruleset exists, the branch is skipped.
 
+A ruleset whose name matches the global `ruleset.pattern` is also disabled when its branch is no longer an enabled entry: the branch has `enabled: false`, is removed from `branches`, or `update_config.enabled` is `false` or the file is missing. Rulesets are never deleted, and rulesets with other names are not touched. See [branch-ruleset-automation.md](branch-ruleset-automation.md#enforcement-behavior).
+
 To enable rulesets for a branch, set `ruleset.enabled: true` either globally or per branch:
 
 ```yaml

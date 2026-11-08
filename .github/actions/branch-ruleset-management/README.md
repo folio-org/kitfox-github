@@ -121,6 +121,7 @@ The action handles internally:
 1. **Ruleset name** - Computed from pattern + branch (`{0}` → branch name)
 2. **Integration ID resolution** - Replaces `null` values with the default
 3. **Rules array construction** - Builds `required_status_checks` and `merge_queue` rules
-4. **Branch existence check** - Skips if branch doesn't exist
-5. **Enforcement handling** - Disables existing ruleset when `enforcement: disabled`, skips if no ruleset exists
+4. **Enforcement handling** - Disables existing ruleset when `enforcement: disabled`, skips if no ruleset exists.
+   The branch does not have to exist
+5. **Branch existence check** - Skips create/update if branch doesn't exist
 6. **Create/update logic** - Creates new or updates existing active ruleset

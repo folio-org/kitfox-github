@@ -10,12 +10,13 @@ This workflow automatically configures GitHub branch rulesets from a repository'
 
 It serves every `folio-org/app-*` repository and `folio-org/platform-lsp`. It is repository-agnostic: everything specific to a repository comes from that repository's `update-config.yml`.
 
-It runs over every enabled branch, not only release branches — a branch may appear in the matrix in order to have its ruleset *disabled*.
+It runs over every enabled branch, not only release branches — a branch may appear in the matrix in order to have its ruleset *disabled*. It also disables the rulesets it owns whose branch is no longer an enabled entry of the configuration.
 
 Features:
 1. **Configurable ruleset parameters** via `update-config.yml`
 2. **Matrix-based execution** - one flow job per branch for parallel processing
-3. **Enforcement control** - `enabled: true` activates rulesets, `enabled: false` disables existing ones
+3. **Enforcement control** - `enabled: true` activates rulesets, `enabled: false` disables existing ones, and
+   rulesets of branches dropped from the configuration are disabled
 4. **Per-branch notifications** - each branch gets its own Slack notification and summary
 5. **Configurable merge queue** settings per branch
 
@@ -60,12 +61,15 @@ Reads configuration and builds a matrix of branches to process.
 **Steps**:
 1. Generate GitHub App Token
 2. Get Update Configuration (including ruleset config)
-3. Check Configuration - validates config exists, is enabled, and has branches
-4. Build Matrix - creates one entry per branch with resolved ruleset config
+3. Build Matrix - creates one entry per enabled branch with resolved ruleset config, then lists the repository
+   rulesets and adds a `disabled` entry for each ruleset of a dropped branch (see
+   [Enforcement Behavior](#enforcement-behavior)). A failed ruleset listing fails the job, so the run can be
+   retried
 
 **Outputs**:
 - `matrix`: JSON matrix for parallel job execution (includes `enforcement` per branch)
 - `has_branches`: Whether any branches need processing
+- `disabled_count`: Number of rulesets of dropped branches added to the matrix
 
 ### 2. Update Rulesets (Matrix)
 **Job**: `update-rulesets`
@@ -76,7 +80,8 @@ Calls `branch-ruleset-automation-flow.yml` for each branch using matrix strategy
 - `fail-fast: false` - continue processing other branches if one fails
 - `max-parallel: 5` - limit concurrent jobs
 
-Each matrix entry includes `enforcement: active` or `enforcement: disabled` based on `ruleset.enabled` in config.
+Each matrix entry includes `enforcement: active` or `enforcement: disabled`: from `ruleset.enabled` for an
+enabled branch, always `disabled` for a dropped branch.
 
 ### 3. Per-Branch Flow (`branch-ruleset-automation-flow.yml`)
 
@@ -165,6 +170,25 @@ The `ruleset.enabled` setting maps to ruleset enforcement:
 | `false`            | No              | Skips (nothing to disable)           |
 | `false`            | Yes             | Sets enforcement to `disabled`       |
 
+### Rulesets of Dropped Branches
+
+A ruleset is owned by the automation when its name matches the global `ruleset.pattern` (`{0}-eureka-ci` by
+default; the part in place of `{0}` is the branch). An owned ruleset with enforcement other than `disabled` is
+set to `disabled` when its branch is not an `enabled: true` entry of the configuration:
+
+| Configuration                                        | Owned rulesets disabled               |
+|------------------------------------------------------|---------------------------------------|
+| Branch has `enabled: false`                          | That branch's ruleset                 |
+| Branch removed from `branches`                       | That branch's ruleset                 |
+| `update_config.enabled: false`                       | All of them                           |
+| `update-config.yml` missing (HTTP 404)               | All of them (default pattern)         |
+
+- Rulesets are never deleted. Enabling the branch again makes its ruleset active again on the next run.
+- A branch with `enabled: true` that does not exist in the repository yet keeps its ruleset as it is.
+- Rulesets whose name does not match the pattern (for example a protection ruleset on `master`) and rulesets
+  that are already disabled are not touched.
+- A global `pattern` without `{0}` disables nothing; the run logs a warning.
+
 ## Usage Examples
 
 ### Manual Trigger
@@ -232,8 +256,8 @@ Two constraints are easy to miss:
 2. Check `enabled: true` in config
 3. Verify `ruleset.enabled: true` for the branch, globally or per branch
 4. Confirm branches actually exist in repository
-5. A branch whose own `enabled` is not `true` is skipped before the ruleset is resolved, so its existing
-   ruleset is left untouched rather than disabled
+5. A branch whose own `enabled` is not `true` gets no ruleset; its existing ruleset is disabled (see
+   [Rulesets of Dropped Branches](#rulesets-of-dropped-branches))
 
 **Required Check Never Satisfied** (PR stuck on "Expected — waiting for status to be reported"):
 The `required_checks` context must match the published check run by name **and** by publishing app.
@@ -270,6 +294,6 @@ gh api repos/folio-org/app-acquisitions/contents/.github/update-config.yml \
 
 ---
 
-**Last Updated**: September 2026
-**Workflow Version**: 2.1
+**Last Updated**: November 2026
+**Workflow Version**: 2.2
 **Compatibility**: Requires repository admin permissions and EUREKA_CI_APP_ID variable
