@@ -148,6 +148,26 @@
               }
             }
           ]
+        },
+        {
+          "owner": "folio-org",
+          "repository": "platform-lsp",
+          "branches": "*",
+          "workflows": [
+            {
+              "owner": "{owner}",
+              "repository": "{repository}",
+              "workflow_file": "merge-queue-check.yml",
+              "ref": "master",
+              "inputs": {
+                "repo_owner": "{owner}",
+                "repo_name": "{repository}",
+                "head_sha": "{head_sha}",
+                "base_branch": "{base_branch}",
+                "head_branch": "{head_branch}"
+              }
+            }
+          ]
         }
       ]
     },
