@@ -31,6 +31,7 @@ This is a generic, reusable workflow that handles Git operations for committing 
 | `use_github_app` | Use GitHub App for authentication                    | No       | boolean | `false`      |
 | `source_branch`  | Source branch to checkout from (for branch creation) | No       | string  | `''`         |
 | `deleted_files`  | Files to delete before commit (multiline list)       | No       | string  | `''`         |
+| `skip_on_merge_queue_lock` | Finish without failing when the branch is locked by a merge queue | No | boolean | `false` |
 
 ### Outputs
 
@@ -40,6 +41,7 @@ This is a generic, reusable workflow that handles Git operations for committing 
 | `branch_created`  | Whether a new branch was created    |
 | `changes_made`    | Whether any changes were committed  |
 | `failure_reason`  | Reason for failure if any           |
+| `merge_queue_locked` | Whether the push was skipped because of a merge-queue lock (`true`/`false`) |
 
 ### Secrets
 
@@ -104,6 +106,10 @@ This is a generic, reusable workflow that handles Git operations for committing 
 - **If dry-run**: Skips push, local commit only
 - Handles both new and existing branches
 - Provides clear error messages on failure
+- **Merge-queue lock**: GitHub rejects pushes to the head branch of a pull request that is in a merge queue.
+  With `skip_on_merge_queue_lock: true` that rejection ends the job successfully with a warning and
+  `merge_queue_locked=true`, so a caller that pushes on a schedule can report a skip instead of a failure.
+  Without it the rejection fails the job like any other push error
 
 ## 🔀 Branch Management Strategies
 

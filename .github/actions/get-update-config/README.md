@@ -98,6 +98,13 @@ The `branch_config` output provides a JSON array of objects, each containing:
         "min_entries_to_merge_wait_minutes": 5
       },
       "bypass_actors": [{"actor_id": null, "actor_type": "Integration", "bypass_mode": "always"}]
+    },
+    "deployment": {
+      "enabled": true,
+      "jenkins_job": "folioScheduledProvisioning/createDailySnapshotEureka",
+      "ref_parameter": "PLATFORM_BRANCH",
+      "poll_interval_seconds": 60,
+      "timeout_minutes": 280
     }
   },
   {
@@ -123,6 +130,13 @@ The `branch_config` output provides a JSON array of objects, each containing:
         "min_entries_to_merge_wait_minutes": 5
       },
       "bypass_actors": [{"actor_id": null, "actor_type": "Integration", "bypass_mode": "always"}]
+    },
+    "deployment": {
+      "enabled": false,
+      "jenkins_job": null,
+      "ref_parameter": null,
+      "poll_interval_seconds": 60,
+      "timeout_minutes": 280
     }
   }
 ]
@@ -136,6 +150,9 @@ The `snapshot` entry above illustrates the two independent switches. `ruleset.en
 ruleset is applied to the branch, while the `merge_queue` block is fully resolved regardless — it carries
 per-branch overrides (`check_response_timeout_minutes`, `max_entries_to_build`, `max_entries_to_merge`)
 merged over the global block, ready for the day the branch is switched on.
+
+The `deployment` object is always fully resolved as well. A branch without a `deployment` block gets
+`enabled: false` with `null` for `jenkins_job` and `ref_parameter`.
 
 ## Configuration File Format
 
@@ -224,6 +241,13 @@ branches:
     built-in defaults, then `update_config.ruleset`, then this block. Objects merge key by key; **arrays
     (`required_checks`, `bypass_actors`) are replaced wholesale**, so a branch-level list discards the
     inherited one
+  - **`deployment`**: Deployment gate run by a platform repository's merge-group check. Declared per branch
+    only, with no global layer: built-in defaults, then this block
+    - **`enabled`**: Run the deployment on the branch's merge groups (default: `false`)
+    - **`jenkins_job`**: Jenkins job path, folders separated by `/` (no default; required when `enabled`)
+    - **`ref_parameter`**: Job parameter that receives the merge-queue ref (no default; required when `enabled`)
+    - **`poll_interval_seconds`**: Interval between Jenkins status polls (default: `60`)
+    - **`timeout_minutes`**: How long to wait for the build before failing the check (default: `280`)
 - Only existing and enabled branches will be included in outputs
 - Disabled or non-existent branches are logged as warnings and left out of `branch_config`.
   `branch-ruleset-automation.yml` disables the ruleset of a branch that is not in `enabled_branches` when the

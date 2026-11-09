@@ -1,0 +1,62 @@
+name: 'Trigger Jenkins Job'
+
+description: 'Trigger a parameterized Jenkins job, wait for the build to finish and report its result'
+
+inputs:
+  jenkins_url:
+    description: 'Jenkins base URL (e.g. https://jenkins.example.org)'
+    required: true
+  jenkins_user:
+    description: 'Jenkins user the API token belongs to'
+    required: true
+  jenkins_token:
+    description: 'Jenkins API token'
+    required: true
+  job:
+    description: 'Job path, folders separated by "/" (e.g. folder/sub-folder/job-name)'
+    required: true
+  parameters:
+    description: 'JSON object of build parameters (e.g. {"PLATFORM_BRANCH": "snapshot"})'
+    required: false
+    default: '{}'
+  poll_interval_seconds:
+    description: 'Interval between status polls'
+    required: false
+    default: '60'
+  timeout_minutes:
+    description: 'Minutes to wait for the build, Jenkins queue time included; the build is stopped when exceeded'
+    required: false
+    default: '280'
+
+outputs:
+  result:
+    description: 'success or failure'
+    value: ${{ steps.run.outputs.result }}
+  build_url:
+    description: 'URL of the Jenkins build, empty if it never left the queue'
+    value: ${{ steps.run.outputs.build_url }}
+  build_number:
+    description: 'Jenkins build number, empty if it never left the queue'
+    value: ${{ steps.run.outputs.build_number }}
+  jenkins_result:
+    description: 'Jenkins build result (SUCCESS, FAILURE, ABORTED, UNSTABLE, ...), empty if the build did not finish'
+    value: ${{ steps.run.outputs.jenkins_result }}
+  failure_reason:
+    description: 'Why the action failed, empty on success'
+    value: ${{ steps.run.outputs.failure_reason }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Trigger and Wait for Jenkins Build
+      id: run
+      shell: bash
+      env:
+        JENKINS_URL: ${{ inputs.jenkins_url }}
+        JENKINS_USER: ${{ inputs.jenkins_user }}
+        JENKINS_TOKEN: ${{ inputs.jenkins_token }}
+        JOB: ${{ inputs.job }}
+        PARAMETERS: ${{ inputs.parameters }}
+        POLL_INTERVAL_SECONDS: ${{ inputs.poll_interval_seconds }}
+        TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/trigger-and-wait.sh"

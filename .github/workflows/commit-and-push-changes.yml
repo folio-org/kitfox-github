@@ -40,6 +40,11 @@ on:
         required: false
         type: string
         default: ''
+      skip_on_merge_queue_lock:
+        description: 'Finish without failing when the push is rejected because the branch belongs to a queued pull request'
+        required: false
+        type: boolean
+        default: false
 
     outputs:
       commit_sha:
@@ -54,6 +59,9 @@ on:
       failure_reason:
         description: 'Reason for failure if any'
         value: ${{ jobs.commit-and-push.outputs.failure_reason }}
+      merge_queue_locked:
+        description: 'Whether the push was skipped because the branch is locked by a merge queue (true/false)'
+        value: ${{ jobs.commit-and-push.outputs.merge_queue_locked }}
 
 permissions:
   contents: write
@@ -68,6 +76,7 @@ jobs:
       changes_made: ${{ steps.commit.outputs.changes_made || 'false' }}
       failure_reason: ${{ steps.commit.outputs.failure_reason ||
         steps.push.outputs.failure_reason || ''}}
+      merge_queue_locked: ${{ steps.push.outputs.merge_queue_locked || 'false' }}
     steps:
       - name: Extract Owner and Repository Name
         id: extract-repo-parts
@@ -210,11 +219,18 @@ jobs:
         if: inputs.dry_run == false
         env:
           BRANCH_NAME: ${{ inputs.branch }}
+          SKIP_ON_MERGE_QUEUE_LOCK: ${{ inputs.skip_on_merge_queue_lock }}
         run: |
           set -eo pipefail
 
           echo "::notice::Pushing changes to branch '$BRANCH_NAME'"
           if ! output=$(git push -u origin "$BRANCH_NAME" 2>&1); then
+            if [[ "$SKIP_ON_MERGE_QUEUE_LOCK" == "true" ]] && grep -qiE 'merge queue|queued for merging' <<< "$output"; then
+              echo "::warning::Push to '$BRANCH_NAME' skipped: its pull request is in a merge queue and the branch is locked until the entry clears"
+              echo "$output"
+              echo "merge_queue_locked=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "::error::Failed to push changes to '$BRANCH_NAME'"
             echo "::error::$output"
             echo "failure_reason=Failed to push changes" >> "$GITHUB_OUTPUT"
