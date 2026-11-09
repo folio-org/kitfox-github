@@ -61,8 +61,18 @@ echo "::notice::Triggering $JOB with parameters $(jq -c . <<< "$PARAMETERS")"
 HEADERS=$(mktemp)
 BODY=$(mktemp)
 trap 'rm -f "$HEADERS" "$BODY" "$BODY.err"' EXIT
-if ! response=$(jenkins -X POST -D "$HEADERS" -o /dev/null --data "$FORM" "$JOB_URL/buildWithParameters" 2>&1); then
-  fail "Could not trigger $JOB: $response"
+# Jenkins explains a rejected request in an HTML page; keep the part that names the cause.
+jenkins_reason() {
+  [[ -s "$BODY" ]] || return 0
+  local reason
+  reason=$(grep -oiE "is missing the [A-Za-z/]+ permission|No valid crumb was included in the request" "$BODY" | head -n 1)
+  [[ -n "$reason" ]] || reason=$(grep -oiE "<title>[^<]*</title>" "$BODY" | sed 's/<[^>]*>//g' | head -n 1)
+  [[ -n "$reason" ]] && printf ' (%s)' "$reason"
+  return 0
+}
+
+if ! response=$(jenkins -X POST -D "$HEADERS" -o "$BODY" --data "$FORM" "$JOB_URL/buildWithParameters" 2>&1); then
+  fail "Could not trigger $JOB: $response$(jenkins_reason)"
 fi
 
 QUEUE_URL=$(grep -i '^location:' "$HEADERS" | tail -n 1 | awk '{print $2}' | tr -d '\r')

@@ -48,7 +48,9 @@ The step fails whenever `result` is `failure`; the outputs written before the fa
 
 1. `POST {job}/buildWithParameters` with the parameters as form fields. Jenkins answers `201` with the queue
    item in the `Location` header. The trigger is sent once and never retried, so a slow response cannot
-   start a second build.
+   start a second build. When Jenkins rejects it, `failure_reason` carries the HTTP status and the cause from
+   the response page, such as `is missing the Job/Build permission` or `No valid crumb was included in the
+   request`.
 2. The queue item is polled until Jenkins assigns a build. A job with concurrent builds disabled may wait
    here behind a running build; that time counts against `timeout_minutes`. A queue item cancelled in
    Jenkins fails the action.
