@@ -60,6 +60,7 @@ branches:
       name: string
       description: string
       ruleset: object  # Per-branch ruleset overrides
+      deployment: object  # Merge-group deployment gate (platform repositories)
 ```
 
 | Field                     | Type    | Required | Default | Description                                      |
@@ -77,6 +78,7 @@ branches:
 | `name`                    | string  | No       | `""`    | Human-readable branch name (platform repositories) |
 | `description`             | string  | No       | `""`    | Human-readable branch description (platform repositories) |
 | `ruleset`                 | object  | No       | -       | Branch-specific ruleset configuration overrides  |
+| `deployment`              | object  | No       | `enabled: false` | Deployment gate for the branch's merge groups, see [Deployment Configuration](#deployment-configuration) |
 
 ## Ruleset Configuration
 
@@ -192,6 +194,48 @@ The two safe shapes are:
 Flipping a branch from one to the other means changing both keys in the same commit. `need_pr: true` without
 a ruleset leaves the update PR with nothing to merge it; a ruleset without `need_pr: true` blocks the direct
 commit.
+
+## Deployment Configuration
+
+The `deployment` block makes a deployment part of a branch's merge-queue check. It is read by the merge-group
+workflow of a platform repository: when `enabled` is true, that workflow triggers the configured Jenkins job
+with the merge-queue ref and folds the build result into the same required check. Application repositories do
+not read it.
+
+Unlike `ruleset`, it is declared **per branch only**. A deployment job is meaningful for one branch, so there
+is no global layer:
+
+```
+DEPLOYMENT_DEFAULTS  ->  branches[].deployment
+```
+
+| Field                   | Type    | Required             | Default | Description                                                    |
+|-------------------------|---------|----------------------|---------|----------------------------------------------------------------|
+| `enabled`               | boolean | No                   | `false` | Run the deployment on the branch's merge groups                |
+| `jenkins_job`           | string  | When `enabled: true` | `null`  | Jenkins job path, folders separated by `/`                     |
+| `ref_parameter`         | string  | When `enabled: true` | `null`  | Job parameter that receives the merge-queue ref                |
+| `poll_interval_seconds` | integer | No                   | `60`    | Interval between Jenkins status polls                          |
+| `timeout_minutes`       | integer | No                   | `280`   | How long to wait for the build before failing the check        |
+
+`timeout_minutes` must leave room under the ruleset's `merge_queue.check_response_timeout_minutes`, so the
+check reports a real conclusion before GitHub times the queue entry out. The workflow adds 10 minutes for its
+own job timeout and rejects a configuration where that sum is not below the queue timeout.
+
+```yaml
+branches:
+  - snapshot:
+      enabled: true
+      need_pr: true
+      deployment:
+        enabled: true
+        jenkins_job: "folioScheduledProvisioning/createDailySnapshotEureka"
+        ref_parameter: "PLATFORM_BRANCH"
+        timeout_minutes: 280                    # job timeout 290, queue timeout 300
+      ruleset:
+        enabled: true
+        merge_queue:
+          check_response_timeout_minutes: 300
+```
 
 ## Example Configurations
 
