@@ -74,7 +74,7 @@ Fetches `platform-descriptor.json` from `platform-lsp` repository:
 
 ### 5. Update Check Run - Validating
 
-Updates check run status to indicate validation in progress.
+Updates check run status to indicate validation in progress. The step is informational: a failure here does not stop the validation.
 
 ### 6. Validate Application
 
@@ -88,9 +88,12 @@ Uses the `validate-application` action:
 Updates check run with final results:
 
 **Conclusion States**:
-- `success`: All validations passed
-- `failure`: Descriptor missing, fetch error, protected violation, or validation failed
-- `neutral`: Checks couldn't complete (rare)
+- `success`: All validations passed, or no descriptor in the commit (non-update commit)
+- `failure`: Fetch error, protected violation, validation failed, or validation produced no result
+
+A required check accepts `neutral`, so the action never reports it: a validation that did not run fails the check.
+
+Both check run updates retry up to 5 times, 404 included, because GitHub can answer 404 for a check run in the first seconds after it is created.
 
 **Output Includes**:
 - Context information (PR or merge queue)
@@ -187,6 +190,14 @@ Conclusion: failure
 ```
 Title: Verification Failed
 Summary: <detailed failure reason from validate-application>
+Conclusion: failure
+```
+
+### Validation Produced No Result
+
+```
+Title: Verification Incomplete
+Summary: Application verification did not produce a result. Check the logs and re-run the check.
 Conclusion: failure
 ```
 
