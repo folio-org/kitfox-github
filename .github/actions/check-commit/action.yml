@@ -184,6 +184,7 @@ runs:
 
     - name: Update Check Run - Validating
       if: steps.check-descriptor.outputs.exists == 'true'
+      continue-on-error: true
       uses: actions/github-script@v7
       env:
         REPO_OWNER: ${{ inputs.repo_owner }}
@@ -191,6 +192,8 @@ runs:
         CHECK_RUN_ID: ${{ steps.create-check.outputs.check_run_id }}
       with:
         github-token: ${{ inputs.github_token }}
+        retries: 5
+        retry-exempt-status-codes: 400,401,403,422
         script: |
           await github.rest.checks.update({
             owner: process.env.REPO_OWNER,
@@ -240,6 +243,8 @@ runs:
         PROTECTED_VIOLATION_REASON: ${{ steps.check-protected.outputs.violations }}
       with:
         github-token: ${{ inputs.github_token }}
+        retries: 5
+        retry-exempt-status-codes: 400,401,403,422
         script: |
           const checkType = process.env.CHECK_TYPE;
           const prNumber = process.env.PR_NUMBER;
@@ -283,9 +288,9 @@ runs:
               ? 'Application verification completed successfully (dependency validation skipped - platform descriptor not found)'
               : 'Application verification completed successfully';
           } else {
-            conclusion = 'neutral';
-            title = 'Check Incomplete';
-            summary = 'Some checks could not be completed';
+            conclusion = 'failure';
+            title = 'Verification Incomplete';
+            summary = 'Application verification did not produce a result. Check the logs and re-run the check.';
           }
 
           const contextInfo = checkType === 'merge_queue'
@@ -337,7 +342,7 @@ runs:
             details_url: process.env.WORKFLOW_RUN_URL
           };
 
-          if (fetchError === 'true' || protectedViolation === 'true' || validationPassed === 'false') {
+          if (conclusion === 'failure') {
             updateParams.actions = [{
               label: 'Re-run Validation',
               description: 'Trigger a new validation check',
