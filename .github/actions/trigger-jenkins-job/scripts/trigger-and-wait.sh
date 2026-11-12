@@ -78,7 +78,23 @@ fi
 QUEUE_URL=$(grep -i '^location:' "$HEADERS" | tail -n 1 | awk '{print $2}' | tr -d '\r')
 [[ -n "$QUEUE_URL" ]] || fail "Jenkins accepted the trigger for $JOB but returned no queue location"
 QUEUE_URL="${QUEUE_URL%/}/"
+QUEUE_ID=$(basename "$QUEUE_URL")
 echo "Queued: $QUEUE_URL"
+
+# Jenkins serves a queue item that has already become a build only from memory, so a restart loses it.
+# The build records the queue id it came from, which is how it is found then.
+find_build_by_queue_id() {
+  [[ "$QUEUE_ID" =~ ^[0-9]+$ ]] || return 1
+  local builds number
+  builds=$(jenkins -g "$JOB_URL/api/json?tree=builds[number,url,queueId]{0,50}" 2>/dev/null) || return 1
+  BUILD_URL=$(jq -r --argjson id "$QUEUE_ID" '[.builds[]? | select(.queueId == $id)][0].url // empty' <<< "$builds" 2>/dev/null) || return 1
+  [[ -n "$BUILD_URL" ]] || return 1
+  number=$(jq -r --argjson id "$QUEUE_ID" '[.builds[] | select(.queueId == $id)][0].number' <<< "$builds")
+  BUILD_URL="${BUILD_URL%/}/"
+  output build_url "$BUILD_URL"
+  output build_number "$number"
+  echo "::notice::Jenkins build started: $BUILD_URL (found by queue id $QUEUE_ID after the queue item disappeared)"
+}
 
 # Fetches a Jenkins JSON endpoint into $BODY. Returns 0 on success, 1 on a transient error and 2 once
 # MAX_CONSECUTIVE_ERRORS failures have happened in a row.
@@ -96,15 +112,18 @@ poll() {
 
 while [[ -z "$BUILD_URL" ]]; do
   if (( $(date +%s) >= DEADLINE )); then
-    queue_id=$(basename "$QUEUE_URL")
-    jenkins -X POST -o /dev/null "$JENKINS_URL/queue/cancelItem?id=$queue_id" || true
+    jenkins -X POST -o /dev/null "$JENKINS_URL/queue/cancelItem?id=$QUEUE_ID" || true
     fail "Timed out after ${TIMEOUT_MINUTES}m waiting for $JOB to leave the Jenkins queue"
   fi
 
   rc=0
   poll "${QUEUE_URL}api/json" || rc=$?
+  if (( rc != 0 )) && find_build_by_queue_id; then
+    errors=0
+    break
+  fi
   if (( rc == 2 )); then
-    fail "Lost contact with Jenkins while waiting for the queue item $QUEUE_URL"
+    fail "Lost contact with the Jenkins queue item $QUEUE_URL, and no build of $JOB has queue id $QUEUE_ID"
   elif (( rc == 0 )); then
     item=$(cat "$BODY")
     if [[ "$(jq -r '.cancelled // false' <<< "$item")" == "true" ]]; then

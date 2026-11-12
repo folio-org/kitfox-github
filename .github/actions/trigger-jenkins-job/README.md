@@ -53,7 +53,9 @@ The step fails whenever `result` is `failure`; the outputs written before the fa
    request`.
 2. The queue item is polled until Jenkins assigns a build. A job with concurrent builds disabled may wait
    here behind a running build; that time counts against `timeout_minutes`. A queue item cancelled in
-   Jenkins fails the action.
+   Jenkins fails the action. Jenkins keeps a queue item that has become a build only in memory, so after a
+   Jenkins restart the item answers 404; whenever the item cannot be read, the action looks for the build
+   among the job's last 50 builds by its `queueId` and continues with it.
 3. The build is polled until it stops building. Only `SUCCESS` passes.
 4. When `timeout_minutes` runs out the action stops the build (or cancels the queue item) and fails. The same
    happens when the step receives `SIGINT`/`SIGTERM`, for example on job cancellation.
